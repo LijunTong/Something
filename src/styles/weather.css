@@ -1,0 +1,87 @@
+/* 天气页布局：仅布局属性，外观统一走主题变量与 Naive UI 组件
+   Hero 渐变在 Weather.vue 内联用 var(--primary)/var(--primary-2) 组合，不在此硬编码外观色 */
+
+.wx-head-actions { display: flex; align-items: center; gap: 8px; }
+.wx-unit-group { margin-left: 4px; }
+.wx-body { display: flex; flex-direction: column; }
+
+/* 离线提示条 */
+.wx-offline { margin-bottom: 14px; }
+
+/* Hero 当前天气 */
+.wx-hero { position: relative; overflow: hidden; padding: 22px 24px; }
+.wx-hero-top { display: flex; align-items: center; justify-content: space-between; gap: 14px; }
+.wx-hero-left { display: flex; align-items: center; gap: 16px; }
+.wx-hero-icon { width: 62px; height: 62px; flex: none; }
+.wx-hero-main { display: flex; flex-direction: column; }
+.wx-hero-cond { margin-top: 4px; }
+.wx-hero-feel { margin-top: 2px; }
+.wx-hero-metrics { display: flex; flex-wrap: wrap; }
+.wx-hero-metric { min-width: 92px; padding: 4px 16px; display: flex; flex-direction: column; }
+.wx-hero-metric span { display: block; }
+.wx-hero-foot { display: flex; gap: 18px; margin-top: 16px; padding-top: 12px; }
+
+/* 预警条 */
+.wx-alert { margin-top: 14px; }
+.wx-alert-body { display: flex; align-items: center; gap: 12px; }
+
+/* 卡片网格 */
+.wx-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; margin-top: 16px; align-items: start; }
+.wx-full { grid-column: span 2; }
+.wx-card-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.wx-card-foot { display: block; }
+
+/* 24 小时横滚 */
+.wx-hourly { padding-bottom: 6px; }
+.wx-hourly-row { display: flex; gap: 0; }
+.wx-hour { flex: 0 0 62px; display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 7px 2px; }
+.wx-hour:last-child { border-right: 0; }
+.wx-hour-icon { width: 22px; height: 22px; }
+
+/* 7 天预报 */
+.wx-days { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 6px; }
+.wx-day { display: flex; flex-direction: column; align-items: center; gap: 5px; padding: 10px 4px; }
+.wx-day-icon { width: 22px; height: 22px; }
+.wx-temps { white-space: nowrap; }
+
+/* 空气质量 */
+.wx-aqi-top { display: flex; align-items: center; gap: 10px; }
+.wx-aqi-num { line-height: 1; }
+.wx-aqi-metrics { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-top: 14px; padding-top: 12px; }
+.wx-aqi-metrics > div { display: flex; flex-direction: column; align-items: center; }
+
+/* 生活指数 */
+.wx-life { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+.wx-life-item { display: flex; align-items: flex-start; gap: 8px; padding: 9px; }
+.wx-life-icon { width: 18px; height: 18px; flex: none; }
+.wx-life-item > div { min-width: 0; }
+.wx-life-item p { margin: 2px 0 0; }
+
+/* 城市抽屉 */
+.wx-city-list { display: flex; flex-direction: column; gap: 2px; margin-top: 12px; }
+.wx-city-row { display: flex; align-items: center; gap: 8px; min-height: 46px; }
+.wx-city-name { display: flex; align-items: center; gap: 6px; flex: 1; min-width: 0; }
+.wx-city-pin { width: 14px; height: 14px; flex: none; }
+.wx-city-add { display: flex; align-items: center; gap: 8px; }
+
+/* 响应式 */
+
+/* 天气页补充布局（外观仍走主题变量）。
+   .wx-hero-temp / .wx-hero-deg / .wx-aqi-num 的字号属于「天气 Hero 大数字」这一产品独占视觉（AGENTS.md 1.2），
+   字体家族与颜色仍由主题提供。 */
+.wx-city-select { width: 132px; }
+.wx-hero-skeleton { display: flex; flex-direction: column; gap: 10px; }
+.wx-hero-temp { font-size: 44px; line-height: 1; font-weight: 650; letter-spacing: -0.04em; }
+.wx-hero-deg { font-size: 20px; vertical-align: top; }
+.wx-hero-cond, .wx-hero-feel { font-size: 13px; }
+.wx-aqi-num { font-size: 28px; line-height: 1; font-weight: 650; }
+.wx-modal { width: 620px; max-width: 94vw; }
+.wx-alert-list { display: flex; flex-direction: column; gap: 8px; }
+.wx-alert-sub { display: block; margin: 16px 0 8px; }
+.wx-notice-row { display: grid; grid-template-columns: auto minmax(0, 1fr) 52px; align-items: center; gap: 8px; min-height: 30px; }
+.wx-notice-title { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.wx-notice-time { text-align: right; font-variant-numeric: tabular-nums; }
+.wx-alert-meta { margin-top: 12px; }
+.wx-hour-tag { flex: none; }
+@media (max-width: 1180px) { .wx-hero-top { flex-direction: column; align-items: flex-start; } .wx-hero-metric { padding-left: 0; } }
+@media (max-width: 860px) { .wx-grid { grid-template-columns: 1fr; } .wx-full { grid-column: span 1; } .wx-days { grid-template-columns: repeat(4, 1fr); } .wx-head-actions { flex-wrap: wrap; } }

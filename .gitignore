@@ -1,0 +1,37 @@
+# 依赖与构建产物
+node_modules/
+dist/
+dist-electron/
+
+# 本地数据与缓存（SQLite 数据库、备份、导出物都不入库）
+.data/
+*.db
+*.db-wal
+*.db-shm
+
+# 日志与临时文件
+*.log
+.vite-dev.log
+.vite-only.log
+.esbuild-tmp/
+.npm-cache/
+.tmp-*
+*.tsbuildinfo
+
+# 编辑器与系统文件
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# 环境与凭据
+.env
+.env.*
+*.key
+*.pem
+
+# 工具生成的检查产物
+.impeccable-detect.json
+.openchamber/
+.m1-check.cjs
+.svc-check.cjs

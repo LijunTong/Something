@@ -1,0 +1,21 @@
+/* 快递页样式：仅布局属性，外观统一走 src/theme/naive.ts */
+.pc-tabs { margin-bottom: 14px; }
+.pc-alert { margin-bottom: 14px; }
+.pc-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; }
+.pc-card { display: flex; flex-direction: column; min-width: 0; padding: 15px; }
+.pc-card-head { display: flex; align-items: center; gap: 8px; }
+.pc-card-head > strong { flex: 1; min-width: 0; overflow: hidden; }
+.pc-logo { display: grid; place-items: center; width: 30px; height: 30px; flex: none; }
+.pc-card-num { display: flex; align-items: center; gap: 6px; margin-top: 12px; overflow: hidden; }
+.pc-card-num > span { flex: 1; min-width: 0; overflow: hidden; }
+.pc-card-key { display: flex; flex-direction: column; gap: 3px; margin-top: 12px; padding: 10px; }
+.pc-card-key > span { overflow: hidden; }
+.pc-card-foot { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: 12px; padding-top: 10px; }
+.pc-card-actions { display: flex; align-items: center; gap: 6px; }
+.pc-empty { padding: 24px 0; }
+.privacy-toggle { display: inline-flex; align-items: center; gap: 7px; }
+.pc-drawer-info { display: flex; flex-direction: column; gap: 8px; }
+.pc-track-title { margin-top: 16px; }
+.pc-modal-foot { display: flex; justify-content: flex-end; gap: 8px; }
+@media (max-width: 1180px) { .pc-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 860px) { .pc-grid { grid-template-columns: minmax(0, 1fr); } }

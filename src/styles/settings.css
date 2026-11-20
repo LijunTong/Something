@@ -1,0 +1,61 @@
+/* 设置页：只写布局。颜色/圆角/字号/边框一律走 src/theme/naive.ts 主题变量。
+   分段用量条与色块的颜色来自后端数据（StorageSegment.color / 强调色选项），属于数据驱动，不在此硬编码。 */
+
+.set-layout { display: grid; grid-template-columns: 180px minmax(0, 1fr); gap: 16px; align-items: start; }
+.set-nav { position: sticky; top: 0; }
+.set-content { display: flex; flex-direction: column; gap: 16px; min-width: 0; }
+
+.set-sub { display: flex; align-items: center; gap: 8px; margin: 18px 0 8px; padding-bottom: 6px; }
+.set-field { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 36px; }
+.set-field-key { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.set-hint { display: block; }
+.set-field-value { text-align: right; }
+.set-inline { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.set-inline-end { justify-content: flex-end; }
+.set-inline-between { justify-content: space-between; width: 100%; }
+.set-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 10px; }
+.set-muted { display: block; }
+
+.set-usage { display: flex; align-items: center; gap: 12px; }
+.set-bar { display: flex; flex: 1; height: 14px; overflow: hidden; }
+.set-bar i { display: block; height: 100%; }
+.set-usage-total { white-space: nowrap; }
+.set-legend { display: flex; flex-wrap: wrap; gap: 8px 18px; margin-top: 10px; }
+.set-legend i { display: inline-block; width: 9px; height: 9px; margin-right: 5px; }
+.set-colors { display: flex; gap: 10px; }
+.set-swatch-check { width: 14px; height: 14px; }
+
+/* 列表行：文本区固定占满剩余宽度，右侧操作区按内容宽度，避免长说明被压成竖排 */
+.set-list { display: flex; flex-direction: column; gap: 2px; }
+.set-list-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 10px; min-height: 44px; }
+.set-list-main { display: flex; flex-direction: column; min-width: 0; }
+.set-list-main strong { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.set-list-main small { display: block; }
+.set-cell { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+
+.set-danger { margin-top: 20px; padding: 14px; }
+.set-danger-head { margin-bottom: 4px; }
+
+.set-select { width: 130px; }
+.set-select-wide { width: 220px; }
+.set-input { width: 240px; }
+.set-input-wide { width: 280px; }
+.set-time { width: 110px; }
+.set-key-input { width: 150px; }
+.set-port { width: 88px; }
+
+.set-footbar { display: flex; align-items: flex-start; gap: 8px; margin-top: 18px; padding: 10px 12px; }
+.set-footbar svg { width: 14px; height: 14px; flex: none; margin-top: 2px; }
+.set-menu-icon { width: 16px; height: 16px; }
+
+.set-modal { width: 560px; max-width: 92vw; }
+.set-about { display: flex; align-items: center; gap: 12px; }
+.set-about-mark { display: grid; place-items: center; width: 44px; height: 44px; }
+.set-about-title { margin: 0; }
+.set-result { margin-top: 12px; }
+
+@media (max-width: 1100px) { .set-layout { grid-template-columns: 156px minmax(0, 1fr); } }
+@media (max-width: 900px) {
+  .set-layout { grid-template-columns: 1fr; }
+  .set-nav { position: static; }
+}

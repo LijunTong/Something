@@ -1,0 +1,149 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<meta name="dsh-design" content="desktop windows" />
+<title>首页 · 效率工具集</title>
+<link rel="stylesheet" href="tokens.css" />
+<link rel="stylesheet" href="app.css" />
+<link rel="stylesheet" href="home.css" />
+</head>
+<body>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <symbol id="i-grid" viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></symbol>
+  <symbol id="i-sun" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M2 12h2M20 12h2M5 5l1.5 1.5M17.5 17.5 19 19M19 5l-1.5 1.5M6.5 17.5 5 19"/></symbol>
+  <symbol id="i-partly" viewBox="0 0 24 24"><circle cx="8" cy="8" r="3"/><path d="M8 1.8v1.6M2 8h1.6M3.8 3.8l1.2 1.2M13.2 3.8 12 5"/><path d="M8 18h9a3.2 3.2 0 0 0 .3-6.4 4.5 4.5 0 0 0-8.5-.9A3.7 3.7 0 0 0 8 18Z"/></symbol>
+  <symbol id="i-cal" viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M8 3v4M16 3v4M3 10h18"/></symbol>
+  <symbol id="i-check" viewBox="0 0 24 24"><path d="m5 12 4 4L19 6"/></symbol>
+  <symbol id="i-timer" viewBox="0 0 24 24"><circle cx="12" cy="13" r="8"/><path d="M12 9v4l3 2M9 2h6"/></symbol>
+  <symbol id="i-rss" viewBox="0 0 24 24"><rect x="4" y="5" width="16" height="14" rx="2"/><path d="M8 9h8M8 13h6"/></symbol>
+  <symbol id="i-box" viewBox="0 0 24 24"><path d="m4 8 8-4 8 4v9l-8 4-8-4z"/><path d="m4 8 8 4 8-4M12 12v9"/></symbol>
+  <symbol id="i-mail" viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="m3 7 9 6 9-6"/></symbol>
+  <symbol id="i-gear" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.9l.1.1-2.4 2.4-.1-.1a1.7 1.7 0 0 0-1.9-.3 1.7 1.7 0 0 0-1 1.5V21h-3.4v-.1a1.7 1.7 0 0 0-1-1.5 1.7 1.7 0 0 0-1.9.3l-.1.1L4.6 17l.1-.1a1.7 1.7 0 0 0 .3-1.9 1.7 1.7 0 0 0-1.5-1H3v-3.4h.1a1.7 1.7 0 0 0 1.5-1 1.7 1.7 0 0 0-.3-1.9L4.2 7.8 6.6 5.4l.1.1a1.7 1.7 0 0 0 1.9.3 1.7 1.7 0 0 0 1-1.5V4h3.4v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.9-.3l.1-.1 2.4 2.4-.1.1a1.7 1.7 0 0 0-.3 1.9 1.7 1.7 0 0 0 1.5 1H21v3.4h-.1a1.7 1.7 0 0 0-1.5 1Z"/></symbol>
+  <symbol id="i-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.6-3.6"/></symbol>
+  <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
+  <symbol id="i-bell" viewBox="0 0 24 24"><path d="M18 16v-5a6 6 0 1 0-12 0v5l-2 2h16zM10 21h4"/></symbol>
+  <symbol id="i-chev" viewBox="0 0 24 24"><path d="m9 6 6 6-6 6"/></symbol>
+  <symbol id="i-truck" viewBox="0 0 24 24"><path d="M3 7h11v10H3zM14 10h4l3 3v4h-7z"/><circle cx="7" cy="18" r="2"/><circle cx="17" cy="18" r="2"/></symbol>
+  <symbol id="i-ok" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="m8 12 3 3 5-6"/></symbol>
+  <symbol id="i-clock" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></symbol>
+</svg>
+<div class="app-shell">
+  <aside class="sidebar" aria-label="主导航">
+    <div class="brand"><span class="brand-mark"><svg viewBox="0 0 24 24"><use href="#i-grid"/></svg></span><span class="brand-text">效率工具集</span></div>
+    <nav class="nav">
+      <a class="nav-item active" href="home.html" aria-current="page"><svg><use href="#i-grid"/></svg><span>仪表盘</span></a>
+      <a class="nav-item" href="weather.html"><svg><use href="#i-sun"/></svg><span>天气</span></a>
+      <a class="nav-item" href="schedule.html"><svg><use href="#i-cal"/></svg><span>日程</span><span class="nav-count">3</span></a>
+      <a class="nav-item" href="todo.html"><svg><use href="#i-check"/></svg><span>待办</span><span class="nav-count">6</span></a>
+      <a class="nav-item" href="pomodoro.html"><svg><use href="#i-timer"/></svg><span>番茄钟</span></a>
+      <a class="nav-item" href="feed.html"><svg><use href="#i-rss"/></svg><span>信息流</span><span class="nav-count accent">12</span></a>
+      <a class="nav-item" href="parcel.html"><svg><use href="#i-box"/></svg><span>快递</span></a>
+      <a class="nav-item" href="mail.html"><svg><use href="#i-mail"/></svg><span>邮件</span><span class="nav-count accent">5</span></a>
+      <div class="nav-section">系统</div>
+      <a class="nav-item" href="settings.html"><svg><use href="#i-gear"/></svg><span>设置</span></a>
+    </nav>
+    <div class="sidebar-footer">
+      <div class="local-status"><span class="status-dot"></span>本地存储正常</div>
+      <div class="sidebar-footnote">数据保存在本机 · 纯本地运行</div>
+    </div>
+  </aside>
+
+  <div class="workspace">
+    <header class="topbar">
+      <div class="search-box" role="search"><svg><use href="#i-search"/></svg><input type="search" aria-label="全局搜索" placeholder="搜索任务、日程、邮件、文章、包裹…" /><kbd>Ctrl K</kbd></div>
+      <div class="top-actions">
+        <button class="icon-btn notification" type="button" aria-label="通知，3 条未读"><svg><use href="#i-bell"/></svg><span class="badge">3</span></button>
+        <button class="primary-btn" type="button"><svg><use href="#i-plus"/></svg>快捷添加</button>
+        <div class="os-space" aria-hidden="true"></div>
+      </div>
+    </header>
+
+    <main class="content">
+      <span id="notice-empty" style="position:absolute"></span>
+      <div class="page-head">
+        <div><h1>今日仪表盘</h1><p class="page-sub">2026年11月19日 星期四 · 数据更新于 20:12（本地缓存）</p></div>
+        <div class="head-actions"><span class="tag">本地数据</span><span class="tag">8 个模块</span></div>
+      </div>
+
+      <div class="grid">
+        <a class="weather-link" href="weather.html" aria-label="打开天气页">
+          <section class="card" aria-labelledby="c-weather">
+            <div class="card-head"><div class="card-title" id="c-weather">天气 · 佛山</div><span class="text-btn">查看详情 <svg><use href="#i-chev"/></svg></span></div>
+            <div class="wc-top"><button class="city-chip active" type="button">佛山</button><button class="city-chip" type="button">广州</button><button class="city-chip" type="button">深圳</button></div>
+            <div class="wc-main"><span class="wc-icon"><svg><use href="#i-partly"/></svg></span><div><div class="wc-temp">24<sub>°</sub></div><div class="wc-cond">多云 · 体感 26°</div></div></div>
+            <div class="wc-facts"><div><span>湿度</span><strong>68%</strong></div><div><span>风速</span><strong>3 级</strong></div><div><span>降水</span><strong>10%</strong></div></div>
+            <div class="rain-mini"><span class="muted" style="font-size:var(--fs-11)">未来 3 小时</span><i style="height:10px"></i><i style="height:16px"></i><i class="on" style="height:24px"></i></div>
+            <div class="card-foot">多城市切换与逐小时预报 → 点击进入天气页</div>
+          </section>
+        </a>
+
+        <section class="card span2" aria-labelledby="c-schedule">
+          <div class="card-head"><div class="card-title" id="c-schedule">今日日程</div><button class="text-btn" type="button">查看全部 <svg><use href="#i-chev"/></svg></button></div>
+          <div class="timeline">
+            <div class="timeline-item"><div class="time-col"><strong>09:30</strong><span>60 分钟</span></div><div class="track"><i></i></div><div class="t-body"><div class="t-row"><strong>项目周会</strong><span class="tag">工作</span></div><p>会议室 A · 已开启提前 10 分钟提醒</p></div></div>
+            <div class="timeline-item"><div class="time-col"><strong>14:00</strong><span>45 分钟</span></div><div class="track"><i></i></div><div class="t-body"><div class="t-row"><strong>需求评审</strong><span class="tag">工作</span><span class="tag warn">即将开始</span></div><p>线上会议 · 已开启提前 10 分钟提醒</p></div></div>
+            <div class="timeline-item"><div class="time-col"><strong>19:30</strong><span>60 分钟</span></div><div class="track"><i></i></div><div class="t-body"><div class="t-row"><strong>健身训练</strong><span class="tag">个人</span></div><p>附近健身房 · 已开启提前 30 分钟提醒</p></div></div>
+          </div>
+        </section>
+
+        <section class="card" aria-labelledby="c-todo">
+          <div class="card-head"><div class="card-title" id="c-todo">今日待办</div><button class="text-btn" type="button">+ 添加</button></div>
+          <label class="todo-item"><input type="checkbox" /><span class="checkbox"></span><span class="todo-text"><strong>回复客户邮件</strong><small>截止 16:00 · 工作</small></span><span class="priority">高</span></label>
+          <label class="todo-item"><input type="checkbox" /><span class="checkbox"></span><span class="todo-text"><strong>整理项目周报</strong><small>截止 18:30 · 工作</small></span><span class="tag">工作</span></label>
+          <label class="todo-item"><input type="checkbox" /><span class="checkbox"></span><span class="todo-text"><strong>取顺丰快递</strong><small>截止 21:00 · 取件码 8-2-104</small></span><span class="tag">生活</span></label>
+          <label class="todo-item"><input type="checkbox" /><span class="checkbox"></span><span class="todo-text"><strong>阅读稍后读文章</strong><small>截止 22:00 · 学习</small></span><span class="tag">学习</span></label>
+          <div class="card-foot">今日剩余 <strong>4</strong> 项 · 已完成 <strong>2</strong> 项</div>
+        </section>
+
+        <section class="card" aria-labelledby="c-timer">
+          <div class="card-head"><div class="card-title" id="c-timer">番茄钟</div><button class="text-btn" type="button">时长设置</button></div>
+          <div class="timer-dial"><div><div class="timer-time">25:00</div><div class="timer-cap">专注中 · 第 4 轮</div></div></div>
+          <div class="bound"><span>当前绑定任务</span><strong>整理项目周报</strong></div>
+          <div class="timer-row"><button class="primary-btn" type="button"><svg><use href="#i-timer"/></svg>开始专注</button><button class="icon-btn" type="button" aria-label="重置"><svg viewBox="0 0 24 24"><path d="M4 12a8 8 0 1 0 2.3-5.7M4 5v4h4"/></svg></button></div>
+          <div class="tomatoes"><span><i class="on"></i><i class="on"></i><i class="on"></i><i></i>今日 3 个番茄</span><span>目标 4 个</span></div>
+        </section>
+
+        <section class="card" aria-labelledby="c-parcel">
+          <div class="card-head"><div class="card-title" id="c-parcel">快递</div><button class="text-btn" type="button">+ 添加单号</button></div>
+          <div class="parcel"><span class="ico"><svg><use href="#i-box"/></svg></span><div class="b"><strong>顺丰速运 · 待取件</strong><small>取件码 8-2-104 · 菜鸟驿站</small></div><span class="tag warn">待取件</span></div>
+          <div class="parcel"><span class="ico b"><svg><use href="#i-truck"/></svg></span><div class="b"><strong>中通快递 · 在途</strong><small>预计 11 月 20 日送达</small></div><span class="tag">在途</span></div>
+          <div class="card-foot">最近刷新 20:08 · 数据已缓存至本机</div>
+        </section>
+
+        <section class="card" aria-labelledby="c-feed">
+          <div class="card-head"><div class="card-title" id="c-feed">信息流</div><span class="tag warn">未读 12</span></div>
+          <div class="feed-item"><div class="feed-row"><a href="home.html">本地优先软件的数据边界设计</a><button type="button">稍后读</button></div><p>少数派 · 10 分钟前</p></div>
+          <div class="feed-item"><div class="feed-row"><a href="home.html">RSS 阅读工作流：从收集到归档</a><button type="button">稍后读</button></div><p>独立博客 · 1 小时前</p></div>
+          <div class="feed-item"><div class="feed-row"><a href="home.html">桌面效率工具的十二条交互准则</a><button type="button">稍后读</button></div><p>设计周刊 · 2 小时前</p></div>
+          <div class="card-foot">已订阅 18 个来源 · 最近抓取 19:45</div>
+        </section>
+
+        <section class="card span2" aria-labelledby="c-mail">
+          <div class="card-head"><div class="card-title" id="c-mail">邮件 · 未读 5</div><button class="text-btn" type="button">打开收件箱 <svg><use href="#i-chev"/></svg></button></div>
+          <div class="mail-row"><span class="dot"></span><div><strong>项目评审会议纪要</strong><small>张三 · 工作邮箱 · 含附件</small></div><span class="tag warn">重要</span><time>09:12</time></div>
+          <div class="mail-row"><span class="dot"></span><div><strong>本周需求变更确认</strong><small>李四 · 工作邮箱</small></div><span class="tag warn">重要</span><time>昨天</time></div>
+          <div class="mail-row"><span class="dot gray"></span><div><strong>您的快递已到达驿站</strong><small>物流通知 · 个人邮箱</small></div><span class="tag">通知</span><time>08:40</time></div>
+          <div class="card-foot">2 个邮箱账户 · 最近同步 20:10 · 认证信息本地加密保存</div>
+        </section>
+
+        <section class="card" aria-labelledby="c-notice">
+          <div class="card-head"><div class="card-title" id="c-notice">今日通知</div><a class="text-btn" href="#notice-empty">全部已读</a></div>
+          <div class="notice-list-on">
+            <div class="notice"><span class="ico warn"><svg><use href="#i-clock"/></svg></span><div><strong>14:00 需求评审即将开始</strong><span>日程提醒 · 13:50</span></div></div>
+            <div class="notice"><span class="ico"><svg><use href="#i-box"/></svg></span><div><strong>顺丰快递已到驿站</strong><span>快递状态 · 20:06</span></div></div>
+            <div class="notice"><span class="ico"><svg><use href="#i-mail"/></svg></span><div><strong>工作邮箱有 2 封重要未读邮件</strong><span>邮件提醒 · 19:58</span></div></div>
+          </div>
+          <div class="notice-empty empty-state"><svg><use href="#i-ok"/></svg><span>暂无新提醒</span><a class="text-btn" href="home.html">恢复提醒列表</a></div>
+          <div class="card-foot">今日共 7 条提醒 · 3 条待处理</div>
+        </section>
+      </div>
+    </main>
+  </div>
+</div>
+<script src="js/store.js"></script>
+<script src="js/ui.js"></script>
+<script src="js/home.js"></script>
+</body>
+</html>

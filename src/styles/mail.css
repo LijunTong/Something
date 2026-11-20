@@ -1,0 +1,99 @@
+/* 邮件页样式：参照 design/toolkit/mail.css 的布局结构，仅保留布局属性。
+   颜色、字号、圆角、边框等外观由 Naive UI 主题变量统一控制。 */
+
+/* 三栏布局：账户与文件夹 / 邮件列表 / 阅读窗格 */
+.mail-layout {
+  display: grid;
+  grid-template-columns: 200px 340px minmax(0, 1fr);
+  gap: 16px;
+  align-items: start;
+}
+.ml-side { padding: 10px; min-width: 0; }
+.ml-list { padding: 10px; min-width: 0; }
+.ml-read { padding: 0; min-width: 0; overflow: hidden; }
+
+/* 左栏账户分组 */
+.ml-group { display: flex; flex-direction: column; gap: 2px; padding: 10px 9px 4px; min-width: 0; }
+.ml-group small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ml-nav { width: 100%; gap: 8px; min-height: 30px; padding: 0 9px; }
+.ml-nav-label { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-align: left; }
+.ml-side-foot { margin-top: 10px; padding: 0 4px; }
+
+/* 工具栏与搜索 */
+.ml-tools { display: flex; align-items: center; gap: 4px; padding: 6px 4px 10px; min-height: 36px; }
+.ml-spacer { flex: 1; }
+.ml-search { margin: 6px 0 10px; width: 100%; }
+.mi { width: 15px; height: 15px; flex: none; }
+
+/* 邮件列表行 */
+/* 列表滚动区：高度上限交给这里，滚动由 n-scrollbar 承担 */
+.ml-items { max-height: calc(100vh - 300px); }
+
+.ml-row {
+  position: relative;
+  display: grid;
+  grid-template-columns: auto 24px minmax(0, 1fr) auto;
+  gap: 6px;
+  align-items: start;
+  padding: 9px 6px;
+  cursor: pointer;
+}
+.ml-dot { width: 6px; height: 6px; margin-top: 8px; }
+.ml-star { min-width: 24px; min-height: 24px; }
+.ml-body { min-width: 0; }
+.ml-line { display: flex; justify-content: space-between; gap: 8px; min-width: 0; }
+.ml-line strong { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ml-line time { flex: none; white-space: nowrap; }
+.ml-subj { margin-top: 2px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ml-sum { display: flex; align-items: center; gap: 4px; margin-top: 2px; min-width: 0; overflow: hidden; }
+.ml-sum span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ml-empty { padding: 20px 0; }
+
+/* 阅读窗格 */
+.ml-read-empty { display: grid; place-items: center; min-height: 240px; padding: 20px; }
+.ml-content { max-height: calc(100vh - 220px); }
+.ml-inner { padding: 18px 22px; }
+.ml-content h2 { margin: 0 0 14px; }
+.ml-from { display: flex; align-items: center; gap: 9px; }
+.ml-avatar { display: grid; place-items: center; width: 34px; height: 34px; flex: none; }
+.ml-from > div { display: flex; flex-direction: column; min-width: 0; }
+.ml-from time { margin-left: auto; flex: none; }
+.ml-to { display: flex; flex-direction: column; gap: 2px; margin-top: 10px; min-width: 0; }
+.ml-tagline { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
+.ml-safe { display: flex; align-items: center; gap: 8px; margin: 14px 0; }
+/* 正文：纯文本保留换行；HTML 版限制超宽元素，避免撑破阅读窗格 */
+.ml-body-text { white-space: pre-wrap; overflow-wrap: anywhere; }
+.ml-html { overflow-wrap: anywhere; }
+.ml-html img { max-width: 100%; height: auto; }
+.ml-html table { max-width: 100%; }
+/* 规则编辑弹窗的并排字段 */
+.ml-inline { display: flex; align-items: center; gap: 8px; width: 100%; }
+.ml-modal { width: 620px; max-width: 94vw; }
+.ml-modal-sm { width: 500px; max-width: 94vw; }
+.ml-attach { display: flex; align-items: center; gap: 10px; margin-top: 12px; padding: 10px; }
+.ml-attach-ico { display: grid; place-items: center; width: 32px; height: 32px; flex: none; }
+.ml-attach > div { display: flex; flex-direction: column; min-width: 0; }
+.ml-attach .n-button { margin-left: auto; }
+.ml-reply { display: flex; align-items: center; gap: 8px; margin-top: 18px; padding-top: 14px; }
+
+/* 弹窗与规则抽屉 */
+.dlg-foot { display: flex; justify-content: flex-end; gap: 8px; }
+.rule-card { margin-bottom: 10px; }
+.rule-row { display: flex; align-items: flex-start; gap: 10px; }
+.rule-main { display: flex; flex-direction: column; gap: 4px; flex: 1; min-width: 0; }
+.rule-foot { display: flex; justify-content: flex-end; margin-top: 8px; }
+
+/* 账户管理弹窗：新增/编辑在上，已有账户清单在下 */
+.acct-manage { display: flex; flex-direction: column; gap: 6px; }
+.acct-sec { display: flex; align-items: center; justify-content: space-between; }
+.acct-foot { display: flex; align-items: center; gap: 6px; }
+.acct-spacer { flex: 1; }
+.acct-hint { display: block; margin: 2px 0 2px; }
+.acct-row { display: flex; align-items: center; gap: 6px; padding: 6px 0; }
+.acct-main { display: flex; flex-direction: column; flex: 1; min-width: 0; }
+.acct-main strong, .acct-main span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+@media (max-width: 1180px) {
+  .mail-layout { grid-template-columns: 180px minmax(0, 1fr); }
+  .ml-read { display: none; }
+}

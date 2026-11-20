@@ -1,0 +1,88 @@
+// 白名单桥：渲染进程只能调用这里显式列出的方法，没有通用 invoke。
+const { contextBridge, ipcRenderer } = require('electron')
+
+function call(channel) {
+  return function (payload) { return ipcRenderer.invoke(channel, payload) }
+}
+
+const api = {
+  todo: {
+    list: call('todo:list'), get: call('todo:get'), create: call('todo:create'),
+    update: call('todo:update'), toggle: call('todo:toggle'), remove: call('todo:remove'),
+    reorder: call('todo:reorder'), addSubtask: call('todo:addSubtask'),
+    toggleSubtask: call('todo:toggleSubtask'), lists: call('todo:lists'), stats: call('todo:stats')
+  },
+  schedule: {
+    range: call('schedule:range'), get: call('schedule:get'), create: call('schedule:create'),
+    update: call('schedule:update'), remove: call('schedule:remove'),
+    checkConflict: call('schedule:checkConflict'),
+    calendars: call('schedule:calendars'), toggleCalendar: call('schedule:toggleCalendar'),
+    createCalendar: call('schedule:createCalendar'), removeCalendar: call('schedule:removeCalendar'),
+    exportICS: call('schedule:exportICS'), importICS: call('schedule:importICS')
+  },
+  pomodoro: {
+    state: call('pomodoro:state'), start: call('pomodoro:start'), pause: call('pomodoro:pause'),
+    resume: call('pomodoro:resume'), complete: call('pomodoro:complete'),
+    abandon: call('pomodoro:abandon'), skipBreak: call('pomodoro:skipBreak'),
+    tick: call('pomodoro:tick'), setTask: call('pomodoro:setTask'),
+    config: call('pomodoro:config'), saveConfig: call('pomodoro:saveConfig'),
+    stats: call('pomodoro:stats'), weekStats: call('pomodoro:weekStats'), recent: call('pomodoro:recent')
+  },
+  weather: {
+    cities: call('weather:cities'), addCity: call('weather:addCity'),
+    removeCity: call('weather:removeCity'), setHome: call('weather:setHome'),
+    fetch: call('weather:fetch')
+  },
+  feed: {
+    groups: call('feed:groups'), addGroup: call('feed:addGroup'),
+    sources: call('feed:sources'), addSource: call('feed:addSource'),
+    removeSource: call('feed:removeSource'), toggleSource: call('feed:toggleSource'),
+    updateSource: call('feed:updateSource'),
+    items: call('feed:items'), markRead: call('feed:markRead'),
+    toggleStar: call('feed:toggleStar'), toggleLater: call('feed:toggleLater'),
+    refresh: call('feed:refresh'), importOPML: call('feed:importOPML'), exportOPML: call('feed:exportOPML')
+  },
+  parcel: {
+    list: call('parcel:list'), add: call('parcel:add'), refresh: call('parcel:refresh'),
+    tracks: call('parcel:tracks'), archive: call('parcel:archive'),
+    togglePrivacy: call('parcel:togglePrivacy'), toTodoInfo: call('parcel:toTodoInfo')
+  },
+  mail: {
+    accounts: call('mail:accounts'), addAccount: call('mail:addAccount'),
+    updateAccount: call('mail:updateAccount'), removeAccount: call('mail:removeAccount'),
+    testAccount: call('mail:testAccount'), sync: call('mail:sync'), folders: call('mail:folders'),
+    list: call('mail:list'), read: call('mail:read'), send: call('mail:send'), saveDraft: call('mail:saveDraft'),
+    markRead: call('mail:markRead'), toggleStar: call('mail:toggleStar'), remove: call('mail:remove'),
+    rules: call('mail:rules'), saveRule: call('mail:saveRule'), toTodoInfo: call('mail:toTodoInfo')
+  },
+  settings: {
+    all: call('settings:all'), get: call('settings:get'), set: call('settings:set'),
+    storage: call('settings:storage'), backup: call('settings:backup'), backups: call('settings:backups'),
+    restore: call('settings:restore'), exportData: call('settings:exportData'),
+    clearCache: call('settings:clearCache'), clearTrash: call('settings:clearTrash'),
+    resetAll: call('settings:resetAll'), setWeatherKey: call('settings:setWeatherKey'),
+    testWeather: call('settings:testWeather')
+  },
+  notification: {
+    today: call('notification:today'), unreadCount: call('notification:unreadCount'),
+    markAllRead: call('notification:markAllRead'), create: call('notification:create'),
+    remove: call('notification:remove')
+  },
+  log: {
+    write: call('log:write'),
+    error: call('log:error'),
+    path: call('log:path'),
+    files: call('log:files')
+  },
+  system: {
+    info: call('system:info'), ping: call('system:ping'), openPath: call('system:openPath'),
+    openExternal: call('system:openExternal'), chooseDir: call('system:chooseDir')
+  },
+  onDataChanged: function (cb) {
+    const handler = function (_e, payload) { cb(payload) }
+    ipcRenderer.on('data:changed', handler)
+    return function () { ipcRenderer.removeListener('data:changed', handler) }
+  }
+}
+
+contextBridge.exposeInMainWorld('api', api)

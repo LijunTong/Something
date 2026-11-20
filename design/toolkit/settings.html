@@ -1,0 +1,207 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<meta name="dsh-design" content="desktop windows" />
+<title>设置 · 效率工具集</title>
+<link rel="stylesheet" href="tokens.css" />
+<link rel="stylesheet" href="app.css" />
+<link rel="stylesheet" href="common.css" />
+<link rel="stylesheet" href="settings.css" />
+</head>
+<body>
+<span id="drawer-state" style="position:absolute"></span>
+<span id="modal-state" style="position:absolute"></span>
+<span id="state-b" style="position:absolute"></span>
+<span id="state-c" style="position:absolute"></span>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <symbol id="i-grid" viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></symbol>
+  <symbol id="i-sun" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M2 12h2M20 12h2M5 5l1.5 1.5M17.5 17.5 19 19M19 5l-1.5 1.5M6.5 17.5 5 19"/></symbol>
+  <symbol id="i-cal" viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M8 3v4M16 3v4M3 10h18"/></symbol>
+  <symbol id="i-check" viewBox="0 0 24 24"><path d="m5 12 4 4L19 6"/></symbol>
+  <symbol id="i-timer" viewBox="0 0 24 24"><circle cx="12" cy="13" r="8"/><path d="M12 9v4l3 2M9 2h6"/></symbol>
+  <symbol id="i-rss" viewBox="0 0 24 24"><rect x="4" y="5" width="16" height="14" rx="2"/><path d="M8 9h8M8 13h6"/></symbol>
+  <symbol id="i-box" viewBox="0 0 24 24"><path d="m4 8 8-4 8 4v9l-8 4-8-4z"/><path d="m4 8 8 4 8-4M12 12v9"/></symbol>
+  <symbol id="i-mail" viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="m3 7 9 6 9-6"/></symbol>
+  <symbol id="i-gear" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.9l.1.1-2.4 2.4-.1-.1a1.7 1.7 0 0 0-1.9-.3 1.7 1.7 0 0 0-1 1.5V21h-3.4v-.1a1.7 1.7 0 0 0-1-1.5 1.7 1.7 0 0 0-1.9.3l-.1.1L4.6 17l.1-.1a1.7 1.7 0 0 0 .3-1.9 1.7 1.7 0 0 0-1.5-1H3v-3.4h.1a1.7 1.7 0 0 0 1.5-1 1.7 1.7 0 0 0-.3-1.9L4.2 7.8 6.6 5.4l.1.1a1.7 1.7 0 0 0 1.9.3 1.7 1.7 0 0 0 1-1.5V4h3.4v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.9-.3l.1-.1 2.4 2.4-.1.1a1.7 1.7 0 0 0-.3 1.9 1.7 1.7 0 0 0 1.5 1H21v3.4h-.1a1.7 1.7 0 0 0-1.5 1Z"/></symbol>
+  <symbol id="i-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.6-3.6"/></symbol>
+  <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
+  <symbol id="i-bell" viewBox="0 0 24 24"><path d="M18 16v-5a6 6 0 1 0-12 0v5l-2 2h16zM10 21h4"/></symbol>
+  <symbol id="i-chev-l" viewBox="0 0 24 24"><path d="m15 6-6 6 6 6"/></symbol>
+  <symbol id="i-chev-r" viewBox="0 0 24 24"><path d="m9 6 6 6-6 6"/></symbol>
+  <symbol id="i-chev-d" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></symbol>
+  <symbol id="i-more" viewBox="0 0 24 24"><circle cx="5" cy="12" r="1.4"/><circle cx="12" cy="12" r="1.4"/><circle cx="19" cy="12" r="1.4"/></symbol>
+  <symbol id="i-edit" viewBox="0 0 24 24"><path d="M4 20h4l11-11-4-4L4 16zM14 6l4 4"/></symbol>
+  <symbol id="i-trash" viewBox="0 0 24 24"><path d="M4 7h16M9 7V4h6v3M7 7l1 13h8l1-13"/></symbol>
+  <symbol id="i-x" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18"/></symbol>
+  <symbol id="i-filter" viewBox="0 0 24 24"><path d="M3 5h18l-7 8v6l-4 2v-8z"/></symbol>
+  <symbol id="i-pin" viewBox="0 0 24 24"><path d="M12 22s7-6 7-12a7 7 0 1 0-14 0c0 6 7 12 7 12Z"/><circle cx="12" cy="10" r="2.4"/></symbol>
+  <symbol id="i-clock" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></symbol>
+  <symbol id="i-refresh" viewBox="0 0 24 24"><path d="M4 12a8 8 0 0 1 13.7-5.7L20 8M20 4v4h-4M20 12a8 8 0 0 1-13.7 5.7L4 16M4 20v-4h4"/></symbol>
+  <symbol id="i-star" viewBox="0 0 24 24"><path d="m12 3 2.7 5.6 6.1.9-4.4 4.3 1 6.1-5.4-2.9-5.4 2.9 1-6.1L3.2 9.5l6.1-.9z"/></symbol>
+  <symbol id="i-folder" viewBox="0 0 24 24"><path d="M3 7h6l2 2h10v10H3z"/></symbol>
+  <symbol id="i-inbox" viewBox="0 0 24 24"><path d="M3 13h5l2 3h4l2-3h5M3 13l2-8h14l2 8v7H3z"/></symbol>
+  <symbol id="i-lock" viewBox="0 0 24 24"><rect x="5" y="10" width="14" height="11" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/></symbol>
+  <symbol id="i-warn" viewBox="0 0 24 24"><path d="M12 3 2.5 20h19L12 3Z"/><path d="M12 9v5M12 17.2v.2"/></symbol>
+  <symbol id="i-ok" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="m8 12 3 3 5-6"/></symbol>
+  <symbol id="i-plus-circle" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 8v8M8 12h8"/></symbol>
+  <symbol id="i-font" viewBox="0 0 24 24"><path d="M4 20 10 4h4l6 16M7 15h10"/></symbol>
+  <symbol id="i-link" viewBox="0 0 24 24"><path d="M10 14a4 4 0 0 0 6 .5l2-2a4 4 0 0 0-5.7-5.7l-1 1M14 10a4 4 0 0 0-6-.5l-2 2a4 4 0 0 0 5.7 5.7l1-1"/></symbol>
+  <symbol id="i-pause" viewBox="0 0 24 24"><path d="M8 5v14M16 5v14"/></symbol>
+  <symbol id="i-play" viewBox="0 0 24 24"><path d="m7 4 12 8-12 8z"/></symbol>
+  <symbol id="i-download" viewBox="0 0 24 24"><path d="M12 3v12m0 0 4-4m-4 4-4-4M4 19h16"/></symbol>
+  <symbol id="i-database" viewBox="0 0 24 24"><ellipse cx="12" cy="5" rx="8" ry="3"/><path d="M4 5v14c0 1.7 3.6 3 8 3s8-1.3 8-3V5M4 12c0 1.7 3.6 3 8 3s8-1.3 8-3"/></symbol>
+  <symbol id="i-palette" viewBox="0 0 24 24"><path d="M12 3a9 9 0 1 0 0 18h2a2 2 0 0 0 0-4h-1a2 2 0 0 1 0-4h3a5 5 0 0 0 5-5c0-2.8-4-5-9-5Z"/><circle cx="7.5" cy="10" r="1"/><circle cx="11" cy="7" r="1"/><circle cx="15.5" cy="8" r="1"/></symbol>
+  <symbol id="i-user" viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/></symbol>
+  <symbol id="i-info" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 11v6M12 7.5v.5"/></symbol>
+  <symbol id="i-send" viewBox="0 0 24 24"><path d="m3 4 18 8-18 8 3-8zM6 12h15"/></symbol>
+  <symbol id="i-paperclip" viewBox="0 0 24 24"><path d="M20 11.5 12 19a4 4 0 0 1-5.7-5.7l8-8a2.8 2.8 0 0 1 4 4l-8 8a1.6 1.6 0 0 1-2.3-2.3l7-7"/></symbol>
+  <symbol id="i-copy" viewBox="0 0 24 24"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h8"/></symbol>
+  <symbol id="i-eye" viewBox="0 0 24 24"><path d="M2 12s3.6-6 10-6 10 6 10 6-3.6 6-10 6-10-6-10-6Z"/><circle cx="12" cy="12" r="2.5"/></symbol>
+  <symbol id="i-flag" viewBox="0 0 24 24"><path d="M5 21V4m0 1h11l-2 3 2 3H5"/></symbol>
+  <symbol id="i-truck" viewBox="0 0 24 24"><path d="M3 7h11v10H3zM14 10h4l3 3v4h-7z"/><circle cx="7" cy="18" r="2"/><circle cx="17" cy="18" r="2"/></symbol>
+  <symbol id="i-key" viewBox="0 0 24 24"><circle cx="8" cy="15" r="4"/><path d="m11 12 8-8 2 2-2 2 2 2-2 2-2-2-2 2"/></symbol>
+  <symbol id="i-board" viewBox="0 0 24 24"><rect x="3" y="4" width="5" height="16" rx="1"/><rect x="10" y="4" width="5" height="11" rx="1"/><rect x="17" y="4" width="4" height="14" rx="1"/></symbol>
+  <symbol id="i-list" viewBox="0 0 24 24"><path d="M8 6h13M8 12h13M8 18h13M3 6h.1M3 12h.1M3 18h.1"/></symbol>
+  <symbol id="i-reply" viewBox="0 0 24 24"><path d="m9 8-5 4 5 4M4 12h9a6 6 0 0 1 6 6v2"/></symbol>
+  <symbol id="i-print" viewBox="0 0 24 24"><path d="M6 9V3h12v6M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2M6 15h12v6H6z"/></symbol>
+  <symbol id="i-moon" viewBox="0 0 24 24"><path d="M20 15a8 8 0 0 1-11-11 8 8 0 1 0 11 11Z"/></symbol>
+</svg>
+<div class="app-shell">
+  <aside class="sidebar" aria-label="主导航">
+    <div class="brand"><span class="brand-mark"><svg viewBox="0 0 24 24"><use href="#i-grid"/></svg></span><span class="brand-text">效率工具集</span></div>
+    <nav class="nav">
+      <a class="nav-item" href="home.html"><svg><use href="#i-grid"/></svg><span>仪表盘</span></a>
+      <a class="nav-item" href="weather.html"><svg><use href="#i-sun"/></svg><span>天气</span></a>
+      <a class="nav-item" href="schedule.html"><svg><use href="#i-cal"/></svg><span>日程</span><span class="nav-count">3</span></a>
+      <a class="nav-item" href="todo.html"><svg><use href="#i-check"/></svg><span>待办</span><span class="nav-count">6</span></a>
+      <a class="nav-item" href="pomodoro.html"><svg><use href="#i-timer"/></svg><span>番茄钟</span></a>
+      <a class="nav-item" href="feed.html"><svg><use href="#i-rss"/></svg><span>信息流</span><span class="nav-count accent">12</span></a>
+      <a class="nav-item" href="parcel.html"><svg><use href="#i-box"/></svg><span>快递</span></a>
+      <a class="nav-item" href="mail.html"><svg><use href="#i-mail"/></svg><span>邮件</span><span class="nav-count accent">5</span></a>
+      <div class="nav-section">系统</div>
+      <a class="nav-item active" href="settings.html"><svg><use href="#i-gear"/></svg><span>设置</span></a>
+    </nav>
+    <div class="sidebar-footer">
+      <div class="local-status"><span class="status-dot"></span>本地存储正常</div>
+      <div class="sidebar-footnote">数据保存在本机 · 纯本地运行</div>
+    </div>
+  </aside>
+  <div class="workspace">
+    <header class="topbar">
+      <div class="search-box" role="search"><svg><use href="#i-search"/></svg><input type="search" aria-label="全局搜索" placeholder="搜索任务、日程、邮件、文章、包裹…" /><kbd>Ctrl K</kbd></div>
+      <div class="top-actions">
+        <button class="icon-btn" type="button" aria-label="通知，3 条未读"><svg><use href="#i-bell"/></svg><span class="badge">3</span></button>
+        <button class="primary-btn" type="button"><svg><use href="#i-plus"/></svg>快捷添加</button>
+        <div class="os-space" aria-hidden="true"></div>
+      </div>
+    </header>
+    <main class="content">
+      <div class="page-head">
+        <div><h1>设置</h1><p class="page-sub">所有配置保存在本机，不会上传到任何服务器</p></div>
+        <div class="head-actions"><span class="tag">全部配置保存在本机</span></div>
+      </div>
+<div class="set-layout">
+  <aside class="card set-nav">
+    <div class="set-group">效率模块</div>
+    <a class="set-link" href="#s-dashboard"><svg><use href="#i-grid"/></svg>仪表盘</a>
+    <a class="set-link" href="#s-weather"><svg><use href="#i-sun"/></svg>天气</a>
+    <a class="set-link" href="#s-schedule"><svg><use href="#i-cal"/></svg>日程</a>
+    <a class="set-link" href="#s-todo"><svg><use href="#i-check"/></svg>待办</a>
+    <a class="set-link" href="#s-pomodoro"><svg><use href="#i-timer"/></svg>番茄钟</a>
+    <a class="set-link" href="#s-feed"><svg><use href="#i-rss"/></svg>信息流</a>
+    <a class="set-link" href="#s-parcel"><svg><use href="#i-box"/></svg>快递</a>
+    <a class="set-link" href="#s-mail"><svg><use href="#i-mail"/></svg>邮件</a>
+    <div class="set-group">通用设置</div>
+    <a class="set-link" href="#s-appearance"><svg><use href="#i-palette"/></svg>外观</a>
+    <a class="set-link" href="#s-notify"><svg><use href="#i-bell"/></svg>通知</a>
+    <a class="set-link" href="#s-data"><svg><use href="#i-database"/></svg>数据与存储</a>
+    <a class="set-link" href="#s-key"><svg><use href="#i-key"/></svg>快捷键</a>
+    <a class="set-link" href="#s-about"><svg><use href="#i-info"/></svg>关于</a>
+  </aside>
+  <section class="set-content">
+    <div class="card set-panel" id="s-data">
+      <div class="set-panel-head"><div class="card-title">数据与存储</div><div class="panel-enable"><span>启用该模块</span><button class="switch on" type="button" aria-label="启用数据与存储"></button></div></div>
+      <div class="set-sub">本地存储用量</div>
+      <div class="set-usage"><div class="set-bar"><i style="background:#2563eb;width:22%"></i><i style="background:#16a34a;width:18%"></i><i style="background:#c2410c;width:31%"></i><i style="background:#a855f7;width:20%"></i><i style="background:#94a3b8;width:9%"></i></div><span>共 412 MB</span></div>
+      <div class="set-legend"><span><i style="background:#2563eb"></i>日程 92 MB</span><span><i style="background:#16a34a"></i>待办 74 MB</span><span><i style="background:#c2410c"></i>邮件缓存 128 MB</span><span><i style="background:#a855f7"></i>文章缓存 82 MB</span><span><i style="background:#94a3b8"></i>附件 36 MB</span></div>
+      <div class="set-sub">自动备份</div>
+      <div class="field"><span class="k">自动备份到本地目录</span><button class="switch on" type="button"></button></div>
+      <div class="field"><span class="k">备份路径</span><span class="v">D:\Backup\Efficiency <a class="text-btn" href="settings.html">更改</a></span></div>
+      <div class="field"><span class="k">备份频率</span><span class="v"><select class="select" style="width:130px"><option>每天</option><option>每周</option><option>每次退出</option></select></span></div>
+      <div class="set-btns"><a class="ghost-btn" href="settings.html">立即备份</a></div>
+      <div class="set-sub">导出</div>
+      <div class="set-btns"><a class="ghost-btn" href="settings.html">导出全部数据（JSON）</a><a class="ghost-btn" href="settings.html">导出日程（ICS）</a><a class="ghost-btn" href="settings.html">导出订阅源（OPML）</a><a class="ghost-btn" href="settings.html">导出邮件（EML/MBOX）</a></div>
+      <div class="set-sub">导入</div>
+      <div class="set-btns"><a class="ghost-btn" href="settings.html">从备份文件恢复</a><span class="muted" style="font-size:var(--fs-11)">恢复会覆盖当前数据，请先备份</span></div>
+      <div class="set-sub">加密备份</div>
+      <div class="field"><span class="k">为备份文件设置密码</span><button class="switch on" type="button"></button></div>
+      <div class="field"><span class="k">密码</span><span class="v"><input class="input" type="password" value="••••••••" style="width:160px"/></span></div>
+      <div class="set-danger"><div class="card-title" style="color:#b91c1c">危险操作</div><div class="set-btns"><a class="ghost-btn" href="settings.html">清空缓存</a><a class="ghost-btn" href="settings.html">清空回收站</a><a class="primary-btn danger" href="settings.html">重置全部数据</a></div></div>
+    </div>
+    <div class="card set-panel" id="s-appearance"><div class="set-panel-head"><div class="card-title">外观</div><div class="panel-enable"><span>启用该模块</span><button class="switch on" type="button" aria-label="启用外观"></button></div></div><div class="set-sub">主题</div><div class="set-themes"><div class="theme on">浅色</div><div class="theme">深色</div><div class="theme">跟随系统</div></div><div class="set-sub">强调色</div><div class="set-colors"><i style="background:#0f766e" class="on"></i><i style="background:#2563eb"></i><i style="background:#7c3aed"></i><i style="background:#c2410c"></i><i style="background:#db2777"></i><i style="background:#0ea5e9"></i></div><div class="set-sub">字号</div><div class="seg"><button class="on" type="button">小</button><button type="button">中</button><button type="button">大</button></div><div class="set-sub">侧边栏</div><div class="field"><span class="k">始终展开 / 可折叠</span><button class="switch on" type="button"></button></div></div>
+    <div class="card set-panel" id="s-notify"><div class="set-panel-head"><div class="card-title">通知</div><div class="panel-enable"><span>启用该模块</span><button class="switch on" type="button" aria-label="启用通知"></button></div></div><div class="field"><span class="k">启用桌面通知</span><button class="switch on" type="button"></button></div><div class="set-sub">分模块通知</div><div class="field"><span class="k">天气预警</span><button class="switch on" type="button"></button></div><div class="field"><span class="k">日程提醒</span><button class="switch on" type="button"></button></div><div class="field"><span class="k">待办到期</span><button class="switch on" type="button"></button></div><div class="field"><span class="k">番茄结束</span><button class="switch on" type="button"></button></div><div class="field"><span class="k">快递状态</span><button class="switch off" type="button"></button></div><div class="field"><span class="k">新邮件</span><button class="switch on" type="button"></button></div><div class="set-sub">免打扰时段</div><div class="field"><span class="k">开始 - 结束</span><span class="v">22:00 - 08:00</span></div><div class="set-sub">通知隐私</div><div class="field"><span class="k">显示内容</span><span class="v">仅显示有新消息</span></div></div>
+    <div class="card set-panel" id="s-dashboard">
+      <div class="set-panel-head"><div class="card-title">仪表盘</div><div class="panel-enable"><span>启用该模块</span><button class="switch on" type="button" aria-label="启用仪表盘"></button></div></div>
+    </div>
+    <div class="card set-panel" id="s-schedule">
+      <div class="set-panel-head"><div class="card-title">日程</div><div class="panel-enable"><span>启用该模块</span><button class="switch on" type="button" aria-label="启用日程"></button></div></div>
+    </div>
+    <div class="card set-panel" id="s-todo">
+      <div class="set-panel-head"><div class="card-title">待办</div><div class="panel-enable"><span>启用该模块</span><button class="switch on" type="button" aria-label="启用待办"></button></div></div>
+    </div>
+    <div class="card set-panel" id="s-pomodoro">
+      <div class="set-panel-head"><div class="card-title">番茄钟</div><div class="panel-enable"><span>启用该模块</span><button class="switch on" type="button" aria-label="启用番茄钟"></button></div></div>
+    </div>
+    <div class="card set-panel" id="s-weather">
+      <div class="set-panel-head"><div class="card-title">天气数据源 · 和风天气</div><div class="panel-enable"><span>启用该模块</span><button class="switch on" type="button" aria-label="启用天气数据源 · 和风天气"></button></div></div>
+      <div class="cfg-note"><svg><use href="#i-info"/></svg>天气与预警通过和风天气 API 获取；API Key 仅保存在本机，请求结果做本地缓存。</div>
+      <div class="set-sub">API 配置</div>
+      <div class="field"><span class="k">数据源</span><span class="v"><select class="select" style="width:190px"><option>和风天气（QWeather）</option><option>备用数据源</option></select></span></div>
+      <div class="field"><span class="k">API Host</span><span class="v"><select class="select" style="width:220px"><option>api.qweather.com（正式）</option><option>devapi.qweather.com（开发）</option></select></span></div>
+      <div class="field"><span class="k">API Key</span><span class="v"><input class="input" type="password" value="••••••••••••••••" style="width:220px"/></span></div>
+      <div class="field"><span class="k">定位城市</span><span class="v">佛山 · 自动定位 <a class="text-btn" href="weather.html#city-drawer">更改</a></span></div>
+      <div class="set-sub">缓存与更新</div>
+      <div class="field"><span class="k">缓存有效期</span><span class="v"><select class="select" style="width:120px"><option>30 分钟</option><option>1 小时</option><option>3 小时</option></select></span></div>
+      <div class="field"><span class="k">离线使用最近缓存</span><button class="switch on" type="button"></button></div>
+      <div class="field"><span class="k">天气预警本地推送</span><button class="switch on" type="button"></button></div>
+      <div class="set-btns"><a class="ghost-btn" href="settings.html">测试连接</a></div>
+      <p class="muted" style="font-size:var(--fs-11)">API Key 以加密形式保存在本机；仅向和风天气发起天气数据请求。</p>
+    </div>
+    <div class="card set-panel" id="s-mail"><div class="set-panel-head"><div class="card-title">邮箱账户</div><div class="panel-enable"><span>启用该模块</span><button class="switch on" type="button" aria-label="启用邮箱账户"></button></div></div><div class="set-acct"><div><strong>工作邮箱</strong><span>zhangsan@company.com · IMAP</span></div><span class="tag">已连接</span><span class="muted" style="font-size:var(--fs-11)">最后同步 2 分钟前</span><a class="text-btn" href="settings.html">编辑</a><a class="text-btn" href="settings.html">删除</a></div><div class="set-acct"><div><strong>个人邮箱</strong><span>me@personal.com · IMAP</span></div><span class="tag">已连接</span><span class="muted" style="font-size:var(--fs-11)">最后同步 5 分钟前</span><a class="text-btn" href="settings.html">编辑</a><a class="text-btn" href="settings.html">删除</a></div><div class="set-btns"><a class="primary-btn" href="settings.html">+ 添加邮箱账户</a></div>
+      <div class="set-sub">QQ 邮箱配置</div>
+      <div class="field"><span class="k">邮箱地址</span><span class="v"><input class="input" value="123456789@qq.com" style="width:210px"/></span></div>
+      <div class="field"><span class="k">收件服务器 IMAP</span><span class="v">imap.qq.com · 993 · SSL/TLS</span></div>
+      <div class="field"><span class="k">发件服务器 SMTP</span><span class="v">smtp.qq.com · 465 · SSL/TLS</span></div>
+      <div class="field"><span class="k">授权码</span><span class="v"><input class="input" type="password" value="••••••••••••••••" style="width:210px"/></span></div>
+      <div class="field"><span class="k">同步范围</span><span class="v"><select class="select" style="width:130px"><option>最近 30 天</option><option>全部邮件</option></select></span></div>
+      <div class="set-btns"><a class="ghost-btn" href="settings.html">测试连接</a></div>
+      <p class="muted" style="font-size:var(--fs-11)">授权信息仅加密保存在本机，不会上传。</p></div>
+    <div class="card set-panel" id="s-feed"><div class="set-panel-head"><div class="card-title">订阅源</div><div class="panel-enable"><span>启用该模块</span><button class="switch on" type="button" aria-label="启用订阅源"></button></div></div><div class="cfg-note"><svg><use href="#i-info"/></svg>通过 RSS / Atom 抓取，订阅与文章缓存保存在本机，联网仅用于拉取 feed。</div>
+      <div class="field"><span class="k">默认抓取频率</span><span class="v"><select class="select" style="width:130px"><option>每 6 小时</option><option>每小时</option><option>每天</option></select></span></div>
+      <div class="field"><span class="k">离线保留文章正文</span><button class="switch on" type="button"></button></div>
+      <div class="set-sub">添加订阅源</div>
+      <div class="field"><span class="k">RSS / Atom 地址</span><span class="v"><input class="input" placeholder="https://example.com/feed.xml" style="width:260px"/></span></div>
+      <div class="field"><span class="k">分组</span><span class="v"><select class="select" style="width:130px"><option>科技</option><option>设计</option><option>独立博客</option></select></span></div>
+      <div class="field"><span class="k">抓取频率</span><span class="v"><select class="select" style="width:130px"><option>跟随默认</option><option>每小时</option><option>每天</option></select></span></div>
+      <div class="set-btns"><a class="ghost-btn" href="settings.html">验证链接</a><a class="primary-btn" href="settings.html">添加订阅源</a></div>
+      <div class="set-sub">已订阅</div>
+      <table class="set-table"><tr><th>名称</th><th>URL</th><th>分组</th><th>频率</th><th>状态</th><th></th></tr><tr><td>少数派</td><td>https://sspai.com/feed</td><td>科技</td><td>每小时</td><td><button class="switch on" type="button"></button></td><td><a class="text-btn" href="settings.html">删除</a></td></tr><tr><td>设计周刊</td><td>https://designweekly.io/rss</td><td>设计</td><td>每天</td><td><button class="switch on" type="button"></button></td><td><a class="text-btn" href="settings.html">删除</a></td></tr><tr><td>阮一峰的网络日志</td><td>https://ruanyf.net/rss</td><td>独立博客</td><td>每 6 小时</td><td><button class="switch off" type="button"></button></td><td><a class="text-btn" href="settings.html">删除</a></td></tr></table><div class="set-btns"><a class="primary-btn" href="settings.html">+ 添加订阅源</a><a class="ghost-btn" href="settings.html">OPML 导入</a><a class="ghost-btn" href="settings.html">OPML 导出</a></div></div>
+    <div class="card set-panel" id="s-parcel">
+      <div class="set-panel-head"><div class="card-title">快递</div><div class="panel-enable"><span>启用该模块</span><button class="switch on" type="button" aria-label="启用快递"></button></div></div>
+    </div>
+    <div class="card set-panel" id="s-key"><div class="set-panel-head"><div class="card-title">快捷键</div><div class="panel-enable"><span>启用该模块</span><button class="switch on" type="button" aria-label="启用快捷键"></button></div></div><table class="set-table"><tr><th>功能</th><th>快捷键</th></tr><tr><td>全局搜索</td><td><kbd>Ctrl K</kbd></td></tr><tr><td>新建任务</td><td><kbd>N</kbd></td></tr><tr><td>开始专注</td><td><kbd>F</kbd></td></tr><tr><td>快捷添加</td><td><kbd>空格</kbd></td></tr><tr><td>切换视图</td><td><kbd>Ctrl 1-3</kbd></td></tr></table></div>
+    <div class="card set-panel" id="s-about"><div class="set-panel-head"><div class="card-title">关于</div><div class="panel-enable"><span>启用该模块</span><button class="switch on" type="button" aria-label="启用关于"></button></div></div><div class="set-about"><div class="brand-mark" style="width:44px;height:44px"><svg viewBox="0 0 24 24"><use href="#i-grid"/></svg></div><div><h2 style="margin:0;font-size:var(--fs-title)">效率工具集</h2><span class="muted">版本 1.0.0（本地构建）</span></div></div><p class="muted" style="font-size:var(--fs-13)">纯本地个人效率工具集，无账户体系、不联网同步、不含智能功能。</p><div class="set-btns"><a class="ghost-btn" href="settings.html">检查更新</a><a class="ghost-btn" href="settings.html">查看开源许可</a></div></div>
+  </section>
+</div>
+<div class="set-footbar"><svg><use href="#i-warn"/></svg>本应用不提供账户体系与在线同步，所有数据仅保存在本机。请定期备份，卸载或清除浏览器数据可能导致数据丢失。</div>
+    </main>
+  </div>
+</div>
+
+<script src="js/store.js"></script>
+<script src="js/ui.js"></script>
+<script src="js/settings.js"></script>
+</body>
+</html>

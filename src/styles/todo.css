@@ -1,0 +1,42 @@
+/* 待办页布局：仅布局属性，外观走 src/theme/naive.ts */
+.td-layout { display: grid; grid-template-columns: 190px minmax(0,1fr); gap: 16px; align-items: start; }
+
+/* 左栏清单导航 */
+.td-side { padding: 12px; }
+.td-group { padding: 6px 8px; font-size: 11px; }
+.td-nav { display: flex; align-items: center; gap: 8px; min-height: 32px; padding: 0 9px; border-radius: 8px; font-size: 12px; }
+.td-nav svg { width: 15px; height: 15px; flex: 0 0 auto; }
+.td-nav > span:nth-last-child(1) { margin-left: auto; }
+/* 选中态：颜色取自 Naive UI 主题变量，避免硬编码（AGENTS.md 2.2） */
+.td-nav.on { background: var(--app-primary, #0f766e); color: var(--on-primary); font-weight: 600; }
+.td-nav.on svg { color: inherit; }
+.td-nav.on > span:nth-last-child(1) { color: inherit; }
+/* 悬停反馈（纯布局/交互态，不改外观色值） */
+.td-nav:hover { opacity: .85; }
+
+/* 中栏 */
+.td-mid { padding: 0; min-width: 0; }
+.td-quick { display: flex; gap: 8px; padding: 14px; }
+.td-filters { display: flex; flex-wrap: wrap; gap: 6px; padding: 0 14px 10px; }
+.td-list { padding: 4px 0; }
+.td-row { display: grid; grid-template-columns: minmax(0,1fr) auto 96px; align-items: center; gap: 8px; min-height: 44px; padding: 4px 14px; cursor: pointer; }
+.td-task { display: flex; align-items: center; gap: 9px; min-width: 0; }
+.td-title { overflow: hidden; font-size: 12px; font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
+.td-row.done .td-title { font-weight: 400; text-decoration: line-through; }
+.td-tags { display: flex; gap: 5px; align-items: center; }
+.td-due { font-size: 11px; text-align: right; white-space: nowrap; }
+
+/* 看板 */
+.td-board { display: grid; grid-template-columns: repeat(3, minmax(0,1fr)); gap: 10px; padding: 14px; }
+.td-bcol { min-height: 200px; padding: 8px; border-radius: 8px; }
+.td-bcol > b { display: block; padding: 4px; font-size: 12px; }
+.td-bcard { margin-top: 8px; padding: 9px; border-radius: 6px; font-size: 11px; cursor: pointer; }
+
+/* 详情抽屉内 */
+.td-subtitle { margin: 12px 0 4px; font-size: 12px; font-weight: 600; }
+.td-sub { display: flex; align-items: center; gap: 8px; min-height: 26px; font-size: 12px; }
+.td-note { margin-top: 12px; font-size: 12px; }
+
+@media (max-width: 1180px) {
+  .td-layout { grid-template-columns: 170px minmax(0,1fr); }
+}
