@@ -1,5 +1,7 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { homeRefreshToken } from '@/composables/useHomeRefresh'
+import HomeCardMenu from '@/components/home/HomeCardMenu.vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import { NCard, NTag, NEmpty, NSpin, NButton, useMessage } from 'naive-ui'
 import { call, bridge, hasBridge } from '@/lib/ipc'
 import { log } from '@/lib/logger'
@@ -51,10 +53,11 @@ async function markAll() {
 }
 
 onMounted(load)
+watch(homeRefreshToken, () => { void load() })
 </script>
 
 <template>
-  <n-card size="small">
+  <n-card size="small" class="hc-card hc-card-notice">
     <template #header>
       <div class="hc-head">
         <span>今日通知</span>
@@ -62,8 +65,11 @@ onMounted(load)
       </div>
     </template>
     <template #header-extra>
-      <n-button size="tiny" quaternary :disabled="!unread" :loading="marking" @click="markAll">全部已读</n-button>
-    </template>
+        <div class="hc-head-actions">
+          <n-button size="tiny" quaternary :disabled="!unread" :loading="marking" @click="markAll">全部已读</n-button>
+          <HomeCardMenu module="notice" />
+        </div>
+      </template>
 
     <n-spin :show="loading">
       <n-empty v-if="!list.length" size="small" description="暂无新提醒" />

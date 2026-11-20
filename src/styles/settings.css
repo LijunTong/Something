@@ -5,23 +5,36 @@
 .set-nav { position: sticky; top: 0; }
 .set-content { display: flex; flex-direction: column; gap: 16px; min-width: 0; }
 
-.set-sub { display: flex; align-items: center; gap: 8px; margin: 18px 0 8px; padding-bottom: 6px; }
-.set-field { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 36px; }
+/* 长面板（数据与存储）拆成同级卡片：分区靠卡片边界与标题层级表达 */
+.set-sections { display: flex; flex-direction: column; gap: 12px; }
+
+/* 短面板内部的二级分区：用 Naive 分隔线的标题承载，不再用裸文本当小标题 */
+/* 二级分区标签：与上方内容拉开 20px、与下方选项贴近，形成「上宽下紧」的节奏 */
+.set-section { margin: 20px 0 6px; }
+.set-section:first-child { margin-top: 2px; }
+.set-field + .set-field { margin-top: 2px; }
+
+.set-field { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 40px; padding: 2px 0; }
 .set-field-key { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
 .set-hint { display: block; }
-.set-field-value { text-align: right; }
+.set-field-value { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-align: right; }
 .set-inline { display: flex; align-items: center; gap: 8px; min-width: 0; }
 .set-inline-end { justify-content: flex-end; }
 .set-inline-between { justify-content: space-between; width: 100%; }
-.set-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 10px; }
+.set-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 12px; }
 .set-muted { display: block; }
+p.set-muted { margin: 10px 0 0; }
 
 .set-usage { display: flex; align-items: center; gap: 12px; }
 .set-bar { display: flex; flex: 1; height: 14px; overflow: hidden; }
 .set-bar i { display: block; height: 100%; }
-.set-usage-total { white-space: nowrap; }
+.set-usage-total { white-space: nowrap; font-variant-numeric: tabular-nums; }
 .set-legend { display: flex; flex-wrap: wrap; gap: 8px 18px; margin-top: 10px; }
 .set-legend i { display: inline-block; width: 9px; height: 9px; margin-right: 5px; }
+
+/* 导出的四个动作排成两列，避免长按钮在窄卡里折成毛边 */
+.set-export-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+
 .set-colors { display: flex; gap: 10px; }
 .set-swatch-check { width: 14px; height: 14px; }
 
@@ -33,16 +46,15 @@
 .set-list-main small { display: block; }
 .set-cell { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
 
-.set-danger { margin-top: 20px; padding: 14px; }
-.set-danger-head { margin-bottom: 4px; }
-
-.set-select { width: 130px; }
-.set-select-wide { width: 220px; }
-.set-input { width: 240px; }
-.set-input-wide { width: 280px; }
-.set-time { width: 110px; }
-.set-key-input { width: 150px; }
-.set-port { width: 88px; }
+/* 控件宽度：Naive 内部的 .n-input/.n-base-selection 默认 width:100%，且运行时样式注入更晚，
+   单类选择器会被覆盖。这里用双类提高优先级，控件固定宽度、不参与伸缩，标签才不会被挤成两行。 */
+.set-input.set-input { width: 240px; flex: 0 0 auto; }
+.set-input-wide.set-input-wide { width: 280px; flex: 0 0 auto; }
+.set-select.set-select { width: 130px; flex: 0 0 auto; }
+.set-select-wide.set-select-wide { width: 220px; flex: 0 0 auto; }
+.set-time.set-time { width: 110px; flex: 0 0 auto; }
+.set-key-input.set-key-input { width: 150px; flex: 0 0 auto; }
+.set-port.set-port { width: 88px; flex: 0 0 auto; }
 
 .set-footbar { display: flex; align-items: flex-start; gap: 8px; margin-top: 18px; padding: 10px 12px; }
 .set-footbar svg { width: 14px; height: 14px; flex: none; margin-top: 2px; }
@@ -58,4 +70,5 @@
 @media (max-width: 900px) {
   .set-layout { grid-template-columns: 1fr; }
   .set-nav { position: static; }
+  .set-export-grid { grid-template-columns: 1fr; }
 }

@@ -31,6 +31,8 @@ const api = {
   weather: {
     cities: call('weather:cities'), addCity: call('weather:addCity'),
     removeCity: call('weather:removeCity'), setHome: call('weather:setHome'),
+    searchCities: call('weather:searchCities'),
+    relocate: call('weather:relocate'),
     fetch: call('weather:fetch')
   },
   feed: {
@@ -61,8 +63,10 @@ const api = {
     restore: call('settings:restore'), exportData: call('settings:exportData'),
     clearCache: call('settings:clearCache'), clearTrash: call('settings:clearTrash'),
     resetAll: call('settings:resetAll'), setWeatherKey: call('settings:setWeatherKey'),
+    setWeatherJwt: call('settings:setWeatherJwt'), clearWeatherJwt: call('settings:clearWeatherJwt'),
     testWeather: call('settings:testWeather')
   },
+  search: { query: call('search:query') },
   notification: {
     today: call('notification:today'), unreadCount: call('notification:unreadCount'),
     markAllRead: call('notification:markAllRead'), create: call('notification:create'),
@@ -76,7 +80,29 @@ const api = {
   },
   system: {
     info: call('system:info'), ping: call('system:ping'), openPath: call('system:openPath'),
-    openExternal: call('system:openExternal'), chooseDir: call('system:chooseDir')
+    openExternal: call('system:openExternal'), chooseDir: call('system:chooseDir'),
+    setLaunchAtLogin: call('system:setLaunchAtLogin'), loginItemEnabled: call('system:loginItemEnabled'),
+    trayInfo: call('system:trayInfo'), trayHint: call('system:trayHint'), trayProbe: call('system:trayProbe'),
+    onTrayProbeFailed: function (cb) {
+      const handler = function () { cb() }
+      ipcRenderer.on('tray:probe-failed', handler)
+      return function () { ipcRenderer.removeListener('tray:probe-failed', handler) }
+    }
+  },
+  window: {
+    minimize: call('window:minimize'), toggleMaximize: call('window:toggleMaximize'),
+    close: call('window:close'), isMaximized: call('window:isMaximized'),
+    isMinimized: call('window:isMinimized')
+  },
+  onWindowMaximized: function (cb) {
+    const handler = function (_e, value) { cb(!!value) }
+    ipcRenderer.on('window:maximized', handler)
+    return function () { ipcRenderer.removeListener('window:maximized', handler) }
+  },
+  onNavigate: function (cb) {
+    const handler = function (_e, to) { cb(String(to || '/')) }
+    ipcRenderer.on('app:navigate', handler)
+    return function () { ipcRenderer.removeListener('app:navigate', handler) }
   },
   onDataChanged: function (cb) {
     const handler = function (_e, payload) { cb(payload) }

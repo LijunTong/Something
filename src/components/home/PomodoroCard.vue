@@ -1,6 +1,8 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
+import { homeRefreshToken } from '@/composables/useHomeRefresh'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
+import HomeCardMenu from '@/components/home/HomeCardMenu.vue'
 import { NCard, NTag, NProgress, NButton, NEmpty, useMessage } from 'naive-ui'
 import { call, bridge, hasBridge } from '@/lib/ipc'
 import { log } from '@/lib/logger'
@@ -40,8 +42,10 @@ const boundTask = computed(() => {
 })
 const plannedSec = computed(() => (state.value?.plannedSec || (config.value?.focusMin ?? 25) * 60))
 const pct = computed(() => {
+  // 圆环表达「已用时间」：待开始时 remain=planned → 0%，随时间推进到 100%，而不是一开始就满圈。
   const total = plannedSec.value || 1500
-  return Math.max(0, Math.min(100, Math.round((remain.value / total) * 100)))
+  const left = Math.max(0, Math.min(total, remain.value || total))
+  return Math.max(0, Math.min(100, Math.round(((total - left) / total) * 100)))
 })
 const goal = computed(() => config.value?.goal ?? 4)
 const doneCount = computed(() => stats.value?.count ?? 0)
@@ -99,6 +103,8 @@ function tick() {
   if (remain.value === 0) { void load() }
 }
 
+watch(homeRefreshToken, () => { void load() })
+
 onMounted(async () => {
   await load()
   timer = setInterval(tick, 1000)
@@ -107,7 +113,7 @@ onBeforeUnmount(() => { if (timer) clearInterval(timer) })
 </script>
 
 <template>
-  <n-card size="small">
+  <n-card size="small" class="hc-card hc-card-pomodoro">
     <template #header>
       <div class="hc-head">
         <span>番茄钟</span>
@@ -115,8 +121,11 @@ onBeforeUnmount(() => { if (timer) clearInterval(timer) })
       </div>
     </template>
     <template #header-extra>
-      <n-button size="tiny" quaternary @click="router.push('/pomodoro')">时长设置</n-button>
-    </template>
+        <div class="hc-head-actions">
+          <n-button size="tiny" quaternary @click="router.push('/pomodoro')">时长设置</n-button>
+          <HomeCardMenu module="pomodoro" />
+        </div>
+      </template>
 
     <div class="hc-dial">
       <n-progress

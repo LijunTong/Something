@@ -530,3 +530,42 @@ npm run dev
 
 数据目录：`%APPDATA%\efficiency-toolkit\`
 日志目录：`%APPDATA%\efficiency-toolkit\logs\`
+
+---
+
+## 和风天气配置（真实天气数据，JWT 认证）
+
+和风天气 2024 年起停用 `devapi/geoapi` 公共域名，且官方推荐 **JWT** 认证（Ed25519 本地签名，请求只带短期 Token）。应用同时兼容旧的 API Key 方式，优先级：JWT → API Key。
+
+### 1. 控制台准备
+
+1. 打开 [和风天气控制台](https://console.qweather.com/) → 创建项目，记下 **项目 ID**；
+2. 「设置 → 开发者信息」记下 **开发者 ID**（Q 开头 10 位）；
+3. 本地生成 Ed25519 密钥对（Windows 可用 OpenSSL 3+ 或浏览器 WebCrypto）：
+   ```bash
+   openssl genpkey -algorithm ED25519 -out ed25519-private.pem
+   openssl pkey -pubout -in ed25519-private.pem > ed25519-public.pem
+   ```
+4. 在项目「凭据」里添加凭据，认证方式选 **JSON Web Token**，粘贴公钥；记下 **凭据 ID**；
+5. 复制项目的 **API Host**（形如 `abcxyz.re.qweatherapi.com`）。
+
+### 2. 应用内配置（天气页 →「数据源设置」抽屉）
+
+- **API Host** 填控制台里的 Host（不带 `https://`）；城市搜索 Host 留空即与之一致；
+- **身份认证（JWT）**：填开发者 ID（iss）、项目 ID（sub）、凭据 ID（kid）、Ed25519 私钥 PEM，保存后只显示「JWT 已配置」状态位；
+- 点「测试连接」会真实调用 GeoAPI 与实时天气，返回城市与当前天气即成功；
+- 私钥与 API Key 都经系统 safeStorage 加密，仅存本机，接口不回传。
+
+### 3. 使用的接口（按 dev.qweather.com 文档索引）
+
+| 用途 | 接口 | 文档 |
+| --- | --- | --- |
+| 城市搜索 / 定位 | `GET /geo/v2/city/lookup` | GeoAPI › 城市搜索 |
+| 实时天气 | `GET /v7/weather/now` | 天气预报 › 实时天气（v7） |
+| 24 小时 | `GET /v7/weather/24h` | 天气预报 › 小时预报（v7） |
+| 7 天 | `GET /v7/weather/7d` | 天气预报 › 每日预报（v7） |
+| 空气质量 | `GET /v7/air/now`，失败回退 `GET /airquality/v1/current/{lat}/{lon}` | 空气质量 |
+| 生活指数 | `GET /v7/indices/1d?type=0` | 天气指数 › 指数预报 |
+| 天气预警 | `GET /v7/warning/now`，失败回退 `GET /weatheralert/v1/current/{lat}/{lon}` | 预警 |
+
+认证请求头：`Authorization: Bearer <JWT>`；JWT Header `{ alg: "EdDSA", kid }`，Payload `{ iss, sub, iat, exp }`，有效期 15 分钟、主进程内缓存复用。

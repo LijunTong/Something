@@ -35,3 +35,6 @@ Thumbs.db
 .openchamber/
 .m1-check.cjs
 .svc-check.cjs
+
+# 设计走查截图（本地留档，不入库）
+.shots/

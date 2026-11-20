@@ -38,23 +38,7 @@ function isStatusTab(value: string): value is StatusTab {
   return (STATUS_TABS as readonly string[]).includes(value)
 }
 
-const fixtures: ParcelRow[] = [
-  { id: 'p-sf', company: '顺丰速运', trackingNo: 'SF12345678905678', alias: '双十一 · 耳机', note: null, status: '待取件', pickupCode: '8-2-104', station: '菜鸟驿站（XX 路店）', etaAt: Date.now() + 86400000, archived: false, privacyMasked: false, createdAt: Date.now() - 7200000, updatedAt: Date.now() - 300000 },
-  { id: 'p-zt', company: '中通快递', trackingNo: 'ZT98765432104321', alias: '生活用品', note: null, status: '在途', pickupCode: null, station: null, etaAt: Date.now() + 172800000, archived: false, privacyMasked: false, createdAt: Date.now() - 10800000, updatedAt: Date.now() - 1800000 },
-  { id: 'p-jd', company: '京东物流', trackingNo: 'JD55667788997788', alias: '键盘 · 电脑配件', note: null, status: '派送中', pickupCode: null, station: null, etaAt: Date.now() + 3600000, archived: false, privacyMasked: false, createdAt: Date.now() - 14400000, updatedAt: Date.now() - 600000 },
-  { id: 'p-yt', company: '圆通速递', trackingNo: 'YT11223344553344', alias: '书籍 · 3 册', note: null, status: '已签收', pickupCode: null, station: null, etaAt: Date.now() - 86400000, archived: false, privacyMasked: false, createdAt: Date.now() - 172800000, updatedAt: Date.now() - 86400000 }
-]
-
-const trackFixtures: Record<string, ParcelTrack[]> = {
-  'p-sf': [
-    { id: 't1', parcelId: 'p-sf', nodeTime: Date.now() - 1200000, description: '快件已到达菜鸟驿站，取件码 8-2-104', location: '菜鸟驿站（XX 路店）· 佛山市禅城区' },
-    { id: 't2', parcelId: 'p-sf', nodeTime: Date.now() - 5400000, description: '派送中，快递员 138****1234 正在为您配送', location: '佛山市禅城区' },
-    { id: 't3', parcelId: 'p-sf', nodeTime: Date.now() - 72000000, description: '快件已到达佛山转运中心', location: '佛山市禅城区' },
-    { id: 't4', parcelId: 'p-sf', nodeTime: Date.now() - 86400000, description: '快件已发出，下一站佛山转运中心', location: '广州市' },
-    { id: 't5', parcelId: 'p-sf', nodeTime: Date.now() - 172800000, description: '快件已揽收', location: '广州市天河区' }
-  ]
-}
-
+// 页面不再内置示例包裹/轨迹：数据全部来自本机数据库与快递接口
 const rows = ref<ParcelRow[]>([])
 const loading = ref(false)
 const activeTab = ref<string>(TAB_ALL)
@@ -172,12 +156,12 @@ function formatTime(ts: number): string {
 async function load(): Promise<void> {
   loading.value = true
   try {
-    const list = await call(() => api.parcel.list({ archived: false }), fixtures)
+    const list = await call(() => api.parcel.list({ archived: false }), [] as ParcelRow[])
     rows.value = list
   } catch (e) {
     log.exception('parcel.load', e)
     message.error('加载快递失败：' + errMsg(e))
-    rows.value = fixtures
+    rows.value = []
   } finally {
     loading.value = false
   }
@@ -199,7 +183,10 @@ async function refreshAll(): Promise<void> {
     const byId = new Map(updates.map((row) => [row.id, row]))
     rows.value = rows.value.map((row) => ({ ...row, ...(byId.get(row.id) ?? {}) }))
     lastRefresh.value = Date.now()
-    message.success('已刷新 ' + targets.length + ' 个包裹')
+    // 没有物流查询接口时状态不会变化，据实反馈，避免「刷新成功」的错觉
+    const changed = updates.filter((row, i) => row.status !== targets[i].status).length
+    if (changed) message.success('已更新 ' + changed + ' 个包裹状态')
+    else message.info('已刷新 ' + targets.length + ' 个包裹：未接入物流查询接口，状态暂无变化')
     if (selected.value) await openTrack(byId.get(selected.value.id) ?? selected.value)
   } catch (e) {
     log.exception('parcel.refreshAll', e)
@@ -214,10 +201,10 @@ async function openTrack(row: ParcelRow): Promise<void> {
   showTrack.value = true
   trackLoading.value = true
   try {
-    tracks.value = await call(() => api.parcel.tracks(row.id), trackFixtures[row.id] ?? [])
+    tracks.value = await call(() => api.parcel.tracks(row.id), [] as ParcelTrack[])
   } catch (e) {
     log.exception('parcel.tracks', e)
-    tracks.value = trackFixtures[row.id] ?? []
+    tracks.value = []
     message.error('加载轨迹失败：' + errMsg(e))
   } finally {
     trackLoading.value = false
@@ -317,14 +304,11 @@ async function addParcels(): Promise<void> {
   adding.value = true
   try {
     const created = await call(() => api.parcel.add(plain({ numbers, alias: addForm.value.alias || undefined, note: addForm.value.note || undefined })), [])
-    if (created.length) {
+    if (!created.length) {
+      message.warning('快递接口没有返回包裹，请确认单号与网络后重试')
+    } else {
       rows.value = [...created, ...rows.value]
       message.success('已添加 ' + created.length + ' 个包裹')
-    } else {
-      const base = Date.now()
-      const local = numbers.map((no, i) => ({ ...fixtures[i % fixtures.length], id: 'local-' + base + '-' + i, trackingNo: no, status: '在途', createdAt: base, updatedAt: base, privacyMasked: false }))
-      rows.value = [...local, ...rows.value]
-      message.success('已添加 ' + local.length + ' 个包裹（本地预览）')
     }
     showAdd.value = false
   } catch (e) {

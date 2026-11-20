@@ -8,6 +8,7 @@ import { call, bridge, hasBridge } from '@/lib/ipc'
 import { log } from '@/lib/logger'
 import { useAppStore } from '@/stores/app'
 import { useSettings } from '@/composables/useSettings'
+import SectionTitle from '@/components/settings/SectionTitle.vue'
 import type { BackupFile, BackupSetting, ExportResult, RestoreResult, StorageUsage } from '@/types/api'
 
 const { settings, save, load } = useSettings()
@@ -224,115 +225,123 @@ onMounted(loadStorage)
 
 <template>
   <n-spin :show="loading">
-    <n-card size="small" title="数据与存储">
-      <template #header-extra>
-        <n-tag size="small" type="success">{{ store.runtime ? '本地 SQLite' : '预览模式' }}</n-tag>
-      </template>
-
-      <div class="set-sub">本地存储用量</div>
-      <div class="set-usage">
-        <div class="set-bar" role="img" aria-label="本地存储占用分布">
-          <i
-            v-for="s in segments"
-            :key="s.key"
-            :style="{ width: s.pct + '%', background: s.color }"
-            :title="s.label + ' ' + s.size"
-          ></i>
+    <div class="set-sections">
+      <n-card size="small" title="本地存储">
+        <div class="set-usage">
+          <div class="set-bar" role="img" aria-label="本地存储占用分布">
+            <i
+              v-for="s in segments"
+              :key="s.key"
+              :style="{ width: s.pct + '%', background: s.color }"
+              :title="s.label + ' ' + s.size"
+            ></i>
+          </div>
+          <span class="set-usage-total">共 {{ totalText }}</span>
         </div>
-        <span class="set-usage-total">共 {{ totalText }}</span>
-      </div>
-      <div class="set-legend">
-        <span v-for="s in segments" :key="s.key">
-          <i :style="{ background: s.color }"></i>{{ s.label }} {{ s.size }}
-        </span>
-      </div>
-      <p class="set-muted">
-        数据库文件 {{ dbText }} · 记录数：待办 {{ storage?.counts.todo ?? 0 }} · 日程 {{ storage?.counts.schedule ?? 0 }} · 邮件 {{ storage?.counts.mail ?? 0 }} · 文章 {{ storage?.counts.feed ?? 0 }}
-      </p>
-
-      <div class="set-sub">自动备份</div>
-      <div class="set-field">
-        <span class="set-field-key">自动备份到本地目录</span>
-        <n-switch :value="settings.backup.auto" @update:value="(v: boolean) => saveBackup({ auto: v })" />
-      </div>
-      <div class="set-field">
-        <span class="set-field-key">备份路径</span>
-        <div class="set-inline">
-          <span class="set-field-value">{{ settings.backup.path || storage?.backupDir || '数据库同级 backups 目录' }}</span>
-          <n-button size="tiny" @click="choosePath">更改</n-button>
-          <n-button size="tiny" quaternary @click="openPath(settings.backup.path || storage?.backupDir)">打开</n-button>
-        </div>
-      </div>
-      <div class="set-field">
-        <span class="set-field-key">备份频率</span>
-        <n-select
-          class="set-select"
-          size="small"
-          :value="settings.backup.freq"
-          :options="freqOptions"
-          @update:value="(v: string) => saveBackup({ freq: v as BackupSetting['freq'] })"
-        />
-      </div>
-      <div class="set-actions">
-        <n-button size="small" type="primary" :loading="busy === 'backup'" @click="doBackup">立即备份</n-button>
-        <span class="set-muted" v-if="settings.backup.lastAt">上次备份 {{ new Date(settings.backup.lastAt).toLocaleString('zh-CN') }}</span>
-        <span class="set-muted" v-else>尚未执行过备份</span>
-      </div>
-
-      <div class="set-sub">导出</div>
-      <div class="set-actions">
-        <n-button
-          v-for="x in EXPORTS"
-          :key="x.kind"
-          size="small"
-          :disabled="busy === 'export'"
-          @click="exportAs(x.kind)"
-        >{{ x.label }}</n-button>
-      </div>
-      <p class="set-muted">导出文件写入本机 exports 目录，导出后会自动打开文件所在位置。</p>
-
-      <div class="set-sub">导入</div>
-      <div class="set-actions">
-        <n-upload :show-file-list="false" :default-upload="false" accept=".json" :disabled="busy === 'restore'" @change="onPick">
-          <n-button size="small">从备份文件恢复</n-button>
-        </n-upload>
-        <span class="set-muted">恢复会覆盖当前数据，请先备份</span>
-      </div>
-
-      <div class="set-sub">加密备份</div>
-      <div class="set-field">
-        <span class="set-field-key">为备份文件设置密码</span>
-        <n-switch :value="settings.backup.encrypted" @update:value="(v: boolean) => saveBackup({ encrypted: v })" />
-      </div>
-      <div class="set-field">
-        <span class="set-field-key">密码</span>
-        <n-input
-          class="set-input"
-          size="small"
-          type="password"
-          show-password-on="click"
-          :disabled="!settings.backup.encrypted"
-          placeholder="仅在本次备份时使用，不写入数据库"
-          :value="backupPassword"
-          @update:value="(v: string) => (backupPassword = v)"
-        />
-      </div>
-      <p class="set-muted">密码只在本次备份的内存中使用；忘记密码将无法恢复对应备份文件。</p>
-
-      <div class="set-sub">备份记录</div>
-      <n-empty v-if="!backupFiles.length" size="small" description="还没有备份文件" />
-      <div v-else class="set-list">
-        <div v-for="f in backupFiles" :key="f.path" class="set-list-row">
-          <span class="set-list-main">
-            <strong>{{ f.name }}</strong>
-            <small>{{ fmtBytes(f.bytes) }} · {{ new Date(f.at).toLocaleString('zh-CN') }}{{ f.encrypted ? ' · 已加密' : '' }}</small>
+        <div class="set-legend">
+          <span v-for="s in segments" :key="s.key">
+            <i :style="{ background: s.color }"></i>{{ s.label }} {{ s.size }}
           </span>
-          <n-button size="tiny" quaternary @click="openPath(f.path)">查看</n-button>
         </div>
-      </div>
+        <p class="set-muted">
+          数据库文件 {{ dbText }} · 待办 {{ storage?.counts.todo ?? 0 }} · 日程 {{ storage?.counts.schedule ?? 0 }} · 邮件 {{ storage?.counts.mail ?? 0 }} · 文章 {{ storage?.counts.feed ?? 0 }}
+        </p>
+      </n-card>
 
-      <div class="set-danger">
-        <div class="set-danger-head">危险操作</div>
+      <n-card size="small" title="自动备份">
+        <div class="set-field">
+          <span class="set-field-key">自动备份到本地目录</span>
+          <n-switch :value="settings.backup.auto" @update:value="(v: boolean) => saveBackup({ auto: v })" />
+        </div>
+        <div class="set-field">
+          <span class="set-field-key">备份路径</span>
+          <div class="set-inline">
+            <span class="set-field-value">{{ settings.backup.path || storage?.backupDir || '数据库同级 backups 目录' }}</span>
+            <n-button size="tiny" @click="choosePath">更改</n-button>
+            <n-button size="tiny" quaternary @click="openPath(settings.backup.path || storage?.backupDir)">打开</n-button>
+          </div>
+        </div>
+        <div class="set-field">
+          <span class="set-field-key">备份频率</span>
+          <n-select
+            class="set-select"
+            size="small"
+            :value="settings.backup.freq"
+            :options="freqOptions"
+            @update:value="(v: string) => saveBackup({ freq: v as BackupSetting['freq'] })"
+          />
+        </div>
+        <div class="set-actions">
+          <n-button size="small" type="primary" :loading="busy === 'backup'" @click="doBackup">立即备份</n-button>
+          <span class="set-muted" v-if="settings.backup.lastAt">上次备份 {{ new Date(settings.backup.lastAt).toLocaleString('zh-CN') }}</span>
+          <span class="set-muted" v-else>尚未执行过备份</span>
+        </div>
+      </n-card>
+
+      <n-card size="small" title="导出与导入">
+        <SectionTitle title="导出" />
+        <div class="set-export-grid">
+          <n-button
+            v-for="x in EXPORTS"
+            :key="x.kind"
+            size="small"
+            block
+            :disabled="busy === 'export'"
+            @click="exportAs(x.kind)"
+          >{{ x.label }}</n-button>
+        </div>
+        <p class="set-muted">导出文件写入本机 exports 目录，完成后会自动打开所在位置。</p>
+
+        <SectionTitle title="从备份恢复" />
+        <div class="set-actions">
+          <n-upload :show-file-list="false" :default-upload="false" accept=".json" :disabled="busy === 'restore'" @change="onPick">
+            <n-button size="small">选择备份文件</n-button>
+          </n-upload>
+          <span class="set-muted">恢复会覆盖当前数据，请先备份</span>
+        </div>
+      </n-card>
+
+      <n-card size="small" title="加密备份">
+        <div class="set-field">
+          <span class="set-field-key">为备份文件设置密码</span>
+          <n-switch :value="settings.backup.encrypted" @update:value="(v: boolean) => saveBackup({ encrypted: v })" />
+        </div>
+        <div class="set-field">
+          <span class="set-field-key">密码</span>
+          <n-input
+            class="set-input"
+            size="small"
+            type="password"
+            show-password-on="click"
+            :disabled="!settings.backup.encrypted"
+            placeholder="仅在本次备份时使用，不写入数据库"
+            :value="backupPassword"
+            @update:value="(v: string) => (backupPassword = v)"
+          />
+        </div>
+        <p class="set-muted">密码只在本次备份的内存中使用；忘记密码将无法恢复对应备份文件。</p>
+      </n-card>
+
+      <n-card size="small" title="备份记录">
+        <template #header-extra>
+          <n-tag size="small">{{ backupFiles.length }} 个文件</n-tag>
+        </template>
+        <n-empty v-if="!backupFiles.length" size="small" description="还没有备份文件" />
+        <div v-else class="set-list">
+          <div v-for="f in backupFiles" :key="f.path" class="set-list-row">
+            <span class="set-list-main">
+              <strong>{{ f.name }}</strong>
+              <small>{{ fmtBytes(f.bytes) }} · {{ new Date(f.at).toLocaleString('zh-CN') }}{{ f.encrypted ? ' · 已加密' : '' }}</small>
+            </span>
+            <n-button size="tiny" quaternary @click="openPath(f.path)">查看</n-button>
+          </div>
+        </div>
+      </n-card>
+
+      <n-card size="small" title="危险操作">
+        <template #header-extra>
+          <n-tag size="small" type="error">不可撤销</n-tag>
+        </template>
         <div class="set-actions">
           <n-popconfirm @positive-click="clearCache">
             <template #trigger><n-button size="small">清空缓存</n-button></template>
@@ -344,46 +353,46 @@ onMounted(loadStorage)
           </n-popconfirm>
           <n-button size="small" type="error" @click="askReset">重置全部数据</n-button>
         </div>
-      </div>
-    </n-card>
-
-    <n-modal
-      v-model:show="showRestore"
-      preset="card"
-      title="从备份恢复"
-      class="set-modal"
-      :bordered="false"
-    >
-      <n-alert v-if="!pendingRestore" type="warning" :bordered="false">没有待恢复的备份内容。</n-alert>
-      <template v-else>
-        <n-descriptions :column="1" label-placement="left" size="small">
-          <n-descriptions-item label="格式">{{ pendingRestore.encrypted ? '加密备份' : '明文备份' }}</n-descriptions-item>
-          <n-descriptions-item label="备份时间">
-            {{ pendingRestore.at ? new Date(pendingRestore.at).toLocaleString('zh-CN') : '未记录' }}
-          </n-descriptions-item>
-          <n-descriptions-item label="包含表">{{ Object.keys(pendingRestore.counts || {}).length }} 张</n-descriptions-item>
-        </n-descriptions>
-        <n-alert type="warning" :bordered="false" class="set-result">
-          恢复会覆盖当前全部数据。系统会先自动拍一份当前数据快照，恢复异常时可用于回退。
-        </n-alert>
-        <div v-if="pendingRestore.encrypted" class="set-field">
-          <span class="set-field-key">备份密码</span>
-          <n-input
-            class="set-input"
-            size="small"
-            type="password"
-            show-password-on="click"
-            :value="restorePassword"
-            @update:value="(v: string) => (restorePassword = v)"
-          />
-        </div>
-      </template>
-      <template #footer>
-        <div class="set-inline set-inline-end">
-          <n-button size="small" @click="showRestore = false">取消</n-button>
-          <n-button size="small" type="primary" :loading="busy === 'restore'" @click="confirmRestore">开始恢复</n-button>
-        </div>
-      </template>
-    </n-modal>
+      </n-card>
+    </div>
   </n-spin>
+
+  <n-modal
+    v-model:show="showRestore"
+    preset="card"
+    title="从备份恢复"
+    class="set-modal"
+    :bordered="false"
+  >
+    <n-alert v-if="!pendingRestore" type="warning" :bordered="false">没有待恢复的备份内容。</n-alert>
+    <template v-else>
+      <n-descriptions :column="1" label-placement="left" size="small">
+        <n-descriptions-item label="格式">{{ pendingRestore.encrypted ? '加密备份' : '明文备份' }}</n-descriptions-item>
+        <n-descriptions-item label="备份时间">
+          {{ pendingRestore.at ? new Date(pendingRestore.at).toLocaleString('zh-CN') : '未记录' }}
+        </n-descriptions-item>
+        <n-descriptions-item label="包含表">{{ Object.keys(pendingRestore.counts || {}).length }} 张</n-descriptions-item>
+      </n-descriptions>
+      <n-alert type="warning" :bordered="false" class="set-result">
+        恢复会覆盖当前全部数据。系统会先自动拍一份当前数据快照，恢复异常时可用于回退。
+      </n-alert>
+      <div v-if="pendingRestore.encrypted" class="set-field">
+        <span class="set-field-key">备份密码</span>
+        <n-input
+          class="set-input"
+          size="small"
+          type="password"
+          show-password-on="click"
+          :value="restorePassword"
+          @update:value="(v: string) => (restorePassword = v)"
+        />
+      </div>
+    </template>
+    <template #footer>
+      <div class="set-inline set-inline-end">
+        <n-button size="small" @click="showRestore = false">取消</n-button>
+        <n-button size="small" type="primary" :loading="busy === 'restore'" @click="confirmRestore">开始恢复</n-button>
+      </div>
+    </template>
+  </n-modal>
 </template>

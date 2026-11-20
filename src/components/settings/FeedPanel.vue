@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import SectionTitle from '@/components/settings/SectionTitle.vue'
 import { computed, h, onMounted, ref } from 'vue'
 import {
   NCard, NButton, NDataTable, NTag, NInput, NSelect, NSwitch, NUpload,
@@ -10,6 +11,9 @@ import { log } from '@/lib/logger'
 import { useSettings } from '@/composables/useSettings'
 import type { FeedSetting, FeedSource, ExportResult } from '@/types/api'
 
+const props = defineProps<{ embedded?: boolean }>()
+/** 嵌入到信息流页时通知父级重新加载订阅源与文章 */
+const emit = defineEmits<{ changed: [] }>()
 const { settings, save } = useSettings()
 const message = useMessage()
 
@@ -17,6 +21,7 @@ const sources = ref<FeedSource[]>([])
 const groups = ref<Array<{ id: string; name: string }>>([])
 const loading = ref(false)
 const busy = ref('')
+const newTitle = ref('')
 const newUrl = ref('')
 const newGroup = ref<string | null>(null)
 const newInterval = ref<number | null>(null)
@@ -115,11 +120,13 @@ async function addSource() {
   try {
     // 主进程契约返回「订阅源列表」，直接用返回值覆盖即可
     await call(
-      () => bridge().feed.addSource(plain({ url, groupId: newGroup.value, intervalMin: newInterval.value || settings.value.feed.defaultInterval })),
+      () => bridge().feed.addSource(plain({ url, title: newTitle.value.trim() || undefined, groupId: newGroup.value, intervalMin: newInterval.value || settings.value.feed.defaultInterval })),
       [] as FeedSource[]
     )
     newUrl.value = ''
+    newTitle.value = ''
     await load()
+    emit('changed')
     message.success('订阅源已添加')
   } catch (e) {
     log.exception('settings.feed.add', e)
@@ -138,6 +145,7 @@ async function addGroup() {
     await call(() => bridge().feed.addGroup(plain({ name })), [] as Array<{ id: string; name: string }>)
     newGroupName.value = ''
     await load()
+    emit('changed')
     message.success('分组已创建')
   } catch (e) {
     log.exception('settings.feed.addGroup', e)
@@ -173,6 +181,7 @@ async function saveEdit() {
     })), null as unknown as FeedSource)
     showEdit.value = false
     await load()
+    emit('changed')
     message.success('订阅源已更新')
   } catch (e) {
     log.exception('settings.feed.update', e)
@@ -186,6 +195,7 @@ async function toggleSource(row: FeedSource, enabled: boolean) {
   try {
     await call(() => bridge().feed.toggleSource({ id: row.id, enabled }))
     row.enabled = enabled
+    emit('changed')
   } catch (e) {
     log.exception('settings.feed.toggle', e)
     message.error('更新失败：' + ((e as Error).message || '未知错误'))
@@ -196,6 +206,7 @@ async function removeSource(row: FeedSource) {
   try {
     await call(() => bridge().feed.removeSource(row.id))
     sources.value = sources.value.filter((s) => s.id !== row.id)
+    emit('changed')
     message.success('订阅源已删除')
   } catch (e) {
     log.exception('settings.feed.remove', e)
@@ -235,6 +246,7 @@ async function importOPML(payload: { file: { file: File | null } }) {
     const r = await call(() => bridge().feed.importOPML({ text }), null as unknown as { imported: number } | null)
     message.success('已导入 ' + (r?.imported ?? 0) + ' 个订阅源')
     await load()
+    emit('changed')
   } catch (e) {
     log.exception('settings.feed.opml', e)
     message.error('导入失败：' + ((e as Error).message || '未知错误'))
@@ -261,7 +273,7 @@ onMounted(load)
 </script>
 
 <template>
-  <n-card size="small" title="订阅源">
+  <n-card size="small" :title="props.embedded ? undefined : '订阅源'">
     <template #header-extra><n-tag size="small">{{ sources.length }} 个来源</n-tag></template>
 
     <n-alert type="info" :bordered="false">
@@ -283,7 +295,7 @@ onMounted(load)
       <n-switch :value="settings.feed.keepContent" @update:value="(v: boolean) => saveFeed({ keepContent: v })" />
     </div>
 
-    <div class="set-sub">分组管理</div>
+    <SectionTitle title="分组管理" />
     <div class="set-field">
       <span class="set-field-key">新建分组</span>
       <div class="set-inline">
@@ -293,7 +305,7 @@ onMounted(load)
     </div>
     <p class="set-muted">已有分组：{{ groups.length ? groups.map((g) => g.name).join(' / ') : '暂无' }}</p>
 
-    <div class="set-sub">已订阅</div>
+    <SectionTitle title="已订阅" />
     <n-spin :show="loading">
       <n-empty v-if="!sources.length" size="small" description="还没有订阅源" />
       <n-data-table
@@ -307,7 +319,11 @@ onMounted(load)
       />
     </n-spin>
 
-    <div class="set-sub">添加订阅源</div>
+    <SectionTitle title="添加订阅源" />
+    <div class="set-field">
+      <span class="set-field-key">名称</span>
+      <n-input class="set-input-wide" size="small" v-model:value="newTitle" placeholder="例如：少数派 / 设计周刊（留空则用源站标题）" />
+    </div>
     <div class="set-field">
       <span class="set-field-key">RSS / Atom 地址</span>
       <n-input class="set-input-wide" size="small" v-model:value="newUrl" placeholder="https://example.com/feed.xml" />

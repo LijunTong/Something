@@ -7,19 +7,19 @@ import type { ShortcutSetting } from '@/types/api'
 const { settings, save } = useSettings()
 const message = useMessage()
 
-const ROWS: Array<{ key: keyof ShortcutSetting; label: string; hint: string }> = [
-  { key: 'search', label: '全局搜索', hint: '聚焦顶栏搜索框' },
-  { key: 'newTodo', label: '新建任务', hint: '在待办页快速新增' },
-  { key: 'focus', label: '开始专注', hint: '从当前任务进入番茄钟' },
-  { key: 'quickAdd', label: '快捷添加', hint: '打开快捷添加面板' },
-  { key: 'viewSwitch', label: '切换视图', hint: '列表 / 看板 / 日历' }
+type ShortcutKey = 'search' | 'newTodo' | 'focus' | 'viewSwitch'
+const ROWS: Array<{ key: ShortcutKey; label: string; hint: string }> = [
+  { key: 'search', label: '全局搜索', hint: '任意页面唤起搜索弹窗' },
+  { key: 'newTodo', label: '新建任务', hint: '在待办页打开新建任务弹窗' },
+  { key: 'focus', label: '开始 / 暂停专注', hint: '在番茄钟页控制计时' },
+  { key: 'viewSwitch', label: '切换待办视图', hint: '待办页在清单 / 看板间切换（Ctrl+1-2 表示 1 到 2）' }
 ]
 
-const recording = ref<keyof ShortcutSetting | null>(null)
+const recording = ref<ShortcutKey | null>(null)
 
 const items = computed(() => ROWS.map((r) => ({ ...r, value: settings.value.shortcuts[r.key] })))
 
-function startRecord(key: keyof ShortcutSetting) {
+function startRecord(key: ShortcutKey) {
   recording.value = key
   window.addEventListener('keydown', onKey, true)
 }
@@ -64,7 +64,7 @@ async function onKey(e: KeyboardEvent) {
 }
 
 async function resetDefault() {
-  const def: ShortcutSetting = { search: 'Ctrl+K', newTodo: 'N', focus: 'F', quickAdd: 'Space', viewSwitch: 'Ctrl+1-3' }
+  const def: ShortcutSetting = { search: 'Ctrl+K', newTodo: 'N', focus: 'F', viewSwitch: 'Ctrl+1-2' }
   try {
     await save('shortcuts', def)
     message.success('已恢复默认快捷键')

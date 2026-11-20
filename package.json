@@ -25,9 +25,57 @@
   "devDependencies": {
     "@electron/rebuild": "^3.7.1",
     "@vitejs/plugin-vue": "^5.2.1",
-    "electron": "^28.3.3",
+    "electron": "^33.4.11",
+    "electron-builder": "^26.18.0",
     "typescript": "^6.0.3",
     "vite": "^6.0.5",
     "vue-tsc": "^3.3.14"
+  },
+  "allowScripts": {
+    "electron@33.4.11": true,
+    "better-sqlite3@11.10.0": true
+  },
+  "build": {
+    "appId": "com.efficiency.toolkit",
+    "productName": "EfficiencyToolkit",
+    "directories": {
+      "output": "release",
+      "buildResources": "build"
+    },
+    "files": [
+      "dist/**/*",
+      "electron/**/*",
+      "package.json"
+    ],
+    "asar": true,
+    "asarUnpack": [
+      "**/*.node",
+      "electron/assets/**"
+    ],
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "icon": "build/icon.ico"
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "效率工具集",
+      "artifactName": "EfficiencyToolkit-Setup-${version}.exe"
+    },
+    "electronDist": "node_modules/electron/dist"
+  },
+  "description": "本地优先的效率工具集：待办 / 日程 / 番茄钟 / 信息流 / 快递 / 邮件 / 天气",
+  "author": {
+    "name": "YG"
   }
 }

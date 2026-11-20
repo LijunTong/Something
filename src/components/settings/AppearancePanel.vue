@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import SectionTitle from '@/components/settings/SectionTitle.vue'
 import { NCard, NRadioGroup, NRadioButton, NSwitch, NButton, NTooltip, NTag, useMessage } from 'naive-ui'
 import { useSettings } from '@/composables/useSettings'
 import type { AppearanceSetting } from '@/types/api'
@@ -23,7 +24,7 @@ async function patch(p: Partial<AppearanceSetting>) {
   <n-card size="small" title="外观">
     <template #header-extra><n-tag size="small">即时生效</n-tag></template>
 
-    <div class="set-sub">主题</div>
+    <SectionTitle title="主题" />
     <n-radio-group
       :value="settings.appearance.theme"
       @update:value="(v: AppearanceSetting['theme']) => patch({ theme: v })"
@@ -31,7 +32,7 @@ async function patch(p: Partial<AppearanceSetting>) {
       <n-radio-button v-for="t in THEMES" :key="t" :value="t" :label="t" />
     </n-radio-group>
 
-    <div class="set-sub">强调色</div>
+    <SectionTitle title="强调色" />
     <div class="set-colors">
       <n-tooltip v-for="c in ACCENTS" :key="c" trigger="hover">
         <template #trigger>
@@ -58,7 +59,7 @@ async function patch(p: Partial<AppearanceSetting>) {
     </div>
     <p class="set-muted">强调色会替换全站主色（按钮、开关、选中态），深浅色主题共用同一套色阶。</p>
 
-    <div class="set-sub">字号</div>
+    <SectionTitle title="字号" />
     <n-radio-group
       :value="settings.appearance.font"
       @update:value="(v: AppearanceSetting['font']) => patch({ font: v })"
@@ -66,7 +67,7 @@ async function patch(p: Partial<AppearanceSetting>) {
       <n-radio-button v-for="f in FONTS" :key="f" :value="f" :label="f" />
     </n-radio-group>
 
-    <div class="set-sub">侧边栏</div>
+    <SectionTitle title="侧边栏" />
     <div class="set-field">
       <span class="set-field-key">始终展开 / 可折叠</span>
       <n-switch

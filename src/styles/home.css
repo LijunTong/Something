@@ -13,8 +13,21 @@
 .home-span2 { grid-column: span 2; }
 .home-grid > .n-card { display: flex; flex-direction: column; }
 
+/* 卡片高度预留：加载中与加载后占同样高度，滚动时下方列表不会被顶动 */
+.hc-card { min-height: 300px; }
+.hc-card-weather,
+.hc-card-schedule { min-height: 318px; }
+.hc-card-todo,
+.hc-card-pomodoro,
+.hc-card-parcel { min-height: 344px; }
+.hc-card-feed,
+.hc-card-mail { min-height: 278px; }
+.hc-card-notice { min-height: 248px; }
+
 /* 通用卡片头 */
+/* 卡片头部：标题区与右上角操作区（原有入口 + 卡片菜单） */
 .hc-head { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.hc-head-actions { display: flex; align-items: center; gap: 6px; }
 .hc-muted { display: block; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
 .hc-clickable { cursor: pointer; }
 .hc-ico { width: 16px; height: 16px; flex: none; }
@@ -23,7 +36,7 @@
 .hc-wx-chips { display: flex; gap: 4px; flex-wrap: wrap; margin-bottom: 10px; }
 .hc-wx-main { display: flex; align-items: center; gap: 12px; margin-bottom: 12px; }
 .hc-wx-icon { width: 46px; height: 46px; flex: none; }
-.hc-wx-temp { font-size: 32px; line-height: 1; font-weight: 650; letter-spacing: -0.04em; }
+.hc-wx-temp { font-size: 34px; line-height: 1; font-weight: 650; letter-spacing: -0.04em; }
 .hc-wx-facts { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; padding: 9px 0; }
 .hc-wx-facts > div { display: flex; flex-direction: column; }
 .hc-rain { display: flex; align-items: flex-end; gap: 12px; height: 30px; margin-top: 8px; }
@@ -37,10 +50,10 @@
 .hc-todo-text { display: flex; flex-direction: column; min-width: 0; }
 
 /* 番茄钟卡 */
-.hc-dial { position: relative; display: grid; place-items: center; width: 108px; height: 108px; margin: 2px auto 10px; }
-.hc-dial-ring { width: 108px; height: 108px; }
+.hc-dial { position: relative; display: grid; place-items: center; width: 120px; height: 120px; margin: 2px auto 10px; }
+.hc-dial-ring { width: 120px; height: 120px; flex: none; }
 .hc-dial-text { position: absolute; inset: 0; display: grid; place-items: center; align-content: center; gap: 2px; text-align: center; }
-.hc-dial-text strong { font-size: 24px; line-height: 1; font-variant-numeric: tabular-nums; }
+.hc-dial-text strong { font-size: 26px; line-height: 1; font-variant-numeric: tabular-nums; }
 .hc-bound { display: flex; flex-direction: column; gap: 2px; padding: 8px 10px; }
 .hc-timer-row { display: grid; grid-template-columns: minmax(0, 1fr) 64px; gap: 8px; margin-top: 10px; }
 .hc-tomatoes { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: 10px; }

@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
-import { useMessage, useDialog, NButton, NInput, NSelect, NModal, NForm, NFormItem, NDrawer, NDrawerContent, NSpace, NCalendar, NTag, NCheckbox, NEmpty } from 'naive-ui'
+import { useMessage, useDialog, NButton, NInput, NSelect, NModal, NForm, NFormItem, NDrawer, NDrawerContent, NSpace, NCalendar, NTag, NCheckbox, NEmpty, NDatePicker } from 'naive-ui'
 import { useAppStore } from '@/stores/app'
 import Shell from '@/components/Shell.vue'
 import { call, bridge, plain } from '@/lib/ipc'
@@ -22,16 +22,19 @@ const showDrawer = ref(false)
 const showModal = ref(false)
 const showList = ref(false)
 const conflicts = ref<string[]>([])
-const form = ref({ title: '', start: '', end: '', place: '', calendarId: null as string | null, remindMin: 10, recurRule: 'none', note: '' })
+const form = ref({
+  title: '',
+  startAt: null as number | null,
+  endAt: null as number | null,
+  place: '',
+  calendarId: null as string | null,
+  remindMin: 10,
+  recurRule: 'none',
+  note: ''
+})
 
-const FALLBACK_CALENDARS: CalendarRow[] = [
-  { id: 'c-work', name: '工作', color: '#2563eb', visible: true, sort: 0 },
-  { id: 'c-life', name: '个人', color: '#16a34a', visible: true, sort: 1 },
-  { id: 'c-study', name: '学习', color: '#ea580c', visible: true, sort: 2 },
-  { id: 'c-holiday', name: '节假日', color: '#94a3b8', visible: true, sort: 3 }
-]
-
-const calendars = computed(() => (mixCalendars.value.length ? mixCalendars.value : FALLBACK_CALENDARS))
+// 日历分类只来自本机数据库，页面不再内置示例分类
+const calendars = computed(() => mixCalendars.value)
 
 const monthLabel = computed(() => panelYear.value + ' 年 ' + panelMonth.value + ' 月')
 const monthEvents = computed(() => events.value)
@@ -142,34 +145,36 @@ async function toggleCal(c: CalendarRow) {
 
 function openEvent(e: ScheduleRow) { selected.value = e; showDrawer.value = true }
 
-function fmtDateInput(d: Date) {
-  const pad = (n: number) => String(n).padStart(2, '0')
-  return d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate()) + ' ' + pad(d.getHours()) + ':' + pad(d.getMinutes())
-}
-
 function openCreate() {
   const base = new Date(calValue.value)
   base.setHours(9, 30, 0, 0)
-  const end = new Date(base.getTime() + 3600000)
-  form.value = { title: '', start: fmtDateInput(base), end: fmtDateInput(end), place: '', calendarId: calendars.value[0]?.id ?? null, remindMin: 10, recurRule: 'none', note: '' }
+  form.value = {
+    title: '',
+    startAt: base.getTime(),
+    endAt: base.getTime() + 3600000,
+    place: '',
+    calendarId: calendars.value[0]?.id ?? null,
+    remindMin: 10,
+    recurRule: 'none',
+    note: ''
+  }
   conflicts.value = []
   showModal.value = true
 }
 
 async function recheck() {
-  if (!form.value.start || !form.value.end) return
-  const s = new Date(form.value.start).getTime()
-  const e = new Date(form.value.end).getTime()
-  if (isNaN(s) || isNaN(e) || e <= s) { conflicts.value = []; return }
+  const s = form.value.startAt
+  const e = form.value.endAt
+  if (!s || !e || e <= s) { conflicts.value = []; return }
   const rows = await call(() => bridge().schedule.checkConflict({ startAt: s, endAt: e }), [] as Array<{ id: string; title: string }>)
   conflicts.value = rows.map((r) => '与「' + r.title + '」时间冲突')
 }
 
 async function save() {
   if (!form.value.title.trim()) { message.warning('请填写标题'); return }
-  const s = new Date(form.value.start).getTime()
-  const e = new Date(form.value.end).getTime()
-  if (isNaN(s) || isNaN(e) || e <= s) { message.warning('时间格式不正确'); return }
+  const s = form.value.startAt
+  const e = form.value.endAt
+  if (!s || !e || e <= s) { message.warning('请选择正确的开始与结束时间'); return }
   try {
     const payload = {
       title: form.value.title.trim(),
@@ -361,8 +366,12 @@ onMounted(load)
       <div>
         <n-form label-placement="left" label-width="56" size="small">
           <n-form-item label="标题"><n-input v-model:value="form.title" placeholder="添加标题" /></n-form-item>
-          <n-form-item label="开始"><n-input v-model:value="form.start" placeholder="2026-11-19 09:30" @blur="recheck" /></n-form-item>
-          <n-form-item label="结束"><n-input v-model:value="form.end" placeholder="2026-11-19 10:30" @blur="recheck" /></n-form-item>
+          <n-form-item label="开始">
+            <n-date-picker v-model:value="form.startAt" type="datetime" clearable style="width:100%" placeholder="选择开始时间" @update:value="recheck" />
+          </n-form-item>
+          <n-form-item label="结束">
+            <n-date-picker v-model:value="form.endAt" type="datetime" clearable style="width:100%" placeholder="选择结束时间" @update:value="recheck" />
+          </n-form-item>
           <n-form-item label="地点"><n-input v-model:value="form.place" placeholder="会议室 / 线上" /></n-form-item>
           <n-form-item label="日历"><n-select v-model:value="form.calendarId" :options="calOptions" placeholder="选择分类" /></n-form-item>
           <n-form-item label="提醒"><n-select v-model:value="form.remindMin" :options="remindOptions" /></n-form-item>

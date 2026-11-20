@@ -1,12 +1,12 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
-import { useRouter } from 'vue-router'
 import {
   NButton, NCheckbox, NInput, NSelect, NTag, NText, NAvatar, NEmpty, NSpin, NScrollbar,
   NModal, NForm, NFormItem, NInputNumber, NDrawer, NDrawerContent, NCard,
   useMessage, useDialog
 } from 'naive-ui'
 import Shell from '@/components/Shell.vue'
+import MailAccountsPanel from '@/components/settings/MailAccountsPanel.vue'
 import { call, bridge, plain } from '@/lib/ipc'
 import { log } from '@/lib/logger'
 import type { MailAccount, MailApi, MailFolder, MailRow } from '@/types/api'
@@ -26,7 +26,6 @@ type RuleForm = {
 /** 本地适配：Api 顶层未直接暴露 mail 字段时用 unknown 桥接，不使用宽松 any。 */
 function mailApi(): MailApi { return (bridge() as unknown as { mail: MailApi }).mail }
 
-const router = useRouter()
 const message = useMessage()
 const dialog = useDialog()
 
@@ -424,8 +423,9 @@ async function toggleRule(r: RuleRow) {
   }
 }
 
-/** 账户管理统一在「设置 › 邮箱账户」 */
-function goSettings() { void router.push({ path: '/settings', query: { panel: 'mail' } }) }
+/** 账户管理在本页抽屉里完成：面板组件与设置页共用同一套增删改逻辑 */
+const showAccounts = ref(false)
+function openAccounts() { showAccounts.value = true }
 
 onMounted(async () => {
   await loadAccounts()
@@ -440,7 +440,7 @@ onMounted(async () => {
     <template #actions>
       <n-button size="small" :loading="loading" @click="syncAll">同步</n-button>
       <n-button size="small" @click="openRules">收件规则</n-button>
-      <n-button size="small" @click="goSettings">账户管理</n-button>
+      <n-button size="small" @click="openAccounts">账户管理</n-button>
       <n-button size="small" type="primary" @click="openCompose()">写邮件</n-button>
     </template>
 
@@ -491,7 +491,7 @@ onMounted(async () => {
         </template>
 
         <div class="ml-side-foot">
-          <n-button text type="primary" size="small" block @click="goSettings">账户管理</n-button>
+          <n-button text type="primary" size="small" block @click="openAccounts">账户管理</n-button>
         </div>
       </aside>
 
@@ -661,6 +661,13 @@ onMounted(async () => {
         </div>
       </template>
     </n-modal>
+
+    <!-- 邮箱账户抽屉：新增/编辑/测试/删除都在这里，不再跳设置页 -->
+    <n-drawer v-model:show="showAccounts" :width="760" placement="right">
+      <n-drawer-content title="邮箱账户" closable :native-scrollbar="false">
+        <MailAccountsPanel embedded @changed="loadAccounts().then(loadFolders).then(loadMails)" />
+      </n-drawer-content>
+    </n-drawer>
 
     <!-- 收件规则抽屉 -->
     <n-drawer v-model:show="showRules" :width="420" placement="right">

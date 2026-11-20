@@ -14,11 +14,12 @@ export const lightOverrides: GlobalThemeOverrides = {
     errorColor: '#b91c1c',
     borderRadius: '8px',
     borderRadiusSmall: '6px',
-    fontFamily: '"PingFang SC","Microsoft YaHei",system-ui,sans-serif',
-    fontSize: '13px',
-    fontSizeSmall: '12px',
-    fontSizeMedium: '13px',
-    fontSizeLarge: '14px',
+    // 与 CSS 令牌保持同一字体栈：Windows 上优先微软雅黑
+    fontFamily: '"Microsoft YaHei UI","Microsoft YaHei","PingFang SC","Hiragino Sans GB",system-ui,-apple-system,sans-serif',
+    fontSize: '14px',
+    fontSizeSmall: '13px',
+    fontSizeMedium: '14px',
+    fontSizeLarge: '15px',
     fontWeightStrong: '600',
     textColorBase: '#1f2937',
     textColor1: '#1f2937',
@@ -38,21 +39,24 @@ export const lightOverrides: GlobalThemeOverrides = {
     boxShadow2: '0 4px 16px rgba(15,23,42,.08)',
     boxShadow3: '0 24px 64px rgba(15,23,42,.16)'
   },
-  Card: { borderRadius: '12px', paddingMedium: '16px', paddingLarge: '18px' },
-  Button: { borderRadiusMedium: '8px', borderRadiusSmall: '6px', fontWeight: '500', heightTiny: '24px', heightSmall: '28px' },
+  Card: { borderRadius: '12px', paddingMedium: '16px', paddingLarge: '18px', titleFontSize: '15px' },
+  // 正文 14px 后按钮略增高度，避免字形贴边
+  Button: { borderRadiusMedium: '8px', borderRadiusSmall: '6px', fontWeight: '500', heightTiny: '26px', heightSmall: '30px', heightMedium: '34px' },
   // placeholder 默认 #c2c2c2 不达 AA，改用令牌里的 muted 值
   Input: { borderRadius: '8px', placeholderColor: '#5f6b7a' },
-  InternalSelection: { borderRadius: '8px' },
+  // 下拉/选择框的箭头图标：默认 #c2c2c2 在白底上只有 1.9:1，压到 muted 令牌
+  InternalSelection: { borderRadius: '8px', iconColor: '#5f6b7a', iconColorDisabled: '#94a3b8' },
   DataTable: { borderRadius: '10px', thColor: '#f8fafb', tdColor: '#ffffff' },
   Modal: { borderRadius: '12px', padding: '18px' },
   Drawer: { borderRadius: '0' },
   Tag: { borderRadius: '999px' },
   // 订阅源首字头像：默认 #CCC 底 + 白字只有 1.6:1，压到 muted 灰并用小字号塞进 16px 方框
   Avatar: { color: '#5f6b7a', border: 'none', fontSize: '11px' },
-  Progress: { fillColor: '#0f766e' },
+  // 圆环轨道用边框色：番茄钟空闲态是 0%，轨道必须比卡片底色可见但克制
+  Progress: { fillColor: '#0f766e', railColor: '#e5e7eb' },
   Tabs: { tabFontWeightActive: '600' },
   Form: { labelFontSizeTopMedium: '12px' },
-  Empty: { iconSize: '36px', textColor: '#5f6b7a' },
+  Empty: { iconSize: '36px', textColor: '#5f6b7a', iconColor: '#5f6b7a' },
   // 日期面板：非当月日期默认 #C2C2C2 不达 AA，这里改用令牌里的 muted 值
   DatePicker: {
     // 面板压到侧栏宽度：缩格子尺寸与内边距，避免第 7 列被裁
@@ -89,6 +93,8 @@ export const lightOverrides: GlobalThemeOverrides = {
 /** 深色：保持同一套蓝绿语义，只换画布与文字层。 */
 export const darkOverrides: GlobalThemeOverrides = {
   ...lightOverrides,
+  // 深色下轨道用深一点的分隔色，避免白圈抢视线
+  Progress: { ...lightOverrides.Progress, railColor: '#334155' },
   common: {
     ...lightOverrides.common,
     textColorBase: '#e2e8f0',
@@ -110,6 +116,8 @@ export const darkOverrides: GlobalThemeOverrides = {
     boxShadow3: '0 24px 64px rgba(0,0,0,.5)'
   },
   DataTable: { ...lightOverrides.DataTable, thColor: '#243447', tdColor: '#1e293b' },
+  InternalSelection: { ...lightOverrides.InternalSelection, iconColor: '#94a3b8', iconColorDisabled: '#64748b' },
+  Empty: { ...lightOverrides.Empty, iconColor: '#94a3b8' },
   Avatar: { ...lightOverrides.Avatar, color: '#526375' },
   Calendar: {
     ...lightOverrides.Calendar,
@@ -120,7 +128,7 @@ export const darkOverrides: GlobalThemeOverrides = {
 }
 
 /** 字号三档：由设置页驱动，改 common.fontSize 即全站生效。 */
-export const fontSizes = { 小: '12px', 中: '13px', 大: '14px' } as const
+export const fontSizes = { 小: '13px', 中: '14px', 大: '15px' } as const
 export type FontKey = keyof typeof fontSizes
 
 /* ---------- 强调色：设置页可换，主色派生 hover/pressed 保证深浅一致 ---------- */

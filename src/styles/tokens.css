@@ -17,12 +17,14 @@
   --shadow-card: 0 1px 2px rgba(0,0,0,.03);
   --sidebar-w: 210px;
   --topbar-h: 60px;
-  --font: "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
-  --fs-11: 11px;
-  --fs-12: 12px;
-  --fs-13: 13px;
-  --fs-14: 14px;
-  --fs-title: 20px;
-  --fs-hero: 44px;
+  /* Windows 优先：微软雅黑；非 Windows 回退到苹方与系统无衬线 */
+  --font: "Microsoft YaHei UI", "Microsoft YaHei", "PingFang SC", "Hiragino Sans GB", system-ui, -apple-system, sans-serif;
+  /* 字号令牌以「中」档为基准，App.vue 会按设置里的 小/中/大 等比缩放 */
+  --fs-11: 12px;
+  --fs-12: 13px;
+  --fs-13: 14px;
+  --fs-14: 15px;
+  --fs-title: 21px;
+  --fs-hero: 46px;
   --tr: 150ms cubic-bezier(.2,.8,.2,1);
 }

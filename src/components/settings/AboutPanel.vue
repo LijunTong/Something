@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import SectionTitle from '@/components/settings/SectionTitle.vue'
 import { onMounted, ref } from 'vue'
 import { NCard, NButton, NTag, NModal, NDescriptions, NDescriptionsItem, NAlert, NList, NListItem, useMessage } from 'naive-ui'
 import { call, bridge, hasBridge } from '@/lib/ipc'
@@ -50,7 +51,7 @@ function checkUpdate() {
       本应用不提供账户注册与登录；天气、快递、信息流与邮件需要联网，联网结果只做本地缓存。
     </n-alert>
 
-    <div class="set-sub">运行信息</div>
+    <SectionTitle title="运行信息" />
     <n-descriptions :column="1" label-placement="left" size="small">
       <n-descriptions-item label="数据目录">{{ info?.userData || '未在 Electron 中运行' }}</n-descriptions-item>
       <n-descriptions-item label="数据库文件">{{ info?.db || '—' }}</n-descriptions-item>

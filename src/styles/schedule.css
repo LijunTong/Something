@@ -8,12 +8,12 @@
 /* 日历格内的事件条：普通文档流排列（周视图的绝对定位块已移除） */
 .sc-month-dayev { display: flex; flex-direction: column; gap: 2px; height: 100%; overflow: hidden; }
 .sc-month-chip { display: block; padding: 1px 4px; border-radius: 4px; cursor: pointer; overflow: hidden; }
-.sc-month-chip b { display: block; font-size: 11px; font-weight: 500; line-height: 15px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sc-month-chip b { display: block; font-size: var(--fs-11); font-weight: 500; line-height: 15px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 /* 月视图事件条按分类着色：取主题变量，深色与强调色切换后自动跟随 */
 .sc-month-chip.blue { background: var(--primary-softer); color: var(--primary); }
 .sc-month-chip.orange { background: var(--accent-soft); color: var(--accent); }
 .sc-month-chip.green { background: var(--ok-soft); color: var(--ok); }
-.sc-month-more { font-size: 10px; }
+.sc-month-more { font-size: var(--fs-11); }
 
 /* 侧栏当日日程行 */
 .sc-side-row { display: flex; gap: 8px; align-items: flex-start; padding: 7px 0; cursor: pointer; }

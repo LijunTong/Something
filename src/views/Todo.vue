@@ -1,14 +1,15 @@
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onBeforeUnmount, onMounted } from 'vue'
 import {
   useMessage, useDialog,
   NButton, NButtonGroup, NInput, NSelect, NCheckbox, NEmpty, NSpin,
-  NModal, NForm, NFormItem, NTag, NDrawer, NDrawerContent, NSpace, NTooltip
+  NModal, NForm, NFormItem, NTag, NDrawer, NDrawerContent, NSpace, NTooltip, NDatePicker
 } from 'naive-ui'
 import { useAppStore } from '@/stores/app'
 import Shell from '@/components/Shell.vue'
 import type { TodoRow, ScheduleRow } from '@/types/api'
 import { call, bridge, plain } from '@/lib/ipc'
+import { isTypingTarget, matchesCombo } from '@/lib/shortcut'
 import { log } from '@/lib/logger'
 import '@/styles/todo.css'
 
@@ -32,12 +33,12 @@ interface Draft {
   title: string
   listId: string | null
   priority: string
-  dueText: string
+  dueAt: number | null
   remindText: string
   labelsText: string
   note: string
 }
-const blankDraft = (): Draft => ({ title: '', listId: null, priority: '中', dueText: '', remindText: '10', labelsText: '', note: '' })
+const blankDraft = (): Draft => ({ title: '', listId: null, priority: '中', dueAt: null, remindText: '10', labelsText: '', note: '' })
 const draft = ref<Draft>(blankDraft())
 
 const priorityOptions = ['高', '中', '低'].map((x) => ({ label: x, value: x }))
@@ -50,6 +51,26 @@ const remindOptions = [
 ]
 const listOptions = computed(() => store.todoLists.map((l) => ({ label: l.name, value: l.id })))
 const filters: Array<'全部' | '未完成' | '高优先级' | '有截止时间'> = ['全部', '未完成', '高优先级', '有截止时间']
+
+/** 快捷键：N 新建任务，Ctrl+1/2 切换清单/看板（组合键可在设置里改） */
+function onShortcut(e: KeyboardEvent) {
+  if (isTypingTarget(e.target)) return
+  const map = store.settings?.shortcuts
+  if (showModal.value || showDetail.value || showSubtaskModal.value) return
+  if (matchesCombo(e, map?.newTodo || 'N')) {
+    e.preventDefault()
+    draft.value = blankDraft()
+    showModal.value = true
+    return
+  }
+  if (matchesCombo(e, map?.viewSwitch || 'Ctrl+1-2')) {
+    e.preventDefault()
+    const digit = String(e.code || '').replace('Digit', '')
+    view.value = digit === '2' ? 'board' : 'list'
+  }
+}
+onMounted(() => window.addEventListener('keydown', onShortcut))
+onBeforeUnmount(() => window.removeEventListener('keydown', onShortcut))
 
 const now = () => Date.now()
 const startOfToday = () => { const d = new Date(); d.setHours(0, 0, 0, 0); return d.getTime() }
@@ -113,18 +134,6 @@ function remindText(ts: number | null): string {
 
 /** 关联日程标题：打开详情时按 scheduleId 现查一次 */
 const scheduleTitles = ref<Record<string, string>>({})
-
-function parseDue(text: string): number | null {
-  const s = text.trim()
-  if (!s) return null
-  const m = /^(\d{4})-(\d{1,2})-(\d{1,2})(?:\s+(\d{1,2}):(\d{2}))?$/.exec(s)
-  if (m) {
-    const d = new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]), Number(m[4] ?? 23), Number(m[5] ?? 59))
-    return isNaN(d.getTime()) ? null : d.getTime()
-  }
-  const t = new Date(s)
-  return isNaN(t.getTime()) ? null : t.getTime()
-}
 
 async function withLoading<T>(fn: () => Promise<T>): Promise<T | undefined> {
   loading.value = true
@@ -209,7 +218,7 @@ async function saveNote(v: string) {
 async function saveDraft() {
   if (!draft.value.title.trim()) { message.warning('请填写任务标题'); return }
   await withLoading(async () => {
-    const dueAt = parseDue(draft.value.dueText)
+    const dueAt = draft.value.dueAt
     const remindMin = Number(draft.value.remindText)
     await store.addTodo(draft.value.title.trim(), {
       listId: draft.value.listId,
@@ -430,7 +439,9 @@ onMounted(() => { store.refreshTodos().catch(() => {}) })
         <n-form-item label="标题"><n-input v-model:value="draft.title" placeholder="任务标题" /></n-form-item>
         <n-form-item label="清单"><n-select v-model:value="draft.listId" :options="listOptions" clearable placeholder="选择清单" /></n-form-item>
         <n-form-item label="优先级"><n-select v-model:value="draft.priority" :options="priorityOptions" /></n-form-item>
-        <n-form-item label="截止"><n-input v-model:value="draft.dueText" placeholder="2026-11-20 18:00" /></n-form-item>
+        <n-form-item label="截止">
+          <n-date-picker v-model:value="draft.dueAt" type="datetime" clearable style="width:100%" placeholder="选择截止日期与时间" />
+        </n-form-item>
         <n-form-item label="提醒">
           <n-select v-model:value="draft.remindText" :options="remindOptions" />
         </n-form-item>

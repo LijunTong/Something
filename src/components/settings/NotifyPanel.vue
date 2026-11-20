@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import SectionTitle from '@/components/settings/SectionTitle.vue'
 import { computed } from 'vue'
 import { NCard, NSwitch, NSelect, NTag, useMessage } from 'naive-ui'
 import { useSettings } from '@/composables/useSettings'
@@ -48,7 +49,7 @@ async function patch(p: Partial<NotifySetting>) {
       <n-switch :value="settings.notify.desktop" @update:value="(v: boolean) => patch({ desktop: v })" />
     </div>
 
-    <div class="set-sub">分模块通知</div>
+    <SectionTitle title="分模块通知" />
     <div v-for="m in MODULES" :key="m.key" class="set-field">
       <span class="set-field-key">
         {{ m.label }}
@@ -61,7 +62,7 @@ async function patch(p: Partial<NotifySetting>) {
       />
     </div>
 
-    <div class="set-sub">免打扰时段</div>
+    <SectionTitle title="免打扰时段" />
     <div class="set-field">
       <span class="set-field-key">开始 - 结束</span>
       <div class="set-inline">
@@ -83,7 +84,7 @@ async function patch(p: Partial<NotifySetting>) {
       </div>
     </div>
 
-    <div class="set-sub">通知隐私</div>
+    <SectionTitle title="通知隐私" />
     <div class="set-field">
       <span class="set-field-key">显示内容</span>
       <n-select

@@ -1,6 +1,8 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { homeRefreshToken } from '@/composables/useHomeRefresh'
+import { computed, onMounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
+import HomeCardMenu from '@/components/home/HomeCardMenu.vue'
 import { NCard, NTag, NEmpty, NSpin, NButton } from 'naive-ui'
 import { call, bridge, hasBridge } from '@/lib/ipc'
 import { log } from '@/lib/logger'
@@ -53,10 +55,11 @@ async function load() {
   }
 }
 onMounted(load)
+watch(homeRefreshToken, () => { void load() })
 </script>
 
 <template>
-  <n-card size="small">
+  <n-card size="small" class="hc-card hc-card-mail">
     <template #header>
       <div class="hc-head">
         <span>邮件 · 未读 {{ unread }}</span>
@@ -66,8 +69,11 @@ onMounted(load)
       </div>
     </template>
     <template #header-extra>
-      <n-button size="tiny" quaternary @click="router.push('/mail')">打开收件箱</n-button>
-    </template>
+        <div class="hc-head-actions">
+          <n-button size="tiny" quaternary @click="router.push('/mail')">打开收件箱</n-button>
+          <HomeCardMenu module="mail" />
+        </div>
+      </template>
 
     <n-spin :show="loading">
       <n-empty

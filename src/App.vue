@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref, onMounted } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { NConfigProvider, NLoadingBarProvider, NDialogProvider, NNotificationProvider, NMessageProvider, darkTheme, zhCN, dateZhCN, NAlert } from 'naive-ui'
 import { useAppStore } from '@/stores/app'
 import { blendColor, buildOverrides, mixColor } from '@/theme/naive'
@@ -30,9 +30,10 @@ const overrides = computed(() => buildOverrides(store.themeMode, store.fontMode,
 // 把主题主色同步到 CSS 变量，供少量自写布局容器使用（AGENTS.md 2.3）
 // 字号三档：Naive 组件由 common.fontSize 控制，页面排版用的是 tokens.css 的 --fs-* 令牌，
 // 这里把令牌按比例同步缩放，保证「小/中/大」对整页正文同样生效（令牌值仍由主题层给出）。
-const FONT_SCALE: Record<'小' | '中' | '大', number> = { 小: 0.92, 中: 1, 大: 1.08 }
+// 「中」为默认档：正文 14px。小/大按同一比例缩放，保证任何页面都不会出现局部字号不跟手
+const FONT_SCALE: Record<'小' | '中' | '大', number> = { 小: 0.93, 中: 1, 大: 1.07 }
 const BASE_TOKENS: Record<string, number> = {
-  '--fs-11': 11, '--fs-12': 12, '--fs-13': 13, '--fs-14': 14, '--fs-title': 20, '--fs-hero': 44
+  '--fs-11': 12, '--fs-12': 13, '--fs-13': 14, '--fs-14': 15, '--fs-title': 21, '--fs-hero': 46
 }
 
 /**
@@ -83,6 +84,15 @@ function palette(dark: boolean, accent: string): Record<string, string> {
   }
 }
 
+/**
+ * 变量写到 <html>：n-modal / n-dropdown / n-message 等会传送到 body 下，
+ * 只挂在内层容器上会导致这些浮层读不到深色/强调色变量（表现为弹窗里出现浅色块）。
+ */
+function applyRootVars(vars: Record<string, string>) {
+  const el = document.documentElement
+  Object.keys(vars).forEach((k) => el.style.setProperty(k, vars[k]))
+}
+
 const rootVars = computed(() => {
   const scale = FONT_SCALE[store.fontMode] ?? 1
   const vars: Record<string, string> = {
@@ -95,10 +105,16 @@ const rootVars = computed(() => {
   }
   return vars
 })
+
+watch(rootVars, (v) => applyRootVars(v), { immediate: true })
+onBeforeUnmount(() => {
+  const el = document.documentElement
+  Object.keys(rootVars.value).forEach((k) => el.style.removeProperty(k))
+})
 </script>
 
 <template>
-  <div :style="rootVars" style="display:contents">
+  <div style="display:contents">
   <n-config-provider :theme="isDark ? darkTheme : null" :theme-overrides="overrides" :locale="zhCN" :date-locale="dateZhCN">
     <n-loading-bar-provider>
       <n-dialog-provider>

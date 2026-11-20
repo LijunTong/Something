@@ -1,11 +1,14 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { NInput, NBadge, NButton, NTag, NScrollbar } from 'naive-ui'
+import { NButton, NScrollbar, NText } from 'naive-ui'
 import { useAppStore } from '@/stores/app'
 import { log } from '@/lib/logger'
+import { bridge, call, hasBridge } from '@/lib/ipc'
 import type { AppearanceSetting } from '@/types/api'
 import Icons from './Icons.vue'
+import SearchDialog from './SearchDialog.vue'
+import { matchesCombo } from '@/lib/shortcut'
 
 const route = useRoute()
 const router = useRouter()
@@ -37,19 +40,54 @@ async function toggleSidebar() {
     log.exception('shell.sidebar', e)
   }
 }
-const searchText = computed({ get: () => '', set: () => {} })
+/** 全局搜索弹窗：顶栏点击或 Ctrl/Cmd+K 唤起 */
+const showSearch = ref(false)
+
+/* ---------- 自绘标题栏：窗口按钮与最大化状态 ---------- */
+const maximized = ref(false)
+let offMaximized: (() => void) | null = null
+let offNavigate: (() => void) | null = null
+
+function minimizeWindow() {
+  if (!hasBridge()) return
+  void call(() => bridge().window.minimize(), true)
+}
+async function toggleMaxWindow() {
+  if (!hasBridge()) return
+  const next = await call(() => bridge().window.toggleMaximize(), false)
+  maximized.value = !!next
+}
+function closeWindow() {
+  if (!hasBridge()) return
+  void call(() => bridge().window.close(), true)
+}
+
+function onGlobalKey(e: KeyboardEvent) {
+  if (showSearch.value) return
+  const combo = store.settings?.shortcuts?.search || 'Ctrl+K'
+  if (!matchesCombo(e, combo)) return
+  e.preventDefault()
+  showSearch.value = true
+}
+
+onMounted(() => {
+  window.addEventListener('keydown', onGlobalKey)
+  if (!hasBridge()) return
+  void call(() => bridge().window.isMaximized(), false).then((v) => { maximized.value = !!v })
+  offMaximized = bridge().onWindowMaximized((v) => { maximized.value = v })
+  // 托盘菜单跳转：主进程发路径，渲染层只做路由切换
+  offNavigate = bridge().onNavigate((to) => { void router.push(to) })
+})
+onBeforeUnmount(() => {
+  window.removeEventListener('keydown', onGlobalKey)
+  if (offMaximized) { offMaximized(); offMaximized = null }
+  if (offNavigate) { offNavigate(); offNavigate = null }
+})
 
 function badgeOf(item: { badge?: string }): number {
   if (item.badge === 'todo') return store.pendingCount
   if (item.badge === 'feed') return store.feedUnread
   return 0
-}
-
-function onSearch(v: string) {
-  const q = v.trim().toLowerCase()
-  if (!q) return
-  const hit = store.todos.find((t) => t.title.toLowerCase().includes(q))
-  if (hit) { router.push('/todo') } 
 }
 </script>
 
@@ -88,20 +126,29 @@ function onSearch(v: string) {
         </n-scrollbar>
       </nav>
       <div class="sidebar-footer">
-        <div class="local-status"><span class="status-dot"></span>本地存储正常</div>
+        <div class="local-status" :title="'本地存储正常'"><span class="status-dot"></span><span class="local-status-text">本地存储正常</span></div>
         <div class="sidebar-footnote">{{ store.runtime ? "SQLite · " + store.runtime.db.split(/[\\/]/).pop() : "正在连接本地库" }}</div>
       </div>
     </aside>
     <div class="workspace">
       <header class="topbar">
-        <div class="search-box" role="search">
+        <button type="button" class="search-box" aria-label="全局搜索（Ctrl K）" @click="showSearch = true">
           <svg><use href="#i-search"/></svg>
-          <input type="search" aria-label="全局搜索" placeholder="搜索任务、日程、邮件、文章、包裹…" @change="onSearch(($event.target as HTMLInputElement).value)" />
-          <kbd>Ctrl K</kbd>
-        </div>
+          <span class="search-placeholder">搜索任务、日程、邮件、文章、包裹…</span>
+          <n-text depth="3" class="search-kbd">Ctrl K</n-text>
+        </button>
         <div class="top-actions">
-          <n-button size="small" quaternary @click="router.push('/todo')">快捷添加</n-button>
-          <div class="os-space" aria-hidden="true"></div>
+          <div class="win-controls">
+            <n-button class="win-btn" size="tiny" quaternary aria-label="最小化" title="最小化" @click="minimizeWindow">
+              <template #icon><svg viewBox="0 0 24 24"><use href="#i-win-min" /></svg></template>
+            </n-button>
+            <n-button class="win-btn" size="tiny" quaternary :aria-label="maximized ? '还原' : '最大化'" :title="maximized ? '还原' : '最大化'" @click="toggleMaxWindow">
+              <template #icon><svg viewBox="0 0 24 24"><use :href="maximized ? '#i-win-restore' : '#i-win-max'" /></svg></template>
+            </n-button>
+            <n-button class="win-btn" size="tiny" quaternary type="error" aria-label="关闭" title="关闭" @click="closeWindow">
+              <template #icon><svg viewBox="0 0 24 24"><use href="#i-win-close" /></svg></template>
+            </n-button>
+          </div>
         </div>
       </header>
       <main class="content">
@@ -116,5 +163,6 @@ function onSearch(v: string) {
         </n-scrollbar>
       </main>
     </div>
+    <SearchDialog v-model:show="showSearch" />
   </div>
 </template>

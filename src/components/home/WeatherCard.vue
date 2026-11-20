@@ -1,6 +1,8 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { homeRefreshToken } from '@/composables/useHomeRefresh'
+import { computed, onMounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
+import HomeCardMenu from '@/components/home/HomeCardMenu.vue'
 import { NCard, NTag, NSpin, NEmpty, NButton } from 'naive-ui'
 import { call, bridge, hasBridge } from '@/lib/ipc'
 import { log } from '@/lib/logger'
@@ -68,10 +70,11 @@ function pick(c: WeatherCity) {
 
 function open() { void router.push('/weather') }
 onMounted(() => { void load() })
+watch(homeRefreshToken, () => { void load() })
 </script>
 
 <template>
-  <n-card size="small" class="hc-clickable" @click="open">
+  <n-card size="small" class="hc-clickable hc-card hc-card-weather" @click="open">
     <template #header>
       <div class="hc-head">
         <span>天气 · {{ data?.name || '—' }}</span>
@@ -79,8 +82,11 @@ onMounted(() => { void load() })
       </div>
     </template>
     <template #header-extra>
-      <n-button size="tiny" quaternary @click.stop="open">查看详情</n-button>
-    </template>
+        <div class="hc-head-actions">
+          <n-button size="tiny" quaternary @click.stop="open">查看详情</n-button>
+          <HomeCardMenu module="weather" />
+        </div>
+      </template>
 
     <n-spin :show="loading">
       <div class="hc-wx-chips">

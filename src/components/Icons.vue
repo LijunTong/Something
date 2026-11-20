@@ -58,5 +58,9 @@
   <symbol id="i-run" viewBox="0 0 24 24"><circle cx="14" cy="5" r="2"/><path d="m9 21 2-6-3-3 3-4 4 2 3 1M11 15l4 2 2 4"/></symbol>
   <symbol id="i-drop" viewBox="0 0 24 24"><path d="M12 3s6 6.5 6 10.5A6 6 0 0 1 6 13.5C6 9.5 12 3 12 3Z"/></symbol>
   <symbol id="i-alert" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v6M12 16.5v.5"/></symbol>
+  <symbol id="i-win-min" viewBox="0 0 24 24"><path d="M5 12h14"/></symbol>
+  <symbol id="i-win-max" viewBox="0 0 24 24"><rect x="5" y="5" width="14" height="14" rx="2"/></symbol>
+  <symbol id="i-win-restore" viewBox="0 0 24 24"><rect x="4" y="8" width="12" height="12" rx="2"/><path d="M8 8V6a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2h-2"/></symbol>
+  <symbol id="i-win-close" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></symbol>
 </svg>
 </template>

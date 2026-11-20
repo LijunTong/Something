@@ -1,4 +1,5 @@
-// 快递领域服务：公司识别、轨迹 fixture、状态推进与取件待办素材。
+// 快递领域服务：单号登记、公司识别、轨迹读取与取件待办素材。
+// 不生成任何本地模拟轨迹：轨迹只来自真实物流接口（当前未接入，刷新不会改变状态）。
 // 所有 SQL 只写在 service 里；写操作统一包 withTx，嵌套用内部 Raw 避免重复开事务。
 const { get, withTx } = require('../db/conn.cjs')
 const { uid, now, camel, camelAll, bool } = require('../db/util.cjs')
@@ -12,33 +13,6 @@ const COMPANIES = [
   { prefix: 'YT', name: '圆通速递' }
 ]
 
-const MINUTE = 60 * 1000
-const HOUR = 60 * MINUTE
-const DAY = 24 * HOUR
-
-// 物流流转阶段模板（由旧到新）：offset 为相对当前时间的偏移，负数表示过去。
-// 新包裹按单号 hash 取前 3~5 段，状态取最后一段对应阶段，覆盖在途/派送中/待取件。
-const FLOW = [
-  { description: '快件已揽收', location: '广州市天河区', offset: -2 * DAY, status: '在途' },
-  { description: '快件已发出，下一站佛山转运中心', location: '广州市', offset: -36 * HOUR, status: '在途' },
-  { description: '快件已到达佛山转运中心', location: '佛山市禅城区', offset: -20 * HOUR, status: '在途' },
-  { description: '派送中，快递员 138****1234 正在为您配送', location: '佛山市禅城区', offset: -3 * HOUR, status: '派送中' },
-  { description: '快件已到达菜鸟驿站，请及时取件', location: '菜鸟驿站（XX 路店）· 佛山市禅城区', offset: -40 * MINUTE, status: '待取件' }
-]
-
-const PICKUP_STATION = '菜鸟驿站（XX 路店）'
-
-/** 简单字符串 hash，稳定派生节点数量与取件码，保证同一单号结果一致。 */
-function hash(s) {
-  let h = 0
-  for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) | 0
-  return Math.abs(h)
-}
-
-/** 生成类似 8-2-104 的取件码。 */
-function pickCode(seed) {
-  return (seed % 8 + 1) + '-' + (seed % 4 + 1) + '-' + String(100 + seed % 900)
-}
 
 /** 按单号前缀识别快递公司，未知前缀归为其他快递。 */
 function detectCompany(no) {
@@ -74,14 +48,13 @@ function tracks(id) {
   }
 }
 
-/** 内部实现：单号去重、识别公司、写包裹与 3~5 个真实轨迹节点；不单独开事务。 */
+/** 内部实现：单号去重、识别公司、写包裹；不生成轨迹，也不编造取件码。 */
 function addRaw(dto) {
   const d = dto || {}
   const numbers = Array.isArray(d.numbers) ? d.numbers : []
   const t = now()
   const created = []
   const insParcel = get().prepare('INSERT INTO parcel (id,company,tracking_no,alias,note,status,pickup_code,station,eta_at,archived,privacy_masked,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)')
-  const insTrack = get().prepare('INSERT INTO parcel_track (id,parcel_id,node_time,description,location) VALUES (?,?,?,?,?)')
   const existsSt = get().prepare('SELECT 1 FROM parcel WHERE tracking_no = ?')
   const oneSt = get().prepare('SELECT * FROM parcel WHERE id = ?')
 
@@ -89,21 +62,10 @@ function addRaw(dto) {
     const no = String(raw == null ? '' : raw).trim()
     if (!no) return
     if (existsSt.get(no)) return // tracking_no 已存在则跳过，避免 UNIQUE 冲突
-    const seed = hash(no)
-    const count = 3 + seed % 3 // 3~5 个节点
-    const stages = FLOW.slice(0, count)
-    const last = stages[stages.length - 1]
     const id = uid('parcel')
-    const pickup = pickCode(seed)
-    const station = last.status === '待取件' ? PICKUP_STATION : null
-    const eta = last.status === '待取件' ? t + DAY : t + 2 * DAY
+    // 只登记单号与公司：状态、取件码、到达时间都等真实物流接口返回后再写
     insParcel.run(id, detectCompany(no), no, d.alias || null, d.note || null,
-      last.status, pickup, station, eta, 0, 1, t, t)
-    stages.forEach(function (st) {
-      // 待取件节点把取件码写进描述，和卡片上的取件码保持一致。
-      const desc = st.status === '待取件' ? '快件已到达菜鸟驿站，取件码 ' + pickup : st.description
-      insTrack.run(uid('trk'), id, t + st.offset, desc, st.location)
-    })
+      '在途', null, null, null, 0, 1, t, t)
     created.push(oneSt.get(id))
   })
   return camelAll(created)
@@ -120,47 +82,23 @@ function add(dto) {
   }
 }
 
-/** 内部实现：按当前状态推进到下一阶段并追加一条轨迹，不单独开事务。 */
+/**
+ * 刷新：当前没有接入物流查询接口，不能编造轨迹或推进状态。
+ * 这里只回读一次包裹行，保证 UI 的刷新动作不报错，并在日志里留痕。
+ */
 function refreshRaw(id) {
   const p = get().prepare('SELECT * FROM parcel WHERE id = ?').get(id)
   if (!p) throw new Error('PARCEL_NOT_FOUND')
-  const t = now()
-  let description = ''
-  let location = '佛山市禅城区'
-  let status = p.status
-  let pickupCode = p.pickup_code
-  let station = p.station
-
-  // 状态机：在途 → 派送中 → 待取件 → 已签收；签收后保持并记一条无变化轨迹。
-  if (p.status === '在途') {
-    description = '快件已到达末端配送站，准备派送'
-    location = '佛山市禅城区禅城投递部'
-    status = '派送中'
-  } else if (p.status === '派送中') {
-    description = '派送中，快递员 138****1234 再次为您配送'
-    status = '待取件'
-    pickupCode = pickCode(hash(p.tracking_no))
-    station = PICKUP_STATION
-  } else if (p.status === '待取件') {
-    description = '快件已签收：本人签收'
-    status = '已签收'
-  } else {
-    description = '运单状态未变化，快件已签收'
-  }
-
-  get().prepare('UPDATE parcel SET status = ?, pickup_code = ?, station = ?, updated_at = ? WHERE id = ?')
-    .run(status, pickupCode, station, t, id)
-  get().prepare('INSERT INTO parcel_track (id,parcel_id,node_time,description,location) VALUES (?,?,?,?,?)')
-    .run(uid('trk'), id, t, description, location)
-  return camel(get().prepare('SELECT * FROM parcel WHERE id = ?').get(id))
+  logger.warn('parcel', 'refresh_without_provider', { id: id })
+  return camel(p)
 }
 
-/** 刷新：追加一条轨迹并推进状态，返回更新后的包裹。 */
+/** 刷新：无外部数据源时不改状态，仅回读。 */
 function refresh(id) {
   try {
     return withTx(function () { return refreshRaw(id) })
   } catch (err) {
-    logger.error('parcel', '刷新快递轨迹失败', err, { id: id })
+    logger.error('parcel', '刷新快递失败', err, { id: id })
     throw err
   }
 }

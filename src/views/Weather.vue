@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import {
   NButton, NButtonGroup, NInput, NTag, NSpin, NSkeleton, NAlert, NCard,
@@ -7,72 +7,43 @@ import {
   NDescriptions, NDescriptionsItem, useMessage
 } from 'naive-ui'
 import Shell from '@/components/Shell.vue'
+import WeatherSourcePanel from '@/components/settings/WeatherSourcePanel.vue'
 import { call, bridge, plain, hasBridge } from '@/lib/ipc'
 import { log } from '@/lib/logger'
-import type { AllSettings, NotificationItem, WeatherCity, WeatherData, WeatherSetting } from '@/types/api'
+import type { AllSettings, NotificationItem, WeatherCity, WeatherCitySearchResult, WeatherData, WeatherSetting } from '@/types/api'
 import '@/styles/weather.css'
 
 const message = useMessage()
 const router = useRouter()
 
-/* ---------- 离线 fixture：无 IPC 时保证页面可渲染（结构对齐 WeatherData） ---------- */
-const FALLBACK_CITIES: WeatherCity[] = [
-  { id: 'city-foshan', name: '佛山', home: true, sort: 0 },
-  { id: 'city-guangzhou', name: '广州', home: false, sort: 1 },
-  { id: 'city-shenzhen', name: '深圳', home: false, sort: 2 }
-]
-const CITY_BASE: Record<string, number> = { 佛山: 24, 广州: 25, 深圳: 26, 北京: 21 }
-
-function makeFixture(city: WeatherCity): WeatherData {
-  const base = CITY_BASE[city.name] ?? 24
-  const icons = ['partly', 'cloud', 'rain', 'sun']
-  const hourly = Array.from({ length: 24 }, (_, i) => ({
-    time: i === 0 ? '现在' : String(i).padStart(2, '0') + ':00',
-    icon: icons[i % icons.length] ?? 'partly',
-    temp: base + Math.round(2 * Math.sin((i / 24) * Math.PI * 2)),
-    pop: (i * 9) % 70
-  }))
-  const dows = ['今天', '明天', '周日', '周一', '周二', '周三', '周四']
-  const daily = dows.map((dow, i) => ({
-    dow, icon: icons[i % icons.length] ?? 'partly',
-    hi: base + 3 - (i % 2), lo: base - 5 + (i % 2), pop: (i * 13) % 60
-  }))
-  return {
-    cityId: city.id, name: city.name, fromCache: true, fetchedAt: Date.now(),
-    now: { temp: base, cond: '多云', feel: base + 2, humidity: 68, wind: '东南风 3 级', pressure: 1012, visibility: 10, uv: 3, sunrise: '06:32', sunset: '17:48' },
-    hourly, daily,
-    aqi: { num: 68, level: '良', pm25: 35, pm10: 58, o3: 92 },
-    indices: [
-      { name: '穿衣', icon: 'clothes', text: '薄外套或长袖，早晚偏凉' },
-      { name: '洗车', icon: 'car', text: '未来 24 小时有雨，暂不宜' },
-      { name: '运动', icon: 'sport', text: '户外有降雨，建议室内' },
-      { name: '晾晒', icon: 'drop', text: '湿度较高，不易晾干' }
-    ]
-  }
-}
-
 /* ---------- 状态 ---------- */
-const cities = ref<WeatherCity[]>(FALLBACK_CITIES.slice())
-const currentId = ref('city-foshan')
+const cities = ref<WeatherCity[]>([])
+const currentId = ref('')
 const weather = ref<WeatherData | null>(null)
 const loading = ref(false)
 const offline = ref(!hasBridge())
 const showDrawer = ref(false)
+const showSource = ref(false)
 const showAlerts = ref(false)
-const search = ref('')
-const newCityName = ref('')
+/** 城市搜索：GeoAPI 返回候选列表，用户点选后添加 */
+const keyword = ref('')
+const searching = ref(false)
+const searched = ref(false)
+const results = ref<WeatherCitySearchResult[]>([])
+const addingId = ref('')
 const unit = ref<'C' | 'F'>('C')
+/** 自动刷新频率（分钟），来自设置，默认 5 */
+const refreshMin = ref(5)
+let refreshTimer: ReturnType<typeof setInterval> | null = null
 const cityTemps = ref<Record<string, number>>({})
 const notices = ref<NotificationItem[]>([])
+/** 最近一次取数失败原因：接口报错时优先展示它，而不是笼统的「离线」提示 */
+const lastError = ref('')
 
 /* ---------- 计算 ---------- */
 const currentCity = computed(() => cities.value.find((c) => c.id === currentId.value) ?? cities.value[0] ?? null)
 const cityOptions = computed(() => cities.value.map((c) => ({ label: c.name + (c.home ? '（定位）' : ''), value: c.id })))
 const wxNow = computed(() => weather.value?.now ?? null)
-const filteredCities = computed(() => {
-  const q = search.value.trim().toLowerCase()
-  return q ? cities.value.filter((c) => c.name.toLowerCase().includes(q)) : cities.value
-})
 const fetchedAgo = computed(() => {
   const t = weather.value?.fetchedAt
   if (!t) return '刚刚'
@@ -92,6 +63,16 @@ const uvText = computed(() => {
   if (n <= 7) return '强'
   return '很强'
 })
+/** 数据来源标签：和风天气 / 其本地缓存；没有配置时显示未配置 */
+const sourceLabel = computed(() => {
+  const s = weather.value?.source
+  if (s === 'qweather') return weather.value?.fromCache ? '和风天气 · 缓存' : '和风天气'
+  if (s === 'cache') return '本地缓存'
+  return '未配置数据源'
+})
+const sourceTagType = computed(() => (weather.value?.source === 'qweather' ? 'success' : 'warning'))
+const fetchError = computed(() => lastError.value || weather.value?.error || '')
+
 const aqiType = computed(() => {
   const n = weather.value?.aqi.num ?? 0
   if (n <= 50) return 'success'
@@ -101,23 +82,42 @@ const aqiType = computed(() => {
 })
 const popLegend = computed(() => weather.value?.hourly.slice(0, 3).map((h) => h.pop) ?? [])
 
-/** 预警：由逐小时降水、日最高/最低温与风力规则生成（本地规则，不做智能推断） */
-const alerts = computed(() => {
-  const w = weather.value
-  if (!w) return [] as Array<{ id: string; level: string; title: string; body: string }>
-  const out: Array<{ id: string; level: string; title: string; body: string }> = []
-  const rainy = w.hourly.slice(0, 6).filter((h) => Number(h.pop) >= 70)
-  if (rainy.length >= 2) {
-    const max = Math.max(...rainy.map((h) => Number(h.pop) || 0))
-    out.push({ id: 'rain', level: '黄色', title: '暴雨黄色预警：预计未来 6 小时有强降雨', body: '最高降水概率 ' + max + '%，出门带伞并避开低洼路段。' })
-  }
-  const hi = w.daily.length ? Math.max(...w.daily.map((d) => d.hi)) : 0
-  if (hi >= 35) out.push({ id: 'heat', level: '橙色', title: '高温橙色预警：最高气温 ' + hi + '°', body: '注意补水防晒，避免长时间户外活动。' })
-  const lo = w.daily.length ? Math.min(...w.daily.map((d) => d.lo)) : 99
-  if (lo <= 5) out.push({ id: 'cold', level: '蓝色', title: '寒潮蓝色预警：最低气温 ' + lo + '°', body: '早晚温差大，注意加衣。' })
-  const lv = Number((String(w.now.wind).match(/(\d+)\s*级/) || [])[1] || 0)
-  if (lv >= 6) out.push({ id: 'wind', level: '黄色', title: '大风黄色预警：当前 ' + w.now.wind, body: '注意高处坠物，骑行注意侧风。' })
-  return out
+/**
+ * 英雄卡渐变按天气现象取色（雨蓝、阴灰、晴/多云取品牌青绿、雷紫、雾石灰）。
+ * 文字始终白色，保证任何配色下对比度都在 4.5:1 以上。
+ */
+const heroGradient = computed(() => {
+  const cond = String(weather.value?.now?.cond || '')
+  const rules: Array<[RegExp, [string, string]]> = [
+    [/雷/, ['#312e81', '#0e7490']],
+    [/雪/, ['#1e3a8a', '#64748b']],
+    [/雨/, ['#1e3a8a', '#0e7490']],
+    [/雾|霾|沙|尘/, ['#3f3f46', '#78716c']],
+    [/阴/, ['#334155', '#475569']],
+    [/多云|少云|晴间多云/, ['#115e59', '#0f766e']],
+    [/晴/, ['#0b5f58', '#14b8a6']]
+  ]
+  const hit = rules.find(([re]) => re.test(cond))
+  const [from, to] = hit ? hit[1] : ['#0b5f58', '#14b8a6']
+  return 'linear-gradient(135deg, ' + from + ' 0%, ' + to + ' 100%)'
+})
+
+/** 每 refreshMin 分钟静默刷新一次；页面关闭或频率变化时重建定时器 */
+function scheduleRefresh() {
+  if (refreshTimer) { clearInterval(refreshTimer); refreshTimer = null }
+  const ms = Math.max(1, Number(refreshMin.value) || 5) * 60000
+  refreshTimer = setInterval(() => { void loadWeather(true) }, ms)
+}
+
+/** 预警只来自和风天气的 /weatheralert 接口，不做本地规则推导 */
+const alerts = computed<Array<{ id: string; level: string; title: string; body: string }>>(() => {
+  const list = weather.value?.alerts ?? []
+  return list.map((a) => ({
+    id: a.id,
+    level: a.level || '',
+    title: a.title,
+    body: (a.text || '') + (a.time ? '（发布于 ' + a.time + '）' : '')
+  }))
 })
 const primaryAlert = computed(() => alerts.value[0] ?? null)
 
@@ -141,28 +141,26 @@ function iconHref(icon: string): string {
   }
   return map[icon] ?? '#i-partly'
 }
-function fixtureFor(id: string): WeatherData {
-  const c = cities.value.find((x) => x.id === id) ?? currentCity.value ?? FALLBACK_CITIES[0]
-  return makeFixture(c as WeatherCity)
-}
-
 /* ---------- 数据加载 ---------- */
 async function loadSettings() {
   if (!hasBridge()) return
   try {
     const s = await call(() => bridge().settings.get('weather'), null)
-    const u = (s as WeatherSetting | null)?.unit
+    const cfg = s as WeatherSetting | null
+    const u = cfg?.unit
     if (u === 'C' || u === 'F') unit.value = u
+    refreshMin.value = Math.max(1, Number(cfg?.refreshMin || 5))
+    scheduleRefresh()
   } catch (e) {
     log.exception('weather.settings', e)
   }
 }
 
 async function loadCities() {
-  if (!hasBridge()) { cities.value = FALLBACK_CITIES.slice(); return }
+  if (!hasBridge()) { cities.value = []; return }
   try {
-    const rows = await call(() => bridge().weather.cities(), FALLBACK_CITIES)
-    cities.value = rows.length ? rows : FALLBACK_CITIES.slice()
+    const rows = await call(() => bridge().weather.cities(), [] as WeatherCity[])
+    cities.value = rows
     if (!cities.value.some((c) => c.id === currentId.value)) {
       const home = cities.value.find((c) => c.home) ?? cities.value[0]
       if (home) currentId.value = home.id
@@ -175,21 +173,28 @@ async function loadCities() {
 
 async function loadWeather(force = false) {
   const id = currentId.value
+  if (!id) {
+    weather.value = null
+    lastError.value = '还没有城市：先在「多城市管理」里添加城市并完成定位'
+    return
+  }
   loading.value = true
   try {
     if (!hasBridge()) {
-      weather.value = fixtureFor(id)
-      offline.value = true
+      weather.value = null
+      lastError.value = '天气需要在桌面端运行（Electron）'
       return
     }
-    const data = await call<WeatherData>(() => bridge().weather.fetch({ cityId: id, force }), fixtureFor(id))
+    const data = await call<WeatherData>(() => bridge().weather.fetch({ cityId: id, force }))
     weather.value = data
     offline.value = false
-    if (data) cityTemps.value = { ...cityTemps.value, [id]: data.now.temp }
+    lastError.value = data?.error || ''
+    if (data?.now) cityTemps.value = { ...cityTemps.value, [id]: data.now.temp }
   } catch (e) {
     log.exception('weather.fetch', e)
-    weather.value = fixtureFor(id)
-    offline.value = true
+    weather.value = null
+    offline.value = false
+    lastError.value = '天气取数失败：' + errMsg(e)
   } finally {
     loading.value = false
   }
@@ -197,12 +202,7 @@ async function loadWeather(force = false) {
 
 /** 抽屉里每个城市显示当前温度：逐个读缓存/生成并记录 */
 async function loadCityTemps() {
-  if (!hasBridge()) {
-    const map: Record<string, number> = {}
-    cities.value.forEach((c) => { map[c.id] = CITY_BASE[c.name] ?? 24 })
-    cityTemps.value = map
-    return
-  }
+  if (!hasBridge()) { cityTemps.value = {}; return }
   const entries = await Promise.all(cities.value.map(async (c) => {
     try {
       const d = await call(() => bridge().weather.fetch({ cityId: c.id }), null as unknown as WeatherData)
@@ -231,23 +231,51 @@ async function openAlertDetail() {
   await loadNotices()
 }
 
-/* ---------- 城市管理 ---------- */
-async function addCity() {
-  const name = newCityName.value.trim()
-  if (!name) { message.warning('请输入城市名'); return }
+/* ---------- 城市管理：搜索候选 → 用户选择 ---------- */
+async function doSearch() {
+  const q = keyword.value.trim()
+  if (!q) { message.warning('请输入城市名称'); return }
+  if (!hasBridge()) { message.warning('城市搜索需要在桌面端运行'); return }
+  searching.value = true
+  searched.value = false
   try {
-    if (!hasBridge()) {
-      cities.value = [...cities.value, { id: 'city-local-' + Date.now(), name, home: false, sort: cities.value.length }]
-    } else {
-      await call(() => bridge().weather.addCity(plain({ name })))
-      await loadCities()
-    }
-    newCityName.value = ''
+    results.value = await call(() => bridge().weather.searchCities({ keyword: q }), [] as WeatherCitySearchResult[])
+    searched.value = true
+    if (!results.value.length) message.info('没有匹配的城市，换个写法试试')
+  } catch (err) {
+    log.exception('weather.searchCities', err)
+    results.value = []
+    searched.value = true
+    message.error('搜索失败：' + errMsg(err))
+  } finally {
+    searching.value = false
+  }
+}
+
+/** 添加用户选中的候选：直接用它的 LocationID 与经纬度，不再按名字二次猜 */
+async function addFromSearch(item: WeatherCitySearchResult) {
+  addingId.value = item.qweatherId
+  try {
+    await call(() => bridge().weather.addCity(plain({
+      name: item.name,
+      qweatherId: item.qweatherId,
+      lat: item.lat,
+      lon: item.lon,
+      adm1: item.adm1,
+      adm2: item.adm2
+    })))
+    results.value = results.value.filter((x) => x.qweatherId !== item.qweatherId)
+    keyword.value = ''
+    searched.value = false
+    await loadCities()
     await loadCityTemps()
-    message.success('城市已添加')
-  } catch (e) {
-    log.exception('weather.addCity', e)
-    message.error(errMsg(e))
+    await loadWeather(true)
+    message.success('已添加 ' + item.name + (item.adm2 ? '（' + item.adm2 + '）' : ''))
+  } catch (err) {
+    log.exception('weather.addCity', err)
+    message.error('添加失败：' + errMsg(err))
+  } finally {
+    addingId.value = ''
   }
 }
 
@@ -287,6 +315,26 @@ async function setHome(c: WeatherCity) {
   }
 }
 
+/** 重新经 GeoAPI 定位所有城市，补齐 LocationID 与经纬度后刷新当前城市 */
+async function relocateAll() {
+  if (!hasBridge()) return
+  loading.value = true
+  try {
+    const r = await call(() => bridge().weather.relocate({}), null as unknown as { cities: WeatherCity[]; failed: string[] } | null)
+    await loadCities()
+    await loadWeather(true)
+    await loadCityTemps()
+    const failed = r?.failed ?? []
+    if (failed.length) message.warning('部分城市定位失败：' + failed[0])
+    else message.success('已完成重新定位')
+  } catch (e) {
+    log.exception('weather.relocate', e)
+    message.error('定位失败：' + errMsg(e))
+  } finally {
+    loading.value = false
+  }
+}
+
 async function switchCity(id: string) {
   if (id === currentId.value) return
   currentId.value = id
@@ -299,7 +347,7 @@ async function setUnit(u: 'C' | 'F') {
   if (!hasBridge()) return
   try {
     const cur = (await call(() => bridge().settings.get('weather'), null)) as WeatherSetting | null
-    const base: WeatherSetting = cur ?? { source: 'qweather', host: 'api.qweather.com', cacheMin: 30, offlineCache: true, alertPush: true, unit: 'C', apiKeySet: false }
+    const base: WeatherSetting = cur ?? { source: 'qweather', host: '', geoHost: '', cacheMin: 30, offlineCache: true, alertPush: true, unit: 'C', apiKeySet: false }
     const patch = plain({ weather: { ...base, unit: u } }) as unknown as Partial<AllSettings>
     await call(() => bridge().settings.set(patch))
   } catch (e) {
@@ -307,23 +355,29 @@ async function setUnit(u: 'C' | 'F') {
   }
 }
 
-function openSourceSettings() { void router.push({ path: '/settings', query: { panel: 'weather' } }) }
+/** 数据源配置留在天气页：与邮件/信息流一致，用侧边抽屉，不再跳设置 */
+function openSourceSettings() { showSource.value = true }
 function openDrawer() { showDrawer.value = true; void loadCityTemps() }
 
 onMounted(async () => {
   await loadSettings()
   await loadCities()
   await loadWeather()
+  scheduleRefresh()
 })
+
+watch(refreshMin, scheduleRefresh)
+onBeforeUnmount(() => { if (refreshTimer) { clearInterval(refreshTimer); refreshTimer = null } })
 </script>
 
 <template>
   <Shell>
     <template #subtitle>
-      {{ currentCity?.name ?? '—' }} · 数据更新于 {{ fetchedAgo }}（本地缓存）
+      {{ currentCity?.name ?? '—' }} · 数据更新于 {{ fetchedAgo }} · 每 {{ refreshMin }} 分钟自动刷新
     </template>
     <template #actions>
       <div class="wx-head-actions">
+        <n-tag size="small" :type="sourceTagType">{{ sourceLabel }}</n-tag>
         <n-select
           class="wx-city-select"
           size="small"
@@ -342,20 +396,19 @@ onMounted(async () => {
     </template>
 
     <div class="wx-body">
-      <!-- 离线提示条 -->
-      <n-alert v-if="offline" class="wx-offline" type="warning" title="当前为离线数据，展示本地缓存内容">
-        最后更新于 {{ fetchedAgo }}，联网后点击刷新即可重新拉取。
+      <!-- 数据来源提示条：取数失败会带上具体原因，有缓存时仍展示缓存内容 -->
+      <n-alert
+        v-if="fetchError"
+        class="wx-offline"
+        :type="weather?.source === 'qweather' ? 'info' : 'warning'"
+        :title="weather?.now ? '当前为' + sourceLabel + '数据，最后更新于 ' + fetchedAgo : '暂时没有可展示的天气数据'"
+      >
+        {{ fetchError }}
       </n-alert>
 
-      <!-- Hero 当前天气：产品独占视觉（超大温度数字），布局自写，配色取令牌 -->
-      <section
-        class="wx-hero"
-        aria-label="当前天气"
-        :style="{
-          background: 'linear-gradient(105deg, var(--hero-from) 0%, var(--hero-to) 58%, var(--hero-to) 100%)',
-          color: 'var(--on-hero)'
-        }"
-      >
+      <!-- Hero：外壳用 n-card，与其余卡片同一边框/圆角/阴影；内部渐变随天气现象变化 -->
+      <n-card class="wx-hero-card" size="small" :content-style="'padding:0'">
+        <div class="wx-hero" aria-label="当前天气" :style="{ background: heroGradient, color: 'var(--on-hero)' }">
         <div v-if="loading && !weather" class="wx-hero-skeleton" aria-label="加载中">
           <n-skeleton text style="width: 120px; height: 48px" />
           <n-skeleton text style="width: 90px; height: 16px" />
@@ -387,19 +440,30 @@ onMounted(async () => {
             <span>未来 3 小时降水 {{ popLegend.join(' / ') }}%</span>
           </div>
         </template>
-      </section>
+        </div>
+      </n-card>
 
-      <!-- 天气预警条（无预警时降级为动态提示） -->
+      <!-- 天气预警：只有和风返回预警时才出现，没有预警就不占版面 -->
       <n-alert
+        v-if="primaryAlert"
         class="wx-alert"
-        :type="primaryAlert ? 'warning' : 'success'"
-        :title="primaryAlert ? primaryAlert.title : '天气动态已更新：当前无生效预警'"
+        type="warning"
+        :title="primaryAlert.title"
       >
         <div class="wx-alert-body">
-          <span>{{ primaryAlert ? primaryAlert.body : '按城市本地规则检查降水、高温、寒潮与风力，命中即为预警。' }}</span>
+          <span>{{ primaryAlert.body }}</span>
           <n-button size="tiny" quaternary @click="openAlertDetail">查看详情</n-button>
         </div>
       </n-alert>
+
+      <n-card v-if="!wxNow && !loading" size="small" class="wx-full">
+        <n-empty description="还没有天气数据：先在设置里填写和风天气的 API Host 与 Key，再添加城市">
+          <div class="wx-head-actions">
+            <n-button size="small" type="primary" @click="openSourceSettings">配置数据源</n-button>
+            <n-button size="small" @click="openDrawer">添加城市</n-button>
+          </div>
+        </n-empty>
+      </n-card>
 
       <div class="wx-grid">
         <!-- 未来 24 小时 -->
@@ -418,7 +482,7 @@ onMounted(async () => {
                 class="wx-hour"
               >
                 <span>{{ h.time }}</span>
-                <svg class="wx-hour-icon" viewBox="0 0 24 24"><use :href="iconHref(h.icon)" /></svg>
+                <svg class="wx-hour-icon" viewBox="0 0 24 24" :title="h.text || ''"><use :href="iconHref(h.icon)" /></svg>
                 <strong>{{ showTemp(h.temp) }}°</strong>
                 <n-tag size="tiny" :type="Number(h.pop) >= 60 ? 'warning' : 'default'">{{ h.pop }}%</n-tag>
               </div>
@@ -462,6 +526,10 @@ onMounted(async () => {
             <div><span>PM10</span><strong>{{ weather?.aqi.pm10 ?? '—' }}</strong></div>
             <div><span>O₃</span><strong>{{ weather?.aqi.o3 ?? '—' }}</strong></div>
           </div>
+          <p class="wx-card-foot">
+            <template v-if="weather?.aqi.primary">首要污染物 {{ weather.aqi.primary }}<template v-if="weather?.aqi.no2 != null"> · NO₂ {{ weather.aqi.no2 }}</template><template v-if="weather?.aqi.so2 != null"> · SO₂ {{ weather.aqi.so2 }}</template></template>
+            <template v-else>暂无首要污染物数据</template>
+          </p>
         </n-card>
 
         <!-- 生活指数 -->
@@ -477,33 +545,73 @@ onMounted(async () => {
       </div>
     </div>
 
-    <!-- 多城市管理抽屉 -->
-    <n-drawer v-model:show="showDrawer" :width="360" placement="right">
+    <!-- 多城市管理抽屉：GeoAPI 搜索 → 选择候选 → 加入列表 -->
+    <n-drawer v-model:show="showDrawer" :width="380" placement="right">
       <n-drawer-content title="多城市管理" closable :native-scrollbar="false">
-        <n-input v-model:value="search" size="small" placeholder="搜索城市" clearable />
+        <div class="wx-city-search">
+          <n-input
+            v-model:value="keyword"
+            size="small"
+            clearable
+            placeholder="搜索城市：输入名称后回车"
+            @keyup.enter="doSearch"
+            @clear="results = []; searched = false"
+          />
+          <n-button size="small" type="primary" :loading="searching" @click="doSearch">搜索</n-button>
+        </div>
+
+        <div v-if="results.length" class="wx-city-results">
+          <button
+            v-for="r in results"
+            :key="r.qweatherId"
+            type="button"
+            class="wx-city-result"
+            :disabled="addingId === r.qweatherId"
+            @click="addFromSearch(r)"
+          >
+            <span class="wx-city-result-main">
+              <strong>{{ r.name }}</strong>
+              <small>{{ [r.adm1, r.adm2, r.country].filter(Boolean).join(' · ') }}</small>
+            </span>
+            <n-tag size="tiny" :type="addingId === r.qweatherId ? 'default' : 'success'">
+              {{ addingId === r.qweatherId ? '添加中' : '添加' }}
+            </n-tag>
+          </button>
+        </div>
+        <n-empty v-else-if="searched && !searching" size="small" description="没有匹配的城市" />
+
+        <div class="wx-city-search-title">已添加城市（{{ cities.length }}）</div>
         <div class="wx-city-list">
-          <div v-for="c in filteredCities" :key="c.id" class="wx-city-row">
+          <div v-for="c in cities" :key="c.id" class="wx-city-row">
             <span class="wx-city-name">
               <svg v-if="c.home" class="wx-city-pin" viewBox="0 0 24 24"><use href="#i-pin" /></svg>
               {{ c.name }}
+              <small v-if="c.adm2" class="wx-city-adm">{{ c.adm2 }}</small>
             </span>
             <n-tag size="tiny" :type="c.home ? 'success' : 'default'">{{ c.home ? '定位' : '常驻' }}</n-tag>
             <n-button size="tiny" quaternary @click="switchCity(c.id)">{{ showTemp(cityTemps[c.id]) }}°</n-button>
             <n-button size="tiny" quaternary :disabled="c.home" @click="setHome(c)">设为定位</n-button>
             <n-button size="tiny" quaternary :disabled="c.home" @click="removeCity(c)">删除</n-button>
           </div>
-          <n-empty v-if="!filteredCities.length" size="small" description="没有匹配的城市" />
+          <n-empty v-if="!cities.length" size="small" description="还没有城市，搜索后添加" />
         </div>
+
         <template #footer>
           <div class="wx-city-add">
-            <n-input v-model:value="newCityName" size="small" placeholder="输入城市名" @keyup.enter="addCity" />
-            <n-button size="small" type="primary" @click="addCity">添加城市</n-button>
+            <n-button size="small" :loading="loading" @click="relocateAll">重新定位全部城市</n-button>
           </div>
         </template>
       </n-drawer-content>
     </n-drawer>
 
-    <!-- 预警详情：本地规则生成的预警 + 今日通知流 -->
+    <!-- 数据源抽屉：API Host / Key / 缓存策略 / 自检 -->
+    <n-drawer v-model:show="showSource" :width="620" placement="right">
+      <n-drawer-content title="天气数据源" closable :native-scrollbar="false">
+        <WeatherSourcePanel embedded />
+      </n-drawer-content>
+    </n-drawer>
+
+    <!-- 预警详情：和风天气返回的预警 + 今日通知流 -->
     <n-modal v-model:show="showAlerts" preset="card" class="wx-modal" title="天气预警与提醒" :bordered="false">
       <n-empty v-if="!alerts.length" size="small" description="当前无生效预警" />
       <div v-else class="wx-alert-list">

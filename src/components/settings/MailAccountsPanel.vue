@@ -9,6 +9,9 @@ import { call, bridge, hasBridge, plain } from '@/lib/ipc'
 import { log } from '@/lib/logger'
 import type { MailAccount } from '@/types/api'
 
+const props = defineProps<{ embedded?: boolean }>()
+/** 嵌入到邮件页时通知父级刷新账户/文件夹/邮件列表 */
+const emit = defineEmits<{ changed: [] }>()
 const message = useMessage()
 const accounts = ref<MailAccount[]>([])
 const loading = ref(false)
@@ -123,14 +126,17 @@ async function submit() {
     }
     if (editingId.value) {
       const dto = f.secret.trim() ? { ...base, id: editingId.value, secret: f.secret.trim() } : { ...base, id: editingId.value }
-      accounts.value = await call(() => bridge().mail.updateAccount(plain(dto) as Record<string, unknown>), accounts.value)
+      await call(() => bridge().mail.updateAccount(plain(dto) as Record<string, unknown>), null)
+      await load()
       message.success('账户已更新')
     } else {
       if (!f.secret.trim()) { message.warning('新增账户必须填写授权码'); return }
-      accounts.value = await call(() => bridge().mail.addAccount(plain({ ...base, secret: f.secret.trim() }) as Record<string, unknown>), accounts.value)
+      await call(() => bridge().mail.addAccount(plain({ ...base, secret: f.secret.trim() }) as Record<string, unknown>), null)
+      await load()
       message.success('账户已添加')
     }
     showForm.value = false
+    emit('changed')
   } catch (e) {
     log.exception('settings.mailAccount.save', e)
     message.error('保存失败：' + ((e as Error).message || '未知错误'))
@@ -159,7 +165,9 @@ async function test(row?: MailAccount) {
 
 async function toggleAccount(row: MailAccount, enabled: boolean) {
   try {
-    accounts.value = await call(() => bridge().mail.updateAccount(plain({ id: row.id, enabled }) as Record<string, unknown>), accounts.value)
+    await call(() => bridge().mail.updateAccount(plain({ id: row.id, enabled }) as Record<string, unknown>), null)
+    await load()
+    emit('changed')
   } catch (e) {
     log.exception('settings.mailToggle', e)
     message.error('更新失败：' + ((e as Error).message || '未知错误'))
@@ -168,8 +176,10 @@ async function toggleAccount(row: MailAccount, enabled: boolean) {
 
 async function removeAccount(row: MailAccount) {
   try {
-    accounts.value = await call(() => bridge().mail.removeAccount({ id: row.id }), accounts.value)
+    await call(() => bridge().mail.removeAccount({ id: row.id }), null)
+    await load()
     message.success('账户已删除')
+    emit('changed')
   } catch (e) {
     log.exception('settings.mailRemove', e)
     message.error('删除失败：' + ((e as Error).message || '未知错误'))
@@ -180,7 +190,7 @@ onMounted(load)
 </script>
 
 <template>
-  <n-card size="small" title="邮箱账户">
+  <n-card size="small" :title="props.embedded ? undefined : '邮箱账户'">
     <template #header-extra><n-tag size="small">授权信息本机加密保存</n-tag></template>
 
     <n-spin :show="loading">

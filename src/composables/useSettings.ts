@@ -6,13 +6,14 @@ import { useAppStore } from '@/stores/app'
 import type { AllSettings } from '@/types/api'
 
 const FALLBACK: AllSettings = {
-  appearance: { theme: '浅色', accent: '#0f766e', font: '小', sidebarExpand: true },
+  appearance: { theme: '浅色', accent: '#0f766e', font: '中', sidebarExpand: true },
   notify: { desktop: true, weather: true, schedule: true, todo: true, pomodoro: true, parcel: false, mail: true, dndStart: '22:00', dndEnd: '08:00', privacy: 'summary' },
-  shortcuts: { search: 'Ctrl+K', newTodo: 'N', focus: 'F', quickAdd: 'Space', viewSwitch: 'Ctrl+1-3' },
+  shortcuts: { search: 'Ctrl+K', newTodo: 'N', focus: 'F', viewSwitch: 'Ctrl+1-2' },
+  window: { closeToTray: true, minimizeToTray: false, launchAtLogin: false },
   backup: { auto: true, path: '', freq: '每天', encrypted: false, passwordSet: false, lastAt: null, lastFile: null },
-  weather: { source: 'qweather', host: 'api.qweather.com', cacheMin: 30, offlineCache: true, alertPush: true, unit: 'C', apiKeySet: false },
+  weather: { source: 'qweather', host: '', geoHost: '', cacheMin: 5, refreshMin: 5, authType: 'jwt', offlineCache: true, alertPush: true, unit: 'C', apiKeySet: false, jwtSet: false, authMode: 'none' },
   feed: { defaultInterval: 360, keepContent: true },
-  modules: { dashboard: true, weather: true, schedule: true, todo: true, pomodoro: true, feed: true, parcel: true, mail: true }
+  modules: { dashboard: true, weather: true, schedule: true, todo: true, pomodoro: true, feed: true, parcel: true, mail: true, notice: true }
 }
 
 const current = ref<AllSettings>(JSON.parse(JSON.stringify(FALLBACK)) as AllSettings)

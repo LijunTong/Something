@@ -5,6 +5,7 @@ import { useAppStore } from '@/stores/app'
 import Shell from '@/components/Shell.vue'
 import { call, bridge } from '@/lib/ipc'
 import { log } from '@/lib/logger'
+import { isTypingTarget, matchesCombo } from '@/lib/shortcut'
 import type { PomodoroState, PomodoroStats, PomodoroConfig, PomodoroSessionRow } from '@/types/api'
 import '@/styles/pomodoro.css'
 
@@ -91,6 +92,21 @@ async function bindTask(v: string | null) {
   }
 }
 
+/** 快捷键：F 开始 / 暂停 / 继续（组合键可在设置里改） */
+function toggleFocus() {
+  if (st.value.phase === 'running') void pause()
+  else if (st.value.phase === 'paused') void resume()
+  else void start()
+}
+
+function onShortcut(e: KeyboardEvent) {
+  if (isTypingTarget(e.target)) return
+  if (showAbandon.value || showSettings.value || showTaskPicker.value || showFinish.value || focusMode.value) return
+  if (!matchesCombo(e, store.settings?.shortcuts?.focus || 'F')) return
+  e.preventDefault()
+  toggleFocus()
+}
+
 function openTaskPicker() {
   taskPickerValue.value = st.value.taskId
   showTaskPicker.value = true
@@ -116,13 +132,11 @@ watch(() => st.value.phase, (now, prev) => {
   if (now === 'break' && prev === 'running') showFinish.value = true
 })
 
-onMounted(async () => {
-  await loadAll()
-  timer = window.setInterval(() => {
-    if (st.value.phase === 'running') st.value = { ...st.value, remainSec: Math.max(0, Math.round(((st.value.endsAt || Date.now()) - Date.now()) / 1000)) }
-  }, 1000)
-  ticker = window.setInterval(() => { void refreshState() }, 3000)
+onMounted(() => {
+  void loadAll()
+  window.addEventListener('keydown', onShortcut)
 })
+onUnmounted(() => window.removeEventListener('keydown', onShortcut))
 onUnmounted(() => { if (timer) clearInterval(timer); if (ticker) clearInterval(ticker) })
 </script>
 

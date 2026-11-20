@@ -7,7 +7,7 @@
 - User-confirmed: Windows 桌面窗口规范；紧凑专业信息密度。
 - Visual world: Local Utility Precision — cool neutral canvas, dense modular cards, teal as trusted system color, orange reserved for reminders and exceptions.
 - Palette: canvas #f3f6f8, surface #ffffff, text #17252a, muted #64757d, line #dfe7e9, primary #0f766e, primary-soft #e6f4f1, accent #d97706, accent-soft #fff3e4.
-- Type: 系统无衬线中文栈；正文 13px，辅助 11–12px，标题 20/16px。
+- Type: Microsoft YaHei 优先（Windows），回退 PingFang SC / 系统无衬线；正文 14px、辅助 12–13px、页面标题 21px、卡片标题 16px；字号三档 小 13 / 中 14 / 大 15，令牌与主题同源缩放。
 - Shape: 12px cards, 8px controls, 999px pills; one subtle shadow level.
 - Layout: 248px sidebar + topbar + scrollable content grid; 1440px 下三列，1100px 下两列。
 - Signature: 状态以细节承担语义——蓝绿色表示本地/正常/进行，橙色只表示提醒、待取件和异常；所有图标为线性 SVG。

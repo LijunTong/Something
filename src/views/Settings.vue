@@ -1,45 +1,51 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch, h } from 'vue'
-import { useRoute } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import { NMenu, NTag } from 'naive-ui'
 import type { MenuOption } from 'naive-ui'
 import Shell from '@/components/Shell.vue'
 import AppearancePanel from '@/components/settings/AppearancePanel.vue'
 import NotifyPanel from '@/components/settings/NotifyPanel.vue'
+import WindowPanel from '@/components/settings/WindowPanel.vue'
 import DataPanel from '@/components/settings/DataPanel.vue'
-import MailAccountsPanel from '@/components/settings/MailAccountsPanel.vue'
-import FeedPanel from '@/components/settings/FeedPanel.vue'
 import ShortcutPanel from '@/components/settings/ShortcutPanel.vue'
 import AboutPanel from '@/components/settings/AboutPanel.vue'
-import WeatherSourcePanel from '@/components/settings/WeatherSourcePanel.vue'
-import ModulePanel from '@/components/settings/ModulePanel.vue'
 import { useSettings } from '@/composables/useSettings'
 import '@/styles/settings.css'
 
-/** 左侧导航：设计书的 7 个通用面板 + 效率模块开关（天气面板已合并模块开关与数据源） */
+/**
+ * 设置页只承载「应用级」配置。
+ * 模块自身的配置（天气数据源、邮箱账户、订阅源）放在各自页面的右侧抽屉里；
+ * 首页卡片显隐在首页「卡片设置」与卡片右上角菜单里。
+ */
 const PANELS: Record<string, { label: string; comp: unknown }> = {
   appearance: { label: '外观', comp: AppearancePanel },
   notify: { label: '通知', comp: NotifyPanel },
+  window: { label: '窗口与启动', comp: WindowPanel },
   data: { label: '数据与存储', comp: DataPanel },
-  mail: { label: '邮箱账户', comp: MailAccountsPanel },
-  feed: { label: '订阅源', comp: FeedPanel },
   shortcut: { label: '快捷键', comp: ShortcutPanel },
-  about: { label: '关于', comp: AboutPanel },
-  weather: { label: '天气', comp: WeatherSourcePanel }
+  about: { label: '关于', comp: AboutPanel }
 }
 
-/** 模块项图标与左侧主导航完全一致（i-grid / i-sun / i-cal / i-check / i-timer / i-rss / i-box / i-mail） */
-const MODULES = [
-  { key: 'dashboard', label: '仪表盘', icon: 'i-grid' },
-  { key: 'schedule', label: '日程', icon: 'i-cal' },
-  { key: 'todo', label: '待办', icon: 'i-check' },
-  { key: 'pomodoro', label: '番茄钟', icon: 'i-timer' },
-  { key: 'feed', label: '信息流', icon: 'i-rss' },
-  { key: 'parcel', label: '快递', icon: 'i-box' },
-  { key: 'mail', label: '邮件', icon: 'i-mail' }
-] as const
+/** 旧深链（?panel=weather / mod:todo 等）跳到对应模块页 */
+const LEGACY_ROUTES: Record<string, string> = {
+  weather: '/weather',
+  weatherSource: '/weather',
+  mail: '/mail',
+  feed: '/feed'
+}
+const MODULE_ROUTES: Record<string, string> = {
+  todo: '/todo',
+  schedule: '/schedule',
+  pomodoro: '/pomodoro',
+  feed: '/feed',
+  parcel: '/parcel',
+  mail: '/mail',
+  notice: '/'
+}
 
 const route = useRoute()
+const router = useRouter()
 const { load } = useSettings()
 const active = ref<string>('data')
 
@@ -55,40 +61,25 @@ const menuOptions = computed<MenuOption[]>(() => [
     children: [
       { label: '外观', key: 'appearance', icon: icon('i-palette') },
       { label: '通知', key: 'notify', icon: icon('i-bell') },
+      { label: '窗口与启动', key: 'window', icon: icon('i-gear') },
       { label: '数据与存储', key: 'data', icon: icon('i-database') },
-      { label: '邮箱账户', key: 'mail', icon: icon('i-mail') },
-      { label: '订阅源', key: 'feed', icon: icon('i-rss') },
       { label: '快捷键', key: 'shortcut', icon: icon('i-key') },
       { label: '关于', key: 'about', icon: icon('i-info') }
-    ]
-  },
-  {
-    type: 'group',
-    label: '效率模块',
-    key: 'g-module',
-    children: [
-      { label: '天气', key: 'weather', icon: icon('i-sun') },
-      ...MODULES.map((m) => ({ label: m.label, key: 'mod:' + m.key, icon: icon(m.icon) }))
     ]
   }
 ])
 
-const currentLabel = computed(() => {
-  if (active.value.startsWith('mod:')) {
-    const key = active.value.slice(4)
-    return MODULES.find((m) => m.key === key)?.label || '模块'
-  }
-  return PANELS[active.value]?.label || '设置'
-})
+const currentLabel = computed(() => PANELS[active.value]?.label || '设置')
 
-/** 兼容旧链接：?panel=weatherSource 与 ?panel=weather 都落到合并后的天气面板 */
 function applyQuery() {
   const p = String(route.query.panel || '')
   if (!p) return
-  if (p === 'weatherSource') { active.value = 'weather'; return }
   if (PANELS[p]) { active.value = p; return }
-  if (p.startsWith('mod:') && MODULES.some((m) => m.key === p.slice(4))) { active.value = p; return }
-  if (MODULES.some((m) => m.key === p)) active.value = 'mod:' + p
+  if (LEGACY_ROUTES[p]) { void router.replace(LEGACY_ROUTES[p]); return }
+  if (p.startsWith('mod:')) {
+    const target = MODULE_ROUTES[p.slice(4)]
+    if (target) void router.replace(target)
+  }
 }
 
 watch(() => route.query.panel, applyQuery)
@@ -121,17 +112,10 @@ onMounted(async () => {
       <section class="set-content">
         <AppearancePanel v-if="active === 'appearance'" />
         <NotifyPanel v-else-if="active === 'notify'" />
+        <WindowPanel v-else-if="active === 'window'" />
         <DataPanel v-else-if="active === 'data'" />
-        <MailAccountsPanel v-else-if="active === 'mail'" />
-        <FeedPanel v-else-if="active === 'feed'" />
         <ShortcutPanel v-else-if="active === 'shortcut'" />
         <AboutPanel v-else-if="active === 'about'" />
-        <WeatherSourcePanel v-else-if="active === 'weather'" />
-        <ModulePanel
-          v-else-if="active.startsWith('mod:')"
-          :module-key="active.slice(4)"
-          :label="currentLabel"
-        />
         <n-card v-else size="small" title="未选择面板">
           <span class="set-muted">从左侧选择一个设置面板。</span>
         </n-card>

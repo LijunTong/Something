@@ -111,7 +111,7 @@ function addAccount(dto) {
   const secretEnc = withLog('加密授权码', { email: d.email, alias: d.alias }, function () {
     return encryptSecret(String(d.secret == null ? '' : d.secret).trim())
   })
-  return withLog('新增账户', { email: d.email, alias: d.alias }, function () {
+  const newId = withLog('新增账户', { email: d.email, alias: d.alias }, function () {
     return withTx(function () {
       const id = uid('acct')
       get().prepare('INSERT INTO mail_account (id,alias,email,protocol,imap_host,imap_port,smtp_host,smtp_port,username,secret_enc,sync_days,enabled,last_sync_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)').run(
@@ -124,33 +124,39 @@ function addAccount(dto) {
       DEFAULT_FOLDERS.forEach(function (f) { insFolder.run(uid('fld'), id, f.name, f.kind) })
       return id
     })
-    // 契约是「返回账户列表」：渲染层直接把它当成数组渲染，单条对象会炸渲染函数。
-    return accounts()
   })
+  // 契约是「返回账户列表」：渲染层直接把它当成数组渲染，单条对象会炸渲染函数。
+  void newId
+  return accounts()
 }
 
 // 修改账户：只更新提交的字段；授权码留空表示「不修改」，避免改别名被迫重填凭据。
 function updateAccount(dto) {
   const d = dto || {}
-  return withLog('修改账户', { id: d.id, email: d.email }, function () {
+  withLog('修改账户', { id: d.id, email: d.email }, function () {
     return withTx(function () {
-      const cur = get().prepare('SELECT id, secret_enc FROM mail_account WHERE id = ?').get(d.id)
+      // 逐字段合并：只更新调用方传来的字段，其余沿用库里现值。
+      // 之前按整行覆盖，开关启用状态这类只传 {id, enabled} 的调用会把 email 写成 NULL，触发 NOT NULL 约束。
+      const cur = get().prepare('SELECT * FROM mail_account WHERE id = ?').get(d.id)
       if (!cur) throw new Error('ACCOUNT_NOT_FOUND')
+      const val = function (next, prev) { return next === undefined ? prev : next }
       const nextSecret = String(d.secret == null ? '' : d.secret).trim()
       const secretEnc = nextSecret ? encryptSecret(nextSecret) : cur.secret_enc
+      const email = val(d.email, cur.email)
+      const alias = val(d.alias, cur.alias) || email || '未命名账户'
       get().prepare('UPDATE mail_account SET alias = ?, email = ?, protocol = ?, imap_host = ?, imap_port = ?, smtp_host = ?, smtp_port = ?, username = ?, secret_enc = ?, sync_days = ?, enabled = ? WHERE id = ?')
         .run(
-          d.alias || d.email || '未命名账户', d.email || null, d.protocol || 'imap',
-          d.imapHost || null, d.imapPort == null ? null : d.imapPort,
-          d.smtpHost || null, d.smtpPort == null ? null : d.smtpPort,
-          d.username || null, secretEnc, d.syncDays == null ? 30 : d.syncDays,
-          d.enabled == null ? 1 : bool(d.enabled), d.id
+          alias, email, val(d.protocol, cur.protocol) || 'imap',
+          val(d.imapHost, cur.imap_host) || null, val(d.imapPort, cur.imap_port),
+          val(d.smtpHost, cur.smtp_host) || null, val(d.smtpPort, cur.smtp_port),
+          val(d.username, cur.username) || null, secretEnc,
+          val(d.syncDays, cur.sync_days), d.enabled === undefined ? cur.enabled : bool(d.enabled), d.id
         )
       return d.id
     })
-    // 与 addAccount 保持一致：统一返回列表
-    return accounts()
   })
+  // 与 addAccount 保持一致：统一返回列表
+  return accounts()
 }
 
 // 删除账户：mail / mail_folder 的外键都是 ON DELETE CASCADE，账户删除会一并清掉文件夹与邮件。

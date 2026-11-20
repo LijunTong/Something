@@ -13,33 +13,33 @@
 
 凡是 Naive UI 有对应组件的能力，**一律使用 Naive UI，禁止手写等价实现**：
 
-| 场景 | 必须使用 | 禁止手写 |
-| --- | --- | --- |
-| 弹窗 | `n-modal` | `.modal-mask` + `.modal` 自绘弹层 |
-| 抽屉 | `n-drawer` + `n-drawer-content` | `.drawer` + `.drawer-mask` 自绘 |
-| 按钮 | `n-button` / `n-button-group` | `.primary-btn` / `.ghost-btn` 自绘按钮 |
-| 输入框 | `n-input` | 裸 `<input>` + 自绘边框 |
-| 下拉选择 | `n-select` | 原生 `<select>` |
-| 开关 | `n-switch` | 自绘 `.switch` + `::after` |
-| 复选框 | `n-checkbox` | 裸 `<input type=checkbox>` + 自绘勾选态 |
-| 单选 | `n-radio` / `n-radio-group` | 裸 radio |
-| 日期时间选择 | `n-date-picker` | 文本输入框收时间字符串 |
-| 表格 | `n-data-table` | 手写 `<table>` |
-| 标签 | `n-tag` | 自绘 `.tag` |
-| 空状态 | `n-empty` | 自绘插画 + 文案 |
-| 加载态 | `n-spin` / `n-skeleton` | 手写骨架屏 |
-| 进度环/条 | `n-progress` | CSS 画圆环 |
-| 表单与校验 | `n-form` + `n-form-item` | 手写校验逻辑与错误文案 |
-| 消息提示 | `useMessage()` | 自写 toast 函数 |
-| 确认框 | `useDialog()` | 自写 confirm 弹层 |
-| 通知 | `useNotification()` | 自写浮层 |
-| 标签页 | `n-tabs` | 自绘 tab 条 |
-| 分页 | `n-pagination` | 手写页码 |
-| 树形 | `n-tree` | 手写递归列表 |
-| 折叠面板 | `n-collapse` | 手写展开收起 |
-| 描述列表 | `n-descriptions` | 手写 label/value 行 |
-| 上传 | `n-upload` | 裸 `<input type=file>` + 自绘 |
-| 日期格式化 | `n-time` / dayjs | 手写补零拼接 |
+| 场景     | 必须使用                            | 禁止手写                               |
+| ------ | ------------------------------- | ---------------------------------- |
+| 弹窗     | `n-modal`                       | `.modal-mask` + `.modal` 自绘弹层      |
+| 抽屉     | `n-drawer` + `n-drawer-content` | `.drawer` + `.drawer-mask` 自绘      |
+| 按钮     | `n-button` / `n-button-group`   | `.primary-btn` / `.ghost-btn` 自绘按钮 |
+| 输入框    | `n-input`                       | 裸 `<input>` + 自绘边框                 |
+| 下拉选择   | `n-select`                      | 原生 `<select>`                      |
+| 开关     | `n-switch`                      | 自绘 `.switch` + `::after`           |
+| 复选框    | `n-checkbox`                    | 裸 `<input type=checkbox>` + 自绘勾选态  |
+| 单选     | `n-radio` / `n-radio-group`     | 裸 radio                            |
+| 日期时间选择 | `n-date-picker`                 | 文本输入框收时间字符串                        |
+| 表格     | `n-data-table`                  | 手写 `<table>`                       |
+| 标签     | `n-tag`                         | 自绘 `.tag`                          |
+| 空状态    | `n-empty`                       | 自绘插画 + 文案                          |
+| 加载态    | `n-spin` / `n-skeleton`         | 手写骨架屏                              |
+| 进度环/条  | `n-progress`                    | CSS 画圆环                            |
+| 表单与校验  | `n-form` + `n-form-item`        | 手写校验逻辑与错误文案                        |
+| 消息提示   | `useMessage()`                  | 自写 toast 函数                        |
+| 确认框    | `useDialog()`                   | 自写 confirm 弹层                      |
+| 通知     | `useNotification()`             | 自写浮层                               |
+| 标签页    | `n-tabs`                        | 自绘 tab 条                           |
+| 分页     | `n-pagination`                  | 手写页码                               |
+| 树形     | `n-tree`                        | 手写递归列表                             |
+| 折叠面板   | `n-collapse`                    | 手写展开收起                             |
+| 描述列表   | `n-descriptions`                | 手写 label/value 行                   |
+| 上传     | `n-upload`                      | 裸 `<input type=file>` + 自绘         |
+| 日期格式化  | `n-time` / dayjs                | 手写补零拼接                             |
 
 ### 1.1.1 组件形态不匹配时怎么办（重要）
 

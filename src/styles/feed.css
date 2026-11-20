@@ -2,10 +2,10 @@
 .fd-layout { display: grid; grid-template-columns: 200px 320px minmax(0,1fr); gap: 16px; align-items: start; }
 .fd-side { display: flex; flex-direction: column; padding: 12px; }
 /* 分组标题字号与 todo.css 的 .td-group 同步（11px），左右两栏清单保持一致 */
-.fd-group { padding: 6px 8px; font-size: 11px; }
+.fd-group { padding: 6px 8px; font-size: var(--fs-11); }
 /* 左栏清单：结构与 todo.css 的 .td-nav 对齐（同一套清单外形：选中反白、悬停轻微减弱、数字贴右） */
 .fd-nav-row { display: flex; align-items: center; gap: 2px; min-width: 0; }
-.fd-nav { display: flex; align-items: center; gap: 8px; width: 100%; min-width: 0; min-height: 32px; padding: 0 9px; border-radius: 8px; font-size: 12px; }
+.fd-nav { display: flex; align-items: center; gap: 8px; width: 100%; min-width: 0; min-height: 32px; padding: 0 9px; border-radius: 8px; font-size: var(--fs-12); }
 /* 侧栏是纵向 flex，.fd-nav 不能吃 flex:1（会纵向拉伸）；只有包在行里的订阅源才需要横向占满 */
 .fd-nav-row .fd-nav { flex: 1; width: auto; }
 .fd-nav svg { width: 15px; height: 15px; flex: 0 0 auto; }

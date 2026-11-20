@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import { ref, computed, onMounted, watch } from 'vue'
-import { useRouter } from 'vue-router'
+import { nextTick, ref, computed, onMounted, watch } from 'vue'
+import { useRoute } from 'vue-router'
 import {
   NButton, NInput, NTag, NText,
   NBlockquote, NEmpty, NSpin, NUpload, NAvatar, NScrollbar,
@@ -8,6 +8,7 @@ import {
 } from 'naive-ui'
 import type { UploadCustomRequestOptions } from 'naive-ui'
 import Shell from '@/components/Shell.vue'
+import FeedPanel from '@/components/settings/FeedPanel.vue'
 import { call, bridge, plain } from '@/lib/ipc'
 import { log } from '@/lib/logger'
 import { useAppStore } from '@/stores/app'
@@ -16,12 +17,12 @@ import '@/styles/feed.css'
 
 type FeedKind = 'unread' | 'all' | 'starred' | 'later'
 
-const router = useRouter()
 const store = useAppStore()
 const message = useMessage()
 const dialog = useDialog()
-/** 订阅源管理统一在设置页：本页不再维护第二套表单 */
-function goSettings() { void router.push({ path: '/settings', query: { panel: 'feed' } }) }
+/** 订阅源管理收敛到本页抽屉：与设置页共用同一个面板组件 */
+const showFeedPanel = ref(false)
+function openManagePanel() { showFeedPanel.value = true }
 
 /** Api 接口暂未声明 feed 域时的局部适配；FeedApi 契约已存在，仍走 bridge()/call 的 IPC 路径 */
 const feedBridge = (): FeedApi => (bridge() as unknown as { feed: FeedApi }).feed
@@ -34,34 +35,14 @@ const kind = ref<FeedKind | ''>('unread')
 const sourceId = ref('')
 const groupId = ref('')
 const selectedId = ref('')
+const route = useRoute()
 const busy = ref(false)
 const fontScale = ref(1)
 const darkArticle = ref(false)
 // 订阅源与分组的增删改统一在「设置 › 订阅源」维护，本页只负责阅读
 
 /** 无 IPC 时的浏览器降级数据：字段名与 FeedItem / FeedSource 契约一致 */
-const FALLBACK_GROUPS = [
-  { id: 'grp-tech', name: '科技' },
-  { id: 'grp-design', name: '设计' },
-  { id: 'grp-blog', name: '独立博客' }
-]
-const now = Date.now()
-const FALLBACK_SOURCES: FeedSource[] = [
-  { id: 'src-1', url: 'https://sspai.com/feed', title: '少数派', groupId: 'grp-tech', intervalMin: 60, enabled: true, lastFetchAt: now - 600000 },
-  { id: 'src-2', url: 'https://36kr.com/feed', title: '36氪', groupId: 'grp-tech', intervalMin: 60, enabled: true, lastFetchAt: now - 3600000 },
-  { id: 'src-3', url: 'https://designweekly.com/rss', title: '设计周刊', groupId: 'grp-design', intervalMin: 360, enabled: true, lastFetchAt: now - 7200000 },
-  { id: 'src-4', url: 'https://uxcollective.com/feed', title: 'UX Collective', groupId: 'grp-design', intervalMin: 360, enabled: true, lastFetchAt: now - 7200000 },
-  { id: 'src-5', url: 'https://ruanyifeng.com/blog/rss', title: '阮一峰的网络日志', groupId: 'grp-blog', intervalMin: 1440, enabled: true, lastFetchAt: now - 86400000 },
-  { id: 'src-6', url: 'https://independent.example/feed', title: '某独立博客', groupId: 'grp-blog', intervalMin: 1440, enabled: true, lastFetchAt: now - 86400000 }
-]
-const FALLBACK_ITEMS: FeedItem[] = [
-  { id: 'it-1', sourceId: 'src-1', title: '本地优先软件的数据边界设计', link: 'https://sspai.com/local-first', author: '陈默', summary: '为什么本地优先正在重新成为个人工具的核心设计原则。', content: '本地优先不是把同步关掉，而是让本机数据成为唯一权威来源。\n\n网络只作为可选增强，应用在没有账号时仍然完整可用。', publishedAt: now - 600000, read: false, starred: false, readLater: false, sourceTitle: '少数派' },
-  { id: 'it-2', sourceId: 'src-3', title: 'RSS 阅读工作流：从收集到归档', link: 'https://designweekly.com/rss-flow', author: '编辑部', summary: '一套可执行的订阅、稍后读与笔记联动方法。', content: '把收集、阅读与归档拆成三个独立动作。\n\n每个动作都有明确出口，信息才不会堆在收件箱里。', publishedAt: now - 3600000, read: false, starred: true, readLater: false, sourceTitle: '设计周刊' },
-  { id: 'it-3', sourceId: 'src-2', title: '桌面效率工具的十二条交互准则', link: 'https://36kr.com/desktop-ux', author: '产品组', summary: '信息密度、快捷键与状态反馈的取舍。', content: '密度不是把东西塞满，而是让高频操作更近。\n\n状态反馈要出现在操作发生的地方。', publishedAt: now - 7200000, read: false, starred: false, readLater: true, sourceTitle: '36氪' },
-  { id: 'it-4', sourceId: 'src-5', title: '每周科技新闻汇总（第 218 期）', link: 'https://ruanyifeng.com/weekly', author: '阮一峰', summary: '本周值得关注的开源项目与技术动态。', content: '本期收录了若干值得跟进的开源项目。\n\n其中桌面端本地数据库的变化尤其明显。', publishedAt: now - 18000000, read: true, starred: false, readLater: false, sourceTitle: '阮一峰的网络日志' },
-  { id: 'it-5', sourceId: 'src-4', title: 'Designing for calm in productivity tools', link: 'https://uxcollective.com/calm', author: 'UX Collective', summary: 'How restraint and clarity beat feature creep in daily tools.', content: 'Restraint is a feature.\n\nClear states let people trust the tool without learning it.', publishedAt: now - 86400000, read: true, starred: true, readLater: false, sourceTitle: 'UX Collective' },
-  { id: 'it-6', sourceId: 'src-6', title: '我的离线知识管理实践', link: 'https://independent.example/offline-km', author: '独立作者', summary: '用纯文本与本地搜索构建不被平台绑架的知识库。', content: '纯文本的好处是十年后仍能打开。\n\n本地搜索让检索速度不再依赖网络。', publishedAt: now - 90000000, read: true, starred: false, readLater: false, sourceTitle: '某独立博客' }
-]
+// 无 IPC 时的浏览器降级：一律返回空数组，不再内置示例订阅与文章
 const smartNav = [
   { kind: 'all' as FeedKind, label: '全部文章', icon: 'i-list' },
   { kind: 'unread' as FeedKind, label: '未读', icon: 'i-inbox' },
@@ -216,9 +197,9 @@ async function loadAll(): Promise<void> {
   busy.value = true
   try {
     const [g, s, all] = await Promise.all([
-      call(() => feedBridge().groups(), FALLBACK_GROUPS),
-      call(() => feedBridge().sources(), FALLBACK_SOURCES),
-      call(() => feedBridge().items({ kind: 'all' }), FALLBACK_ITEMS)
+      call(() => feedBridge().groups(), [] as Array<{ id: string; name: string }>),
+      call(() => feedBridge().sources(), [] as FeedSource[]),
+      call(() => feedBridge().items({ kind: 'all' }), [] as FeedItem[])
     ])
     groups.value = g
     sources.value = s
@@ -369,7 +350,33 @@ async function toTodo(): Promise<void> {
   }
 }
 
-onMounted(loadAll)
+/** 全局搜索直达：/feed?item=<id> 时切到全部文章并打开阅读器，同时把列表滚到该条 */
+async function openFromQuery(id: string): Promise<void> {
+  if (!id) return
+  if (!allItems.value.some((i) => i.id === id)) await loadAll()
+  let item = allItems.value.find((i) => i.id === id)
+  if (!item) { message.warning('这篇文章已不存在'); return }
+  if (kind.value !== '') {
+    kind.value = ''
+    await nextTick()
+  }
+  item = allItems.value.find((i) => i.id === id) || item
+  // 列表按标题筛出这一篇，避免在几十条里手动找；清空关键词即恢复全部
+  keyword.value = item.title
+  await nextTick()
+  await openArticle(item)
+  await nextTick()
+  const el = document.querySelector('[data-item-id="' + id + '"]') as HTMLElement | null
+  if (el && typeof el.scrollIntoView === 'function') el.scrollIntoView({ block: 'center' })
+}
+
+onMounted(async () => {
+  await loadAll()
+  await openFromQuery(String(route.query.item || ''))
+})
+
+// 在同一页面再次从搜索打开另一篇时也要生效（路由 query 变化但组件复用）
+watch(() => route.query.item, (v) => { if (v) void openFromQuery(String(v)) })
 /** 侧栏「信息流」角标：未读数跨页面保持一致，这里同步给全局 store */
 watch(unreadCount, (n) => store.setFeedUnread(n), { immediate: true })
 </script>
@@ -378,7 +385,7 @@ watch(unreadCount, (n) => store.setFeedUnread(n), { immediate: true })
     <template #subtitle>{{ unreadCount }} 篇未读 · 共 {{ sources.length }} 个订阅源 · 最后抓取 {{ lastFetchText }}</template>
     <template #actions>
       <n-button size="small" :loading="busy" @click="refreshAll">刷新全部</n-button>
-      <n-button size="small" type="primary" @click="goSettings">管理订阅</n-button>
+      <n-button size="small" type="primary" @click="openManagePanel">管理订阅</n-button>
       <n-button size="small" quaternary @click="exportOpml">导出 OPML</n-button>
       <n-upload :custom-request="onImportOpml" :show-file-list="false" :multiple="false">
         <n-button size="small" quaternary>导入 OPML</n-button>
@@ -418,7 +425,7 @@ watch(unreadCount, (n) => store.setFeedUnread(n), { immediate: true })
           </div>
 
           <div class="fd-side-foot">
-            <n-button size="tiny" quaternary block @click="goSettings">+ 分组管理</n-button>
+            <n-button size="tiny" quaternary block @click="openManagePanel">+ 分组管理</n-button>
           </div>
         </aside>
 
@@ -430,8 +437,15 @@ watch(unreadCount, (n) => store.setFeedUnread(n), { immediate: true })
           </div>
           <n-scrollbar class="fd-items" @scroll="onListScroll">
             <n-list v-if="pagedItems.length" hoverable clickable>
-              <n-list-item v-for="item in pagedItems" :key="item.id" @click="openArticle(item)">
-                <div class="fd-item">
+              <n-list-item
+            v-for="item in pagedItems"
+            :key="item.id"
+            :class="{ 'fd-row-active': selectedId === item.id }"
+            :style="selectedId === item.id ? { background: 'var(--primary-softer)' } : undefined"
+            :aria-selected="selectedId === item.id"
+            @click="openArticle(item)"
+          >
+                <div class="fd-item" :data-item-id="item.id">
                   <div class="fd-item-meta">
                     <n-tag v-if="!item.read" size="tiny" type="primary" round>未读</n-tag>
                     <span class="fd-item-source">{{ sourceName(item) }}</span>
@@ -485,5 +499,11 @@ watch(unreadCount, (n) => store.setFeedUnread(n), { immediate: true })
 
 
 
+    <!-- 订阅源抽屉：新增/修改/分组/OPML 都在这里，不再跳设置页 -->
+    <n-drawer v-model:show="showFeedPanel" :width="720" placement="right">
+      <n-drawer-content title="订阅源" closable :native-scrollbar="false">
+        <FeedPanel embedded @changed="loadAll" />
+      </n-drawer-content>
+    </n-drawer>
   </Shell>
 </template>

@@ -8,21 +8,33 @@ const { now } = require('../db/util.cjs')
 const logger = require('../log/logger.cjs')
 const scheduleSvc = require('./schedule.cjs')
 const feedSvc = require('./feed.cjs')
+const qweather = require('./qweather.cjs')
 
 const DEFAULTS = {
-  appearance: { theme: '浅色', accent: '#0f766e', font: '小', sidebarExpand: true },
+  appearance: { theme: '浅色', accent: '#0f766e', font: '中', sidebarExpand: true },
   notify: {
     desktop: true, weather: true, schedule: true, todo: true,
     pomodoro: true, parcel: false, mail: true,
     dndStart: '22:00', dndEnd: '08:00', privacy: 'summary'
   },
-  shortcuts: { search: 'Ctrl+K', newTodo: 'N', focus: 'F', quickAdd: 'Space', viewSwitch: 'Ctrl+1-3' },
+  shortcuts: { search: 'Ctrl+K', newTodo: 'N', focus: 'F', viewSwitch: 'Ctrl+1-2' },
+  // 窗口行为：关闭/最小化到托盘、开机启动（开机启动同时写入系统登录项）
+  window: { closeToTray: true, minimizeToTray: false, launchAtLogin: false },
   // 自动备份：path 为空时落在数据库同级的 backups 目录
   backup: { auto: true, path: '', freq: '每天', encrypted: false, passwordSet: false, lastAt: null, lastFile: null },
   // 天气：unit 供天气页与首页共享；apiKeySet 只是状态位，真值不进 all()
-  weather: { source: 'qweather', host: 'api.qweather.com', cacheMin: 30, offlineCache: true, alertPush: true, unit: 'C', apiKeySet: false },
+  // host/geoHost 均为和风天气 API Host：老账号用 devapi/geoapi，新账号填控制台里自己的 Host
+  // host/geoHost 为空表示还没配置：和风天气要求使用控制台分配的账号专属 API Host
+  // authMode/jwtSet 由凭据推算，不落库
+  // refreshMin：自动刷新频率（分钟，默认 5）；authType：设置面板里选中的认证方式
+  weather: {
+    source: 'qweather', host: '', geoHost: '', cacheMin: 5, refreshMin: 5, authType: 'jwt',
+    offlineCache: true, alertPush: true, unit: 'C',
+    apiKeySet: false, apiKeyHint: '', jwtSet: false, jwtMeta: null, authMode: 'none'
+  },
   feed: { defaultInterval: 360, keepContent: true },
-  modules: { dashboard: true, weather: true, schedule: true, todo: true, pomodoro: true, feed: true, parcel: true, mail: true }
+  // 首页卡片显隐：只影响首页展示，模块页与数据不受影响
+  modules: { dashboard: true, weather: true, schedule: true, todo: true, pomodoro: true, feed: true, parcel: true, mail: true, notice: true }
 }
 
 // 内部键：不进 all()，避免凭据或内部游标泄漏到渲染层
@@ -66,7 +78,14 @@ function readAll() {
     try { out[r.key] = Object.assign({}, out[r.key], JSON.parse(r.value)) } catch (e) { out[r.key] = r.value }
   })
   // 凭据状态位以库里是否存在加密记录为准，不信任前端提交值
-  if (out.weather && typeof out.weather === 'object') out.weather.apiKeySet = hasWeatherKey()
+  if (out.weather && typeof out.weather === 'object') {
+    Object.assign(out.weather, weatherStatus())
+  }
+  // 历史配置清理：快捷添加已移除；视图切换区间收敛为 Ctrl+1-2
+  if (out.shortcuts && typeof out.shortcuts === 'object') {
+    delete out.shortcuts.quickAdd
+    if (out.shortcuts.viewSwitch === 'Ctrl+1-3') out.shortcuts.viewSwitch = 'Ctrl+1-2'
+  }
   return out
 }
 
@@ -435,6 +454,113 @@ function hasWeatherKey() {
   }
 }
 
+function hasWeatherJwt() {
+  try {
+    return !!get().prepare("SELECT value FROM app_setting WHERE key = 'qweatherJwt'").get()
+  } catch (e) {
+    return false
+  }
+}
+
+/** 当前认证方式：JWT 优先（官方推荐），其次 API Key */
+function weatherAuthMode() {
+  if (hasWeatherJwt()) return 'jwt'
+  if (hasWeatherKey()) return 'key'
+  return 'none'
+}
+
+/** 解密任意一条 safeStorage 密文（失败返回空串） */
+function decryptSecretValue(b64) {
+  try {
+    const safeStorage = require('electron').safeStorage
+    if (!safeStorage || typeof safeStorage.decryptString !== 'function') return ''
+    return safeStorage.decryptString(Buffer.from(String(b64 || ''), 'base64'))
+  } catch (e) {
+    return ''
+  }
+}
+
+/** 回显用：JWT 的开发者/项目/凭据 ID 不属于密钥，可以回显；私钥永不返回 */
+function readJwtMeta() {
+  const row = get().prepare("SELECT value FROM app_setting WHERE key = 'qweatherJwt'").get()
+  if (!row) return null
+  let b64 = ''
+  try { b64 = JSON.parse(row.value) } catch (e) { return null }
+  const plain = decryptSecretValue(b64)
+  if (!plain) return null
+  try {
+    const cred = JSON.parse(plain)
+    return {
+      developerId: String(cred.developerId || ''),
+      projectId: String(cred.projectId || ''),
+      keyId: String(cred.keyId || ''),
+      privateKeySet: !!cred.privateKey
+    }
+  } catch (e) {
+    return null
+  }
+}
+
+/** 回显用：API Key 只给尾号，便于确认「是哪一把」而不泄漏完整 Key */
+function readApiKeyHint() {
+  const row = get().prepare("SELECT value FROM app_setting WHERE key = 'weatherKey'").get()
+  if (!row) return ''
+  let b64 = ''
+  try { b64 = JSON.parse(row.value) } catch (e) { return '' }
+  const key = decryptSecretValue(b64)
+  return key ? key.slice(-4) : ''
+}
+
+function weatherStatus() {
+  const cfg = Object.assign({}, DEFAULTS.weather, getOne('weather') || {})
+  cfg.apiKeySet = hasWeatherKey()
+  cfg.apiKeyHint = readApiKeyHint()
+  cfg.jwtSet = hasWeatherJwt()
+  cfg.jwtMeta = readJwtMeta()
+  cfg.authMode = weatherAuthMode()
+  return cfg
+}
+
+/** 保存 JWT 凭据：整个对象加密后单键存放，返回值只带状态位（私钥绝不外泄） */
+function setWeatherJwt(dto) {
+  try {
+    return withTx(function () {
+      const d = dto || {}
+      const developerId = String(d.developerId || '').trim()
+      const projectId = String(d.projectId || '').trim()
+      const keyId = String(d.keyId || '').trim()
+      const metaBefore = readJwtMeta()
+      const privateKeyInput = String(d.privateKey || '').trim()
+      // 编辑已有凭据时私钥可以留空，表示沿用原私钥（私钥不回显）
+      const privateKey = privateKeyInput || (metaBefore && metaBefore.privateKeySet ? '<keep>' : '')
+      if (!developerId || !projectId || !keyId || !privateKey) throw new Error('JWT 四项都必填：开发者 ID、项目 ID、凭据 ID、Ed25519 私钥')
+      let finalKey = privateKey
+      if (privateKey === '<keep>') {
+        const row = get().prepare("SELECT value FROM app_setting WHERE key = 'qweatherJwt'").get()
+        const prev = row ? JSON.parse(decryptSecretValue(JSON.parse(row.value)) || '{}') : {}
+        finalKey = String(prev.privateKey || '')
+      }
+      if (!finalKey) throw new Error('未找到原私钥，请重新粘贴 Ed25519 私钥')
+      const payload = JSON.stringify({ developerId: developerId, projectId: projectId, keyId: keyId, privateKey: finalKey })
+      get().prepare('INSERT OR REPLACE INTO app_setting (key,value) VALUES (?,?)').run('qweatherJwt', JSON.stringify(encryptSecret(payload)))
+      return weatherStatus()
+    })
+  } catch (err) {
+    return fail('setWeatherJwt failed', err, {})
+  }
+}
+
+function clearWeatherJwt() {
+  try {
+    return withTx(function () {
+      get().prepare("DELETE FROM app_setting WHERE key = 'qweatherJwt'").run()
+      return weatherStatus()
+    })
+  } catch (err) {
+    return fail('clearWeatherJwt failed', err, {})
+  }
+}
+
 function encryptSecret(plain) {
   const safeStorage = require('electron').safeStorage
   if (!safeStorage || typeof safeStorage.encryptString !== 'function') throw new Error('ENCRYPTION_UNAVAILABLE')
@@ -448,34 +574,20 @@ function setWeatherKey(dto) {
       const key = dto && dto.key ? String(dto.key).trim() : ''
       if (!key) {
         get().prepare("DELETE FROM app_setting WHERE key = 'weatherKey'").run()
-        const cleared = Object.assign({}, getOne('weather') || DEFAULTS.weather, { apiKeySet: false })
-        writeKey('weather', cleared)
-        return cleared
+        return weatherStatus()
       }
       get().prepare('INSERT OR REPLACE INTO app_setting (key,value) VALUES (?,?)').run('weatherKey', JSON.stringify(encryptSecret(key)))
-      const next = Object.assign({}, getOne('weather') || DEFAULTS.weather, { apiKeySet: true })
-      writeKey('weather', next)
-      return next
+      return weatherStatus()
     })
   } catch (err) {
     return fail('setWeatherKey failed', err, {})
   }
 }
 
-/** 数据源自检：只做本地配置校验，不做网络请求，避免把「能连上」说成本地能力。 */
-function testWeather() {
+/** 数据源自检：真实调用 GeoAPI 城市搜索 + 实时天气，验证 Key、Host 与网络 */
+async function testWeather() {
   try {
-    const cfg = Object.assign({}, DEFAULTS.weather, getOne('weather') || {})
-    const keySet = hasWeatherKey()
-    return {
-      ok: keySet,
-      keySet: keySet,
-      host: cfg.host,
-      cacheMin: cfg.cacheMin,
-      message: keySet
-        ? '数据源与凭据已保存在本机，本地配置校验通过；天气数据仍取本地缓存'
-        : '尚未填写 API Key，天气页展示本地缓存数据'
-    }
+    return await qweather.test()
   } catch (err) {
     return fail('testWeather failed', err, {})
   }
@@ -485,5 +597,6 @@ module.exports = {
   all: readAll, get: getOne, set: set, defaults: DEFAULTS,
   storage: storage, backup: backup, backups: backups, restore: restore,
   exportData: exportData, clearCache: clearCache, clearTrash: clearTrash, resetAll: resetAll,
-  setWeatherKey: setWeatherKey, testWeather: testWeather
+  setWeatherKey: setWeatherKey, setWeatherJwt: setWeatherJwt, clearWeatherJwt: clearWeatherJwt,
+  testWeather: testWeather
 }

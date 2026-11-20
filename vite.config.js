@@ -19,11 +19,27 @@ function tsInline() {
   }
 }
 
+// chokidar 在 Windows 上监听到被占用的文件时会 emit 'error'（EBUSY）。
+// 没有监听器时 Node 会把它升级成未捕获异常，直接打死 dev server —— 这里接住并降级为警告。
+function watchErrorGuard() {
+  return {
+    name: 'watch-error-guard',
+    apply: 'serve',
+    configureServer(server) {
+      const report = function (err) {
+        server.config.logger.warn('[watch] 忽略一次监听失败：' + ((err && err.code) || '') + ' ' + ((err && err.path) || ''))
+      }
+      if (server.watcher && typeof server.watcher.on === 'function') server.watcher.on('error', report)
+    }
+  }
+}
+
 export default defineConfig({
   plugins: [
     tsInline(),
     vue(),
-    Components({ dts: false, resolvers: [NaiveUiResolver()], dirs: [] })
+    Components({ dts: false, resolvers: [NaiveUiResolver()], dirs: [] }),
+    watchErrorGuard()
   ],
   base: './',
   resolve: { alias: { '@': fileURLToPath(new URL('./src', import.meta.url)) } },
@@ -39,7 +55,8 @@ export default defineConfig({
     // 忽略数据目录与「原子写」产生的临时文件：编辑工具会先在同目录建 .xxx.tmpdir/x.tmp 再改名，
     // chokidar 去 watch 这些被占用的临时文件会抛 EBUSY，未捕获时整个 dev server 直接挂掉。
     watch: {
-      ignored: ['**/.data/**', '**/*.tmpdir/**', '**/.*.tmpdir/**', '**/*.tmp', '**/.~*'],
+      // assets/ 下可能出现运行时生成的图标缓存，一并排除，避免被占用时又触发 EBUSY
+      ignored: ['**/.data/**', '**/*.tmpdir/**', '**/.*.tmpdir/**', '**/*.tmp', '**/.~*', 'assets/**'],
       usePolling: process.env.TK_POLL === '1',
       interval: 300
     }

@@ -1,0 +1,18 @@
+/* 全局搜索弹窗：只写布局；颜色与圆角全部来自主题 */
+.search-modal { width: 620px; max-width: 92vw; }
+.sr-head { display: flex; align-items: center; gap: 10px; }
+.sr-head .n-input { flex: 1 1 auto; min-width: 0; }
+.sr-hint { padding: 18px 2px 6px; line-height: 1.8; }
+.sr-groups { display: flex; flex-direction: column; gap: 14px; margin-top: 12px; max-height: 52vh; overflow: auto; }
+.sr-group { display: flex; flex-direction: column; gap: 2px; }
+.sr-group-label { display: flex; align-items: center; gap: 6px; padding: 0 2px 4px; }
+.sr-group-count { opacity: .7; }
+/* 结果行用 div+role=button：不带 UA 按钮底色，深色主题下自动跟随文字与选中态 */
+.sr-item { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 10px; width: 100%; padding: 8px 10px; cursor: pointer; }
+.sr-item:focus-visible { outline: 2px solid var(--primary); outline-offset: -2px; }
+.sr-item-main { display: flex; flex-direction: column; min-width: 0; }
+.sr-item-main strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sr-item-main small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sr-item-open { white-space: nowrap; }
+
+.sr-foot { text-align: center; }

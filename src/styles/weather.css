@@ -8,7 +8,8 @@
 /* 离线提示条 */
 .wx-offline { margin-bottom: 14px; }
 
-/* Hero 当前天气 */
+/* Hero 当前天气：外壳是 n-card（边框/圆角/阴影与其他卡片一致），内部渐变随天气变化 */
+.wx-hero-card { overflow: hidden; }
 .wx-hero { position: relative; overflow: hidden; padding: 22px 24px; }
 .wx-hero-top { display: flex; align-items: center; justify-content: space-between; gap: 14px; }
 .wx-hero-left { display: flex; align-items: center; gap: 16px; }
@@ -57,12 +58,27 @@
 .wx-life-item > div { min-width: 0; }
 .wx-life-item p { margin: 2px 0 0; }
 
+/* 城市搜索：输入 + 候选列表（候选整行可点，兼顾键盘） */
+.wx-city-search { display: flex; align-items: center; gap: 8px; margin-top: 12px; }
+.wx-city-search .n-input { flex: 1 1 auto; min-width: 0; }
+.wx-city-search-title { margin-top: 14px; }
+.wx-city-results { display: flex; flex-direction: column; gap: 4px; margin-top: 10px; }
+.wx-city-result { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 10px; width: 100%; min-height: 46px; padding: 6px 8px; border: 0; text-align: left; cursor: pointer; }
+.wx-city-result:disabled { cursor: progress; }
+.wx-city-result-main { display: flex; flex-direction: column; min-width: 0; }
+.wx-city-result-main strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.wx-city-result-main small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
 /* 城市抽屉 */
 .wx-city-list { display: flex; flex-direction: column; gap: 2px; margin-top: 12px; }
 .wx-city-row { display: flex; align-items: center; gap: 8px; min-height: 46px; }
 .wx-city-name { display: flex; align-items: center; gap: 6px; flex: 1; min-width: 0; }
 .wx-city-pin { width: 14px; height: 14px; flex: none; }
-.wx-city-add { display: flex; align-items: center; gap: 8px; }
+.wx-city-adm { margin-left: 4px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.wx-city-row { gap: 6px; }
+/* 城市抽屉底部：输入框 + 添加 + 重新定位，窄宽度时换行 */
+.wx-city-add { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.wx-city-add .n-input { flex: 1 1 100%; }
 
 /* 响应式 */
 
@@ -71,10 +87,10 @@
    字体家族与颜色仍由主题提供。 */
 .wx-city-select { width: 132px; }
 .wx-hero-skeleton { display: flex; flex-direction: column; gap: 10px; }
-.wx-hero-temp { font-size: 44px; line-height: 1; font-weight: 650; letter-spacing: -0.04em; }
-.wx-hero-deg { font-size: 20px; vertical-align: top; }
-.wx-hero-cond, .wx-hero-feel { font-size: 13px; }
-.wx-aqi-num { font-size: 28px; line-height: 1; font-weight: 650; }
+.wx-hero-temp { font-size: 46px; line-height: 1; font-weight: 650; letter-spacing: -0.04em; }
+.wx-hero-deg { font-size: var(--fs-title); vertical-align: top; }
+.wx-hero-cond, .wx-hero-feel { font-size: var(--fs-13); }
+.wx-aqi-num { font-size: 30px; line-height: 1; font-weight: 650; }
 .wx-modal { width: 620px; max-width: 94vw; }
 .wx-alert-list { display: flex; flex-direction: column; gap: 8px; }
 .wx-alert-sub { display: block; margin: 16px 0 8px; }

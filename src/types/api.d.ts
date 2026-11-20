@@ -18,22 +18,43 @@ export interface NotifySetting {
   pomodoro: boolean; parcel: boolean; mail: boolean
   dndStart: string; dndEnd: string; privacy: string
 }
-export interface ShortcutSetting { search: string; newTodo: string; focus: string; quickAdd: string; viewSwitch: string }
+export interface ShortcutSetting {
+  search: string; newTodo: string; focus: string; viewSwitch: string
+  /** 历史字段：快捷添加按钮已移除，仅保留兼容 */
+  quickAdd?: string
+}
 export interface BackupSetting {
   auto: boolean; path: string; freq: '每天' | '每周' | '每次退出'
   encrypted: boolean; passwordSet: boolean; lastAt: number | null; lastFile: string | null
 }
 export interface WeatherSetting {
-  source: string; host: string; cacheMin: number
-  offlineCache: boolean; alertPush: boolean; unit: 'C' | 'F'; apiKeySet: boolean
+  source: string; host: string; geoHost: string
+  /** cacheMin 为兼容字段；refreshMin 是自动刷新频率（分钟，默认 5） */
+  cacheMin: number; refreshMin?: number
+  /** 设置面板里选中的认证方式，只影响表单展示 */
+  authType?: 'jwt' | 'key'
+  offlineCache: boolean; alertPush: boolean; unit: 'C' | 'F'
+  /** 凭据状态：apiKeySet/jwtSet 只表示是否已保存；apiKeyHint 只给尾号，私钥永不回显 */
+  apiKeySet: boolean; apiKeyHint?: string; jwtSet?: boolean
+  jwtMeta?: { developerId: string; projectId: string; keyId: string; privateKeySet: boolean } | null
+  authMode?: 'jwt' | 'key' | 'none'
 }
 export interface FeedSetting { defaultInterval: number; keepContent: boolean }
+/** 首页卡片显隐：true 表示在首页显示该卡片 */
 export interface ModulesSetting {
   dashboard: boolean; weather: boolean; schedule: boolean; todo: boolean
-  pomodoro: boolean; feed: boolean; parcel: boolean; mail: boolean
+  pomodoro: boolean; feed: boolean; parcel: boolean; mail: boolean; notice: boolean
+}
+export interface WindowSetting {
+  /** 关闭窗口时隐藏到托盘（不退出进程） */
+  closeToTray: boolean
+  /** 最小化时隐藏到托盘 */
+  minimizeToTray: boolean
+  /** 开机自动启动（同时写入系统登录项） */
+  launchAtLogin: boolean
 }
 export interface AllSettings {
-  appearance: AppearanceSetting; notify: NotifySetting; shortcuts: ShortcutSetting
+  appearance: AppearanceSetting; notify: NotifySetting; shortcuts: ShortcutSetting; window: WindowSetting
   backup: BackupSetting; weather: WeatherSetting; feed: FeedSetting; modules: ModulesSetting
 }
 export interface StorageSegment { key: string; label: string; color: string; bytes: number }
@@ -47,7 +68,13 @@ export interface BackupFile { path: string; name: string; bytes: number; at: num
 export interface BackupResult { path: string; name: string; bytes: number; encrypted: boolean; at: number }
 export interface RestoreResult { restored: Record<string, number>; snapshot: string; at: number }
 export interface ExportResult { path: string; name: string; bytes: number; kind: string }
-export interface WeatherTestResult { ok: boolean; keySet: boolean; host: string; cacheMin: number; message: string }
+export interface WeatherTestResult {
+  ok: boolean; keySet: boolean; authMode?: 'jwt' | 'key' | 'none'
+  host: string; geoHost?: string; cacheMin: number
+  message: string; city?: string; code?: string
+}
+export interface SearchItem { id: string; title: string; meta: string; target: string }
+export interface SearchGroup { module: string; label: string; items: SearchItem[] }
 export interface NotificationItem {
   id: string; module: string; level: string; title: string; body: string | null
   at: number; read: boolean; derived?: boolean
@@ -86,7 +113,13 @@ export interface Api {
     clearTrash(): Promise<IpcResult<{ todos: number; parcels: number }>>
     resetAll(): Promise<IpcResult<boolean>>
     setWeatherKey(dto: { key: string }): Promise<IpcResult<WeatherSetting>>
+    /** JWT 凭据：开发者 ID / 项目 ID / 凭据 ID / Ed25519 私钥（PEM） */
+    setWeatherJwt(dto: { developerId: string; projectId: string; keyId: string; privateKey?: string }): Promise<IpcResult<WeatherSetting>>
+    clearWeatherJwt(): Promise<IpcResult<WeatherSetting>>
     testWeather(): Promise<IpcResult<WeatherTestResult>>
+  }
+  search: {
+    query(dto: { keyword: string }): Promise<IpcResult<{ keyword: string; total: number; groups: SearchGroup[] }>>
   }
   notification: {
     today(): Promise<IpcResult<NotificationItem[]>>
@@ -101,14 +134,29 @@ export interface Api {
     path(): Promise<IpcResult<{ file: string | null; dir: string | null }>>
     files(): Promise<IpcResult<string[]>>
   }
+  window: {
+    minimize(): Promise<IpcResult<boolean>>
+    toggleMaximize(): Promise<IpcResult<boolean>>
+    close(): Promise<IpcResult<boolean>>
+    isMaximized(): Promise<IpcResult<boolean>>
+    isMinimized(): Promise<IpcResult<boolean>>
+  }
   system: {
     info(): Promise<IpcResult<{ version: string; userData: string; defaultUserData: string; dataSource: string; db: string }>>
     chooseDir(dto?: { title?: string; defaultPath?: string }): Promise<IpcResult<{ path: string | null }>>
     ping(): Promise<IpcResult<string>>
     openPath(p: string): Promise<IpcResult<boolean>>
     openExternal(dto: { url: string }): Promise<IpcResult<boolean>>
+    setLaunchAtLogin(dto: { enabled: boolean }): Promise<IpcResult<boolean>>
+    loginItemEnabled(): Promise<IpcResult<boolean>>
+    trayHint(): Promise<IpcResult<boolean>>
+    trayProbe(): Promise<IpcResult<boolean>>
+    onTrayProbeFailed(cb: () => void): () => void
+    trayInfo(): Promise<IpcResult<{ created: boolean; alive: boolean; iconPath: string; iconEmpty: boolean; iconSize: { width: number; height: number } | null; bounds: { x: number; y: number; width: number; height: number } | null }>>
   }
   onDataChanged(cb: (payload: { domain: string; action: string; at: number }) => void): () => void
+  onWindowMaximized(cb: (maximized: boolean) => void): () => void
+  onNavigate(cb: (to: string) => void): () => void
 }
 export interface ScheduleRow {
   id: string; title: string; startAt: number; endAt: number; allDay: boolean
@@ -156,15 +204,57 @@ export interface PomodoroApi {
   recent(limit?: number): Promise<IpcResult<PomodoroSessionRow[]>>
 }
 
-export interface WeatherCity { id: string; name: string; home: boolean; sort: number }
-export interface WeatherNow { temp: number; cond: string; feel: number; humidity: number; wind: string; pressure: number; visibility: number; uv: number | string; sunrise: string; sunset: string }
-export interface WeatherData { cityId: string; name: string; fromCache: boolean; fetchedAt: number; now: WeatherNow; hourly: Array<{ time: string; icon: string; temp: number; pop: number }>; daily: Array<{ dow: string; icon: string; hi: number; lo: number; pop: number }>; aqi: { num: number; level: string; pm25: number; pm10: number; o3: number }; indices: Array<{ name: string; icon: string; text: string }> }
+export interface WeatherCity {
+  id: string; name: string; home: boolean; sort: number
+  /** 和风天气 LocationID 与经纬度：由 GeoAPI 城市搜索写入 */
+  qweatherId?: string | null; lat?: number | null; lon?: number | null
+  adm1?: string | null; adm2?: string | null
+}
+export interface WeatherCitySearchResult {
+  qweatherId: string; name: string
+  lat: number; lon: number
+  adm1: string | null; adm2: string | null; country: string | null; type?: string | null
+}
+export interface WeatherNow {
+  temp: number; cond: string; feel: number; humidity: number; wind: string
+  pressure: number; visibility: number; uv: number | string; sunrise: string; sunset: string
+  obsTime?: string; precip?: number | null; cloud?: number | null; dew?: number | null
+}
+export interface WeatherHourly { time: string; icon: string; temp: number; pop: number; text?: string; wind?: string; windScale?: string; iconCode?: string }
+export interface WeatherDaily {
+  dow: string; icon: string; hi: number; lo: number; pop: number
+  date?: string; iconNight?: string; iconCode?: string
+  textDay?: string; textNight?: string; sunrise?: string; sunset?: string
+  uvIndex?: number | null; windDirDay?: string; windScaleDay?: string; moonPhase?: string
+}
+export interface WeatherAqi {
+  num: number; level: string; pm25: number; pm10: number; o3: number
+  primary?: string; no2?: number | null; so2?: number | null; co?: number | null
+}
+export interface WeatherAlert { id: string; title: string; type?: string; level?: string; text?: string; time?: string }
+export type WeatherSource = 'qweather' | 'cache'
+export interface WeatherData {
+  cityId: string; name: string; fromCache: boolean; fetchedAt: number
+  now: WeatherNow; hourly: WeatherHourly[]; daily: WeatherDaily[]
+  aqi: WeatherAqi; indices: Array<{ name: string; icon: string; text: string }>
+  alerts: WeatherAlert[]
+  /** 数据来源：和风天气 / 本地缓存 / 本地模拟 */
+  source: WeatherSource
+  updateTime?: string
+  /** 取数失败时的原因（有缓存时仍返回内容） */
+  error?: string | null
+}
 export interface WeatherApi {
   cities(): Promise<IpcResult<WeatherCity[]>>
-  addCity(dto: { name: string }): Promise<IpcResult<WeatherCity[]>>
+  /** 新增城市：携带用户选中的 GeoAPI 结果时直接用它的 LocationID，否则按名称定位 */
+  addCity(dto: { name: string; qweatherId?: string; lat?: number | null; lon?: number | null; adm1?: string | null; adm2?: string | null }): Promise<IpcResult<WeatherCity>>
+  /** 城市搜索：GeoAPI 候选列表（最多 10 条） */
+  searchCities(dto: { keyword: string }): Promise<IpcResult<WeatherCitySearchResult[]>>
   removeCity(id: string): Promise<IpcResult<WeatherCity[]>>
   setHome(id: string): Promise<IpcResult<WeatherCity[]>>
   fetch(dto: { cityId: string; force?: boolean }): Promise<IpcResult<WeatherData>>
+  /** 重新经 GeoAPI 定位（补齐 LocationID 与经纬度） */
+  relocate(dto?: { id?: string }): Promise<IpcResult<{ cities: WeatherCity[]; failed: string[] }>>
 }
 
 export interface FeedItem { id: string; sourceId: string; title: string; link: string | null; author: string | null; summary: string | null; content: string | null; publishedAt: number | null; read: boolean; starred: boolean; readLater: boolean; sourceTitle?: string; group?: string | null }

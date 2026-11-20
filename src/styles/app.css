@@ -2,11 +2,27 @@
 @import url('tokens.css');
 * { box-sizing: border-box; }
 html, body { margin: 0; height: 100%; }
-body { background: var(--bg); color: var(--text); font-family: var(--font); font-size: var(--fs-13); line-height: 1.55; }
+body { background: var(--bg); color: var(--text); font-family: var(--font); font-size: var(--fs-13); line-height: 1.6; }
 button, input { font: inherit; }
 a { color: inherit; text-decoration: none; }
 button { color: inherit; }
+/* 线性图标（sprite <use> 与手写 path）：描边风格 */
 svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; flex: 0 0 auto; }
+/*
+ * Naive UI 自带图标是「填充型」：<path> 没有自己的 fill，靠继承 svg 的 fill。
+ * 上面的全局 fill:none 会把它们清空——表现为提示条、消息、下拉箭头、分页等图标不显示。
+ * 这里只对 Naive 图标容器复位为填充，尺寸交回组件自身（1em）。
+ */
+.n-base-icon svg,
+.n-icon svg {
+  width: 1em;
+  height: 1em;
+  fill: currentColor;
+  stroke: none;
+  stroke-width: 0;
+}
+/* 圆形进度（番茄钟圆环）用 viewBox 缩放 svg，必须铺满容器，否则会被全局 svg 尺寸压成小点 */
+.n-progress svg { width: 100%; height: 100%; }
 :focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
 
 /* 页面底色画在 app-shell 上：body 在主题变量作用域之外，深色时不能靠 body 背景 */
@@ -32,13 +48,23 @@ svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width:
 .sidebar-footnote { margin-top: 5px; color: var(--muted); font-size: var(--fs-11); }
 
 .workspace { display: flex; flex-direction: column; min-width: 0; min-height: 0; }
-.topbar { display: flex; align-items: center; gap: 14px; height: var(--topbar-h); padding: 0 24px; padding-right: 162px; background: var(--surface); border-bottom: 1px solid var(--border); }
-.search-box { display: flex; align-items: center; gap: 8px; width: min(400px, 40vw); height: 34px; padding: 0 10px; border: 1px solid var(--border); border-radius: var(--radius-btn); background: var(--bg); color: var(--muted); }
+/* 自绘标题栏：整条顶栏是拖动区，交互元素单独排除 */
+.topbar { display: flex; align-items: center; gap: 14px; height: var(--topbar-h); padding: 0 12px 0 24px; background: var(--surface); border-bottom: 1px solid var(--border); -webkit-app-region: drag; }
+.topbar .search-box,
+.topbar .win-controls,
+.topbar .win-controls * { -webkit-app-region: no-drag; }
+/* 顶栏搜索已改为「打开搜索弹窗」的按钮：整块可点，不再是输入框 */
+.search-box { display: flex; align-items: center; justify-content: flex-start; gap: 10px; width: min(420px, 42vw); height: 36px; padding: 0 12px; border: 1px solid var(--border); border-radius: var(--radius-btn); background: var(--bg); color: var(--muted); cursor: pointer; text-align: left; }
+.search-placeholder { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.search-box:hover { border-color: var(--border-strong); }
 .search-box svg { width: 16px; height: 16px; }
 .search-box input { width: 100%; height: 24px; border: 0; outline: 0; background: transparent; color: var(--text); font-size: var(--fs-13); }
 .search-box input::placeholder { color: var(--muted); }
-.search-box kbd { padding: 3px 5px; border: 1px solid var(--border); border-radius: 4px; background: var(--surface); color: var(--muted); font-family: inherit; font-size: var(--fs-11); white-space: nowrap; }
-.top-actions { display: flex; align-items: center; gap: 10px; margin-left: auto; }
+/* 快捷键提示改为纯文字（n-text depth=3），不再做成像按钮的小胶囊 */
+.search-kbd { margin-left: auto; white-space: nowrap; }
+.top-actions { display: flex; align-items: center; gap: 6px; margin-left: auto; }
+.win-controls { display: flex; align-items: center; gap: 2px; }
+.win-btn { width: 34px; height: 28px; }
 .icon-btn { position: relative; display: inline-grid; place-items: center; width: 34px; height: 34px; border: 1px solid var(--border); border-radius: var(--radius-btn); background: var(--surface); cursor: pointer; transition: background var(--tr), border-color var(--tr); }
 .icon-btn:hover { background: var(--primary-softer); border-color: var(--primary-soft); }
 .icon-btn svg { width: 16px; height: 16px; }
@@ -46,7 +72,7 @@ svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width:
 .primary-btn:hover { background: var(--primary-hover); }
 .primary-btn svg { width: 16px; height: 16px; }
 .badge { position: absolute; top: -5px; right: -5px; min-width: 17px; height: 17px; padding: 0 4px; border-radius: 999px; background: var(--danger); color: var(--on-primary); font-size: var(--fs-11); line-height: 17px; text-align: center; }
-.os-space { width: 138px; height: 32px; }
+
 .content { flex: 1; min-height: 0; }
 .content-inner { padding: 24px 28px 32px; }
 .page-head { display: flex; align-items: flex-end; justify-content: space-between; gap: 16px; margin-bottom: 16px; }
@@ -69,14 +95,27 @@ h1 { margin: 0; font-size: var(--fs-title); line-height: 1.3; font-weight: 650; 
 
 /* 侧栏折叠（设置 › 外观）：只调布局与可见性，外观由主题变量提供 */
 .app-shell.shell-compact { grid-template-columns: 64px minmax(0, 1fr); }
-.app-shell.shell-compact .brand { justify-content: center; padding: 0; }
+.app-shell.shell-compact .sidebar { padding-top: 16px; }
+/* 折叠后品牌区竖排：Logo 在上、折叠按钮在下，避免 64px 宽里两枚图标挤在一起 */
+.app-shell.shell-compact .brand {
+  flex-direction: column;
+  justify-content: center;
+  height: auto;
+  gap: 6px;
+  margin-bottom: 8px;
+  padding: 0;
+}
+.app-shell.shell-compact .brand-mark { width: 26px; height: 26px; }
 .app-shell.shell-compact .brand-text,
 .app-shell.shell-compact .nav-item span,
 .app-shell.shell-compact .nav-section,
-.app-shell.shell-compact .sidebar-footnote { display: none; }
-.app-shell.shell-compact .nav-item { justify-content: center; padding: 0; }
-.app-shell.shell-compact .sidebar-footer { padding: 12px 8px; }
-.app-shell.shell-compact .local-status { justify-content: center; }
+.app-shell.shell-compact .sidebar-footnote,
+.app-shell.shell-compact .local-status-text { display: none; }
+.app-shell.shell-compact .nav { padding: 0 6px; }
+.app-shell.shell-compact .nav-item { justify-content: center; min-height: 40px; padding: 0; }
+/* 底部只剩状态点，不再把「本地存储正常」挤成竖排 */
+.app-shell.shell-compact .sidebar-footer { display: grid; place-items: center; padding: 10px 6px 14px; }
+.app-shell.shell-compact .local-status { justify-content: center; gap: 0; }
 .app-shell.shell-compact .brand .sidebar-toggle { margin-left: 0; }
 
 @media (prefers-reduced-motion: reduce) { *, *::before, *::after { transition-duration: .01ms !important; } }
