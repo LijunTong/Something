@@ -336,12 +336,6 @@ onMounted(load)
 
     <n-drawer v-model:show="showDrawer" :width="360" placement="right">
       <n-drawer-content v-if="selected" :title="selected.title" closable :native-scrollbar="false">
-        <template #header>
-          <div style="display:flex;align-items:center;gap:8px;width:100%">
-            <span style="flex:1">{{ selected.title }}</span>
-            <n-button size="tiny" quaternary @click="removeEvent(selected)">删除</n-button>
-          </div>
-        </template>
         <div>
           <div class="field"><span class="k">时间</span><span class="v">{{ fmtDateFull(selected) }} {{ fmtRange(selected) }}</span></div>
           <div class="field"><span class="k">地点</span><span class="v">{{ selected.place || '—' }}</span></div>
@@ -357,6 +351,7 @@ onMounted(load)
           <n-space style="width:100%">
             <n-button type="primary" size="small" @click="$router.push('/pomodoro')">开始专注</n-button>
             <n-button size="small" @click="toTodo">转为待办</n-button>
+            <n-button size="small" type="error" quaternary @click="removeEvent(selected)">删除</n-button>
           </n-space>
         </template>
       </n-drawer-content>

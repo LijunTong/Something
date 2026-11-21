@@ -1,5 +1,5 @@
 // 设置领域服务：app_setting 键值表 + 本地存储统计 + 备份/恢复 + 导出 + 清理。
-// 约束：所有 SQL 只在此文件；凭据（天气 API Key）经 safeStorage 加密后单键保存，永不出现在 all()。
+// 约束：所有 SQL 只在此文件；凭据（天气 API Key / JWT 私钥）明文单键保存，但键名在 INTERNAL_KEYS 里，不出现在 all()。
 const fs = require('node:fs')
 const path = require('node:path')
 const crypto = require('node:crypto')
@@ -9,15 +9,24 @@ const logger = require('../log/logger.cjs')
 const scheduleSvc = require('./schedule.cjs')
 const feedSvc = require('./feed.cjs')
 const qweather = require('./qweather.cjs')
+const secret = require('./secret.cjs')
 
 const DEFAULTS = {
   appearance: { theme: '浅色', accent: '#0f766e', font: '中', sidebarExpand: true },
+  // 事件通知：inApp 应用内（通知表 + 浮层）、desktop 系统通知（通知中心 toast）
+  // systemOnlyAway：窗口在前台时只走应用内，避免同一条提醒弹两次
   notify: {
-    desktop: true, weather: true, schedule: true, todo: true,
+    inApp: true, desktop: true, systemOnlyAway: true,
+    weather: true, schedule: true, todo: true,
     pomodoro: true, parcel: false, mail: true,
-    dndStart: '22:00', dndEnd: '08:00', privacy: 'summary'
+    dndOn: false, dndStart: '22:00', dndEnd: '08:00', privacy: 'summary',
+    // 每个模块的提示音，默认蜂鸣；渲染层按名字播放 assets/sounds 里的音频
+    sounds: {
+      weather: '蜂鸣', schedule: '蜂鸣', todo: '蜂鸣',
+      pomodoro: '蜂鸣', parcel: '蜂鸣', mail: '蜂鸣'
+    }
   },
-  shortcuts: { search: 'Ctrl+K', newTodo: 'N', focus: 'F', viewSwitch: 'Ctrl+1-2' },
+  shortcuts: { search: 'Ctrl+K', newTodo: 'N', focus: 'F' },
   // 窗口行为：关闭/最小化到托盘、开机启动（开机启动同时写入系统登录项）
   window: { closeToTray: true, minimizeToTray: false, launchAtLogin: false },
   // 自动备份：path 为空时落在数据库同级的 backups 目录
@@ -34,11 +43,27 @@ const DEFAULTS = {
   },
   feed: { defaultInterval: 360, keepContent: true },
   // 首页卡片显隐：只影响首页展示，模块页与数据不受影响
-  modules: { dashboard: true, weather: true, schedule: true, todo: true, pomodoro: true, feed: true, parcel: true, mail: true, notice: true }
+  modules: { dashboard: true, weather: true, schedule: true, todo: true, pomodoro: true, feed: true, parcel: true, mail: true, notice: true },
+  // 首页卡片布局：x/y 为网格坐标、w/h 为网格单位（行高 40px、间距 16px、列数 3/2/1 自适应）
+  // 这份坐标与渲染层 packLayout(默认顺序) 的结果一致；旧数据只有 w/h 时由渲染层补齐坐标
+  // locked 为 true 时首页不允许拖动与缩放
+  home: {
+    locked: false,
+    layout: [
+      { key: 'weather', x: 0, y: 0, w: 1, h: 6 },
+      { key: 'schedule', x: 1, y: 0, w: 2, h: 6 },
+      { key: 'todo', x: 0, y: 6, w: 1, h: 6 },
+      { key: 'pomodoro', x: 1, y: 6, w: 1, h: 7 },
+      { key: 'parcel', x: 2, y: 6, w: 1, h: 6 },
+      { key: 'feed', x: 0, y: 12, w: 1, h: 6 },
+      { key: 'mail', x: 1, y: 13, w: 2, h: 6 },
+      { key: 'notice', x: 0, y: 18, w: 1, h: 5 }
+    ]
+  }
 }
 
 // 内部键：不进 all()，避免凭据或内部游标泄漏到渲染层
-const INTERNAL_KEYS = ['weatherKey', 'noticeReadAt']
+const INTERNAL_KEYS = ['weatherKey', 'noticeReadAt', 'noticeDerivedRead', 'noticeDismissed', 'notifyEmitted']
 
 // 备份包含的业务表（按外键顺序插入，删除时反向）
 const TABLES = [
@@ -84,7 +109,7 @@ function readAll() {
   // 历史配置清理：快捷添加已移除；视图切换区间收敛为 Ctrl+1-2
   if (out.shortcuts && typeof out.shortcuts === 'object') {
     delete out.shortcuts.quickAdd
-    if (out.shortcuts.viewSwitch === 'Ctrl+1-3') out.shortcuts.viewSwitch = 'Ctrl+1-2'
+    delete out.shortcuts.viewSwitch
   }
   return out
 }
@@ -446,12 +471,33 @@ function resetAll() {
 
 /* ---------- 天气数据源凭据 ---------- */
 
-function hasWeatherKey() {
+/** 读天气 API Key 明文（旧密文自动解出）；没有则返回空串 */
+function readWeatherKey() {
   try {
-    return !!get().prepare("SELECT value FROM app_setting WHERE key = 'weatherKey'").get()
+    const row = get().prepare("SELECT value FROM app_setting WHERE key = 'weatherKey'").get()
+    if (!row) return ''
+    return String(secret.unpack(row.value) || '').trim()
   } catch (e) {
-    return false
+    return ''
   }
+}
+
+/** JWT 凭据明文对象：{ developerId, projectId, keyId, privateKey } */
+function readJwtCred() {
+  try {
+    const row = get().prepare("SELECT value FROM app_setting WHERE key = 'qweatherJwt'").get()
+    if (!row) return null
+    const plain = secret.unpack(row.value)
+    if (!plain) return null
+    const cred = JSON.parse(plain)
+    return cred && typeof cred === 'object' ? cred : null
+  } catch (e) {
+    return null
+  }
+}
+
+function hasWeatherKey() {
+  return !!readWeatherKey()
 }
 
 function hasWeatherJwt() {
@@ -469,46 +515,57 @@ function weatherAuthMode() {
   return 'none'
 }
 
-/** 解密任意一条 safeStorage 密文（失败返回空串） */
-function decryptSecretValue(b64) {
-  try {
-    const safeStorage = require('electron').safeStorage
-    if (!safeStorage || typeof safeStorage.decryptString !== 'function') return ''
-    return safeStorage.decryptString(Buffer.from(String(b64 || ''), 'base64'))
-  } catch (e) {
-    return ''
-  }
-}
-
-/** 回显用：JWT 的开发者/项目/凭据 ID 不属于密钥，可以回显；私钥永不返回 */
+/** 回显用：JWT 的开发者/项目/凭据 ID 可以回显；私钥只在 revealSecret 里按需返回 */
 function readJwtMeta() {
-  const row = get().prepare("SELECT value FROM app_setting WHERE key = 'qweatherJwt'").get()
-  if (!row) return null
-  let b64 = ''
-  try { b64 = JSON.parse(row.value) } catch (e) { return null }
-  const plain = decryptSecretValue(b64)
-  if (!plain) return null
-  try {
-    const cred = JSON.parse(plain)
-    return {
-      developerId: String(cred.developerId || ''),
-      projectId: String(cred.projectId || ''),
-      keyId: String(cred.keyId || ''),
-      privateKeySet: !!cred.privateKey
-    }
-  } catch (e) {
-    return null
+  const cred = readJwtCred()
+  if (!cred) return null
+  return {
+    developerId: String(cred.developerId || ''),
+    projectId: String(cred.projectId || ''),
+    keyId: String(cred.keyId || ''),
+    privateKeySet: !!cred.privateKey
   }
 }
 
-/** 回显用：API Key 只给尾号，便于确认「是哪一把」而不泄漏完整 Key */
+/** 回显用：列表里只给尾号，完整 Key 由 revealSecret 按需返回 */
 function readApiKeyHint() {
-  const row = get().prepare("SELECT value FROM app_setting WHERE key = 'weatherKey'").get()
-  if (!row) return ''
-  let b64 = ''
-  try { b64 = JSON.parse(row.value) } catch (e) { return '' }
-  const key = decryptSecretValue(b64)
+  const key = readWeatherKey()
   return key ? key.slice(-4) : ''
+}
+
+/**
+ * 一次性迁移：把旧版 safeStorage 密文改写成明文（{plain} 包装）。
+ * 只在启动时跑一次，已是明文的记录不动，返回改写的条数。
+ */
+function migratePlain() {
+  try {
+    return withTx(function () {
+      let changed = 0
+      ;['weatherKey', 'qweatherJwt'].forEach(function (key) {
+        const row = get().prepare('SELECT value FROM app_setting WHERE key = ?').get(key)
+        if (!row || !row.value) return
+        const plain = secret.unpack(row.value)
+        if (!plain) return
+        if (row.value === secret.pack(plain)) return
+        get().prepare('INSERT OR REPLACE INTO app_setting (key,value) VALUES (?,?)').run(key, secret.pack(plain))
+        changed += 1
+      })
+      return changed
+    })
+  } catch (e) {
+    return 0
+  }
+}
+
+/** 按需取明文：设置页默认掩码，用户点「显示」时才调这里 */
+function revealSecret(dto) {
+  const kind = dto && dto.kind
+  if (kind === 'weatherKey') return { kind: kind, value: readWeatherKey() }
+  if (kind === 'weatherJwt') {
+    const cred = readJwtCred()
+    return { kind: kind, value: cred ? String(cred.privateKey || '') : '' }
+  }
+  throw new Error('UNKNOWN_SECRET_KIND')
 }
 
 function weatherStatus() {
@@ -521,7 +578,7 @@ function weatherStatus() {
   return cfg
 }
 
-/** 保存 JWT 凭据：整个对象加密后单键存放，返回值只带状态位（私钥绝不外泄） */
+/** 保存 JWT 凭据：整个对象明文单键存放（设置页默认掩码），返回值只带状态位 */
 function setWeatherJwt(dto) {
   try {
     return withTx(function () {
@@ -536,13 +593,12 @@ function setWeatherJwt(dto) {
       if (!developerId || !projectId || !keyId || !privateKey) throw new Error('JWT 四项都必填：开发者 ID、项目 ID、凭据 ID、Ed25519 私钥')
       let finalKey = privateKey
       if (privateKey === '<keep>') {
-        const row = get().prepare("SELECT value FROM app_setting WHERE key = 'qweatherJwt'").get()
-        const prev = row ? JSON.parse(decryptSecretValue(JSON.parse(row.value)) || '{}') : {}
+        const prev = readJwtCred() || {}
         finalKey = String(prev.privateKey || '')
       }
       if (!finalKey) throw new Error('未找到原私钥，请重新粘贴 Ed25519 私钥')
       const payload = JSON.stringify({ developerId: developerId, projectId: projectId, keyId: keyId, privateKey: finalKey })
-      get().prepare('INSERT OR REPLACE INTO app_setting (key,value) VALUES (?,?)').run('qweatherJwt', JSON.stringify(encryptSecret(payload)))
+      get().prepare('INSERT OR REPLACE INTO app_setting (key,value) VALUES (?,?)').run('qweatherJwt', secret.pack(payload))
       return weatherStatus()
     })
   } catch (err) {
@@ -561,13 +617,7 @@ function clearWeatherJwt() {
   }
 }
 
-function encryptSecret(plain) {
-  const safeStorage = require('electron').safeStorage
-  if (!safeStorage || typeof safeStorage.encryptString !== 'function') throw new Error('ENCRYPTION_UNAVAILABLE')
-  return safeStorage.encryptString(String(plain)).toString('base64')
-}
-
-/** 保存天气 API Key：加密后单键存放，返回值只带 apiKeySet 状态位。 */
+/** 保存天气 API Key：明文单键存放，返回值只带 apiKeySet 状态位。 */
 function setWeatherKey(dto) {
   try {
     return withTx(function () {
@@ -576,7 +626,7 @@ function setWeatherKey(dto) {
         get().prepare("DELETE FROM app_setting WHERE key = 'weatherKey'").run()
         return weatherStatus()
       }
-      get().prepare('INSERT OR REPLACE INTO app_setting (key,value) VALUES (?,?)').run('weatherKey', JSON.stringify(encryptSecret(key)))
+      get().prepare('INSERT OR REPLACE INTO app_setting (key,value) VALUES (?,?)').run('weatherKey', secret.pack(key))
       return weatherStatus()
     })
   } catch (err) {
@@ -598,5 +648,5 @@ module.exports = {
   storage: storage, backup: backup, backups: backups, restore: restore,
   exportData: exportData, clearCache: clearCache, clearTrash: clearTrash, resetAll: resetAll,
   setWeatherKey: setWeatherKey, setWeatherJwt: setWeatherJwt, clearWeatherJwt: clearWeatherJwt,
-  testWeather: testWeather
+  revealSecret: revealSecret, migratePlain: migratePlain, testWeather: testWeather
 }

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { homeRefreshToken } from '@/composables/useHomeRefresh'
+import { useHomeCardRefresh } from '@/composables/useHomeRefresh'
 import { computed, onMounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import HomeCardMenu from '@/components/home/HomeCardMenu.vue'
@@ -70,14 +70,15 @@ function pick(c: WeatherCity) {
 
 function open() { void router.push('/weather') }
 onMounted(() => { void load() })
-watch(homeRefreshToken, () => { void load() })
+const refreshTick = useHomeCardRefresh('weather')
+watch(refreshTick, () => { void load() })
 </script>
 
 <template>
   <n-card size="small" class="hc-clickable hc-card hc-card-weather" @click="open">
     <template #header>
       <div class="hc-head">
-        <span>天气 · {{ data?.name || '—' }}</span>
+        <span>天气<template v-if="data?.name"> · {{ data.name }}</template></span>
         <n-tag size="tiny">{{ data?.fromCache ? '本地缓存' : '已更新' }}</n-tag>
       </div>
     </template>

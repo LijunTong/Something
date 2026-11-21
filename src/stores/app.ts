@@ -1,7 +1,7 @@
 import { defineStore } from 'pinia'
 import { call, bridge, hasBridge, plain, IpcError } from '@/lib/ipc'
 import { log } from '@/lib/logger'
-import type { AllSettings, FeedApi, FeedItem, TodoListRow, TodoRow, TodoStats } from '@/types/api'
+import type { AllSettings, FeedApi, FeedItem, NotifyCounts, TodoListRow, TodoRow, TodoStats } from '@/types/api'
 
 interface State {
   ready: boolean
@@ -14,6 +14,8 @@ interface State {
   runtime: { version: string; userData: string; db: string } | null
   /** 信息流未读数：只做侧栏角标展示，正文列表仍归信息流页 */
   feedUnread: number
+  /** 通知未读数：侧栏「通知」角标，与通知页、首页卡片同一口径 */
+  noticeUnread: number
 }
 
 export const useAppStore = defineStore('app', {
@@ -26,7 +28,8 @@ export const useAppStore = defineStore('app', {
     todoStats: null,
     settings: null,
     runtime: null,
-    feedUnread: 0
+    feedUnread: 0,
+    noticeUnread: 0
   }),
 
   getters: {
@@ -51,9 +54,11 @@ export const useAppStore = defineStore('app', {
         this.runtime = runtime
         await this.refreshTodos()
         await this.refreshFeedUnread()
+        await this.refreshNoticeUnread()
         bridge().onDataChanged((p) => {
           if (p.domain === 'todo') void this.refreshTodos()
           if (p.domain === 'settings') void this.refreshSettings()
+          if (p.domain === 'notification') void this.refreshNoticeUnread()
         })
         this.ready = true
       } catch (e) {
@@ -86,6 +91,12 @@ export const useAppStore = defineStore('app', {
 
     setFeedUnread(n: number) {
       this.feedUnread = n
+    },
+
+    /** 侧栏「通知」角标：与通知页 counts.unread 同源 */
+    async refreshNoticeUnread() {
+      const r = await call(() => bridge().notification.counts(), null as unknown as NotifyCounts)
+      this.noticeUnread = r ? r.unread : this.noticeUnread
     },
 
     async refreshSettings() {

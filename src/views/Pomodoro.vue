@@ -60,9 +60,15 @@ async function loadAll() {
 }
 
 async function refreshState() {
-  const next = await call(() => bridge().pomodoro.tick(), st.value)
-  if (next.phase !== st.value.phase) await loadAll()
-  else st.value = next
+  // 浏览器预览或桥缺失时 tick 不存在，不能因此抛出未处理的 rejection
+  if (!bridge() || !bridge().pomodoro || typeof bridge().pomodoro.tick !== 'function') return
+  try {
+    const next = await call(() => bridge().pomodoro.tick(), st.value)
+    if (next.phase !== st.value.phase) await loadAll()
+    else st.value = next
+  } catch (e) {
+    log.exception('pomodoro.refreshState', e)
+  }
 }
 
 async function start() {
@@ -132,11 +138,19 @@ watch(() => st.value.phase, (now, prev) => {
   if (now === 'break' && prev === 'running') showFinish.value = true
 })
 
+let offData: (() => void) | null = null
 onMounted(() => {
   void loadAll()
   window.addEventListener('keydown', onShortcut)
+  // 绑定的任务在别的页面被勾选完成后，主进程会把番茄钟收尾，这里跟着重画
+  offData = bridge().onDataChanged(function (p: { domain?: string }) {
+    if (p && p.domain === 'pomodoro') void loadAll()
+  })
+  // 计时以主进程为准：每秒同步一次剩余时间，到点由 tick() 推进到休息或待开始
+  timer = window.setInterval(function () { void refreshState() }, 1000)
 })
 onUnmounted(() => window.removeEventListener('keydown', onShortcut))
+onUnmounted(() => { if (offData) offData() })
 onUnmounted(() => { if (timer) clearInterval(timer); if (ticker) clearInterval(ticker) })
 </script>
 
@@ -170,7 +184,6 @@ onUnmounted(() => { if (timer) clearInterval(timer); if (ticker) clearInterval(t
           <n-button v-if="st.phase === 'idle' || st.phase === 'break'" type="primary" @click="start">开始专注</n-button>
           <n-button v-if="st.phase === 'running'" @click="pause">暂停</n-button>
           <n-button v-if="st.phase === 'paused'" type="primary" @click="resume">继续</n-button>
-          <n-button v-if="st.phase === 'break'" @click="skipBreak">跳过休息</n-button>
           <n-button v-if="st.phase === 'running' || st.phase === 'paused'" @click="showAbandon = true">放弃</n-button>
         </n-space>
         <div class="pm-config-note muted-text">

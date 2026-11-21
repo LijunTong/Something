@@ -3,6 +3,7 @@ const { get, withTx } = require('../db/conn.cjs')
 const { uid, now, camel, camelAll, bool } = require('../db/util.cjs')
 const logger = require('../log/logger.cjs')
 const mailNet = require('./mailNet.cjs')
+const secret = require('./secret.cjs')
 
 // 账户对外字段白名单：刻意排除 secret_enc，任何返回值都不带授权码密文。
 const ACCOUNT_COLUMNS = 'id,alias,email,protocol,imap_host,imap_port,smtp_host,smtp_port,username,sync_days,enabled,last_sync_at'
@@ -54,41 +55,43 @@ function parseArray(v) {
   }
 }
 
-// 用 Electron safeStorage 加密授权码；加密能力缺失时按约定抛出固定错误。
+// 授权码明文落库（用户要求可切换明文查看）；旧 safeStorage 密文读取时自动解出。
 function encryptSecret(plain) {
-  let safeStorage = null
-  try {
-    safeStorage = require('electron').safeStorage
-  } catch (e) {
-    throw new Error('ENCRYPTION_UNAVAILABLE')
-  }
-  if (!safeStorage || typeof safeStorage.encryptString !== 'function') {
-    throw new Error('ENCRYPTION_UNAVAILABLE')
-  }
-  let buf = null
-  try {
-    buf = safeStorage.encryptString(String(plain == null ? '' : plain))
-  } catch (e) {
-    throw new Error('ENCRYPTION_UNAVAILABLE')
-  }
-  return Buffer.from(buf).toString('base64')
+  return secret.pack(String(plain == null ? '' : plain))
 }
 
-// 解密授权码：只在主进程内用于 IMAP/SMTP，明文不离开本进程。
-function decryptSecret(b64) {
-  if (!b64) throw new Error('SECRET_REQUIRED')
-  let safeStorage = null
+function decryptSecret(stored) {
+  if (!stored) throw new Error('SECRET_REQUIRED')
+  return secret.unpack(stored)
+}
+
+// 一次性迁移：把旧版 safeStorage 密文授权码改写成明文，返回改写条数
+function migratePlain() {
   try {
-    safeStorage = require('electron').safeStorage
+    return withTx(function () {
+      const rows = get().prepare('SELECT id, secret_enc FROM mail_account').all()
+      let changed = 0
+      rows.forEach(function (row) {
+        if (!row || !row.secret_enc) return
+        const plain = secret.unpack(row.secret_enc)
+        if (!plain) return
+        if (row.secret_enc === secret.pack(plain)) return
+        get().prepare('UPDATE mail_account SET secret_enc = ? WHERE id = ?').run(secret.pack(plain), row.id)
+        changed += 1
+      })
+      return changed
+    })
   } catch (e) {
-    throw new Error('ENCRYPTION_UNAVAILABLE')
+    return 0
   }
-  if (!safeStorage || typeof safeStorage.decryptString !== 'function') throw new Error('ENCRYPTION_UNAVAILABLE')
-  try {
-    return safeStorage.decryptString(Buffer.from(String(b64), 'base64'))
-  } catch (e) {
-    throw new Error('SECRET_DECRYPT_FAILED')
-  }
+}
+
+// 按需回显授权码：设置页默认掩码，用户点「显示」时才取明文
+function revealSecret(dto) {
+  const id = dto && dto.id
+  const row = get().prepare('SELECT secret_enc FROM mail_account WHERE id = ?').get(id)
+  if (!row) throw new Error('ACCOUNT_NOT_FOUND')
+  return { id: id, value: String(secret.unpack(row.secret_enc) || '').trim() }
 }
 
 // 单账户详情，走白名单列，确保 secret_enc 不进入返回值。
@@ -522,6 +525,8 @@ module.exports = {
   folders: folders,
   addAccount: addAccount,
   updateAccount: updateAccount,
+  revealSecret: revealSecret,
+  migratePlain: migratePlain,
   removeAccount: removeAccount,
   testAccount: testAccount,
   sync: sync,

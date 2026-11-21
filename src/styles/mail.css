@@ -47,7 +47,8 @@
 .ml-subj { margin-top: 2px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .ml-sum { display: flex; align-items: center; gap: 4px; margin-top: 2px; min-width: 0; overflow: hidden; }
 .ml-sum span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.ml-empty { padding: 20px 0; }
+/* 列表窗格里的空态居中：高度跟列表上限对齐，避免贴在窗格顶部 */
+.ml-empty { display: grid; place-items: center; min-height: calc(100vh - 360px); padding: 20px 0; }
 
 /* 阅读窗格 */
 .ml-read-empty { display: grid; place-items: center; min-height: 240px; padding: 20px; }

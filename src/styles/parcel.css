@@ -12,7 +12,8 @@
 .pc-card-key > span { overflow: hidden; }
 .pc-card-foot { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: 12px; padding-top: 10px; }
 .pc-card-actions { display: flex; align-items: center; gap: 6px; }
-.pc-empty { padding: 24px 0; }
+/* 列表卡里的空态撑满可用高度并居中 */
+.pc-empty { display: flex; flex-direction: column; justify-content: center; min-height: 320px; padding: 24px 0; }
 .privacy-toggle { display: inline-flex; align-items: center; gap: 7px; }
 .pc-drawer-info { display: flex; flex-direction: column; gap: 8px; }
 .pc-track-title { margin-top: 16px; }

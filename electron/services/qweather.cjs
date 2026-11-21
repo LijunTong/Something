@@ -3,6 +3,7 @@
 const crypto = require('node:crypto')
 const { get } = require('../db/conn.cjs')
 const logger = require('../log/logger.cjs')
+const secret = require('./secret.cjs')
 
 const TIMEOUT_MS = 8000
 // 2024 起和风天气取消了 devapi/geoapi 公共域名，必须使用控制台分配的账号专属 API Host，
@@ -34,21 +35,11 @@ function codeMessage(code) {
   return CODE_TEXT[String(code)] || ('和风天气返回错误码 ' + code)
 }
 
-/** 解密天气 API Key：主进程用 safeStorage 存的是 base64 密文 */
+/** 读天气 API Key 明文（兼容旧 safeStorage 密文） */
 function readApiKey() {
   const row = get().prepare("SELECT value FROM app_setting WHERE key = 'weatherKey'").get()
   if (!row) return ''
-  let b64 = ''
-  try { b64 = JSON.parse(row.value) } catch (e) { return '' }
-  if (!b64) return ''
-  try {
-    const safeStorage = require('electron').safeStorage
-    if (!safeStorage || typeof safeStorage.decryptString !== 'function') return ''
-    return String(safeStorage.decryptString(Buffer.from(b64, 'base64'))).trim()
-  } catch (e) {
-    logger.warn('qweather', 'decrypt_key_failed', { message: e && e.message })
-    return ''
-  }
+  return String(secret.unpack(row.value) || '').trim()
 }
 
 /** 数据源配置：settings.weather 里的 host/geoHost，缺省用旧版公共域名 */
@@ -73,22 +64,18 @@ function config() {
 
 /* ---------- 身份认证：JWT（官方推荐）或 API KEY ---------- */
 
-/** 读取 JWT 凭据：safeStorage 加密的 { developerId, projectId, keyId, privateKey } */
+/** 读取 JWT 凭据明文：{ developerId, projectId, keyId, privateKey } */
 function readJwt() {
   const row = get().prepare("SELECT value FROM app_setting WHERE key = 'qweatherJwt'").get()
   if (!row) return null
-  let b64 = ''
-  try { b64 = JSON.parse(row.value) } catch (e) { return null }
-  if (!b64) return null
   try {
-    const safeStorage = require('electron').safeStorage
-    if (!safeStorage || typeof safeStorage.decryptString !== 'function') return null
-    const json = safeStorage.decryptString(Buffer.from(b64, 'base64'))
-    const cred = JSON.parse(json)
+    const plain = secret.unpack(row.value)
+    if (!plain) return null
+    const cred = JSON.parse(plain)
     if (!cred || !cred.projectId || !cred.keyId || !cred.privateKey) return null
     return cred
   } catch (e) {
-    logger.warn('qweather', 'decrypt_jwt_failed', { message: e && e.message })
+    logger.warn('qweather', 'read_jwt_failed', { message: e && e.message })
     return null
   }
 }

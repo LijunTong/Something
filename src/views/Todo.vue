@@ -2,9 +2,10 @@
 import { ref, computed, onBeforeUnmount, onMounted } from 'vue'
 import {
   useMessage, useDialog,
-  NButton, NButtonGroup, NInput, NSelect, NCheckbox, NEmpty, NSpin,
-  NModal, NForm, NFormItem, NTag, NDrawer, NDrawerContent, NSpace, NTooltip, NDatePicker
+  NButton, NInput, NSelect, NCheckbox, NEmpty, NSpin,
+  NModal, NForm, NFormItem, NTag, NDrawer, NDrawerContent, NSpace, NTooltip, NDatePicker, NText
 } from 'naive-ui'
+import { useRouter } from 'vue-router'
 import { useAppStore } from '@/stores/app'
 import Shell from '@/components/Shell.vue'
 import type { TodoRow, ScheduleRow } from '@/types/api'
@@ -14,6 +15,7 @@ import { log } from '@/lib/logger'
 import '@/styles/todo.css'
 
 const store = useAppStore()
+const router = useRouter()
 const message = useMessage()
 const dialog = useDialog()
 
@@ -22,7 +24,6 @@ type SmartFilter = '今天' | '本周' | '已完成'
 const smart = ref<SmartFilter | null>('今天')
 const activeListId = ref<string | null>(null)
 const filter = ref<'全部' | '未完成' | '高优先级' | '有截止时间'>('全部')
-const view = ref<'list' | 'board'>('list')
 const selectedId = ref<string | null>(null)
 const quickTitle = ref('')
 const showModal = ref(false)
@@ -40,6 +41,8 @@ interface Draft {
 }
 const blankDraft = (): Draft => ({ title: '', listId: null, priority: '中', dueAt: null, remindText: '10', labelsText: '', note: '' })
 const draft = ref<Draft>(blankDraft())
+/** 为空表示新建；有值表示正在编辑这条待办 */
+const editingId = ref<string | null>(null)
 
 const priorityOptions = ['高', '中', '低'].map((x) => ({ label: x, value: x }))
 const remindOptions = [
@@ -52,7 +55,7 @@ const remindOptions = [
 const listOptions = computed(() => store.todoLists.map((l) => ({ label: l.name, value: l.id })))
 const filters: Array<'全部' | '未完成' | '高优先级' | '有截止时间'> = ['全部', '未完成', '高优先级', '有截止时间']
 
-/** 快捷键：N 新建任务，Ctrl+1/2 切换清单/看板（组合键可在设置里改） */
+/** 快捷键：N 新建任务（组合键可在设置里改） */
 function onShortcut(e: KeyboardEvent) {
   if (isTypingTarget(e.target)) return
   const map = store.settings?.shortcuts
@@ -62,11 +65,6 @@ function onShortcut(e: KeyboardEvent) {
     draft.value = blankDraft()
     showModal.value = true
     return
-  }
-  if (matchesCombo(e, map?.viewSwitch || 'Ctrl+1-2')) {
-    e.preventDefault()
-    const digit = String(e.code || '').replace('Digit', '')
-    view.value = digit === '2' ? 'board' : 'list'
   }
 }
 onMounted(() => window.addEventListener('keydown', onShortcut))
@@ -100,12 +98,6 @@ const doneCount = computed(() => store.todos.filter((t) => t.status === '已完�
 function listCount(id: string) {
   return store.todos.filter((t) => t.listId === id && t.status !== '已完成').length
 }
-
-const boardCols = computed(() => [
-  { key: '未开始', rows: visible.value.filter((t) => t.status === '未开始') },
-  { key: '进行中', rows: visible.value.filter((t) => t.status === '进行中') },
-  { key: '已完成', rows: visible.value.filter((t) => t.status === '已完成') }
-])
 
 function fmtDue(ts: number | null): string {
   if (!ts) return ''
@@ -169,6 +161,9 @@ async function loadScheduleTitle(id: string | null) {
   if (hit) scheduleTitles.value = { ...scheduleTitles.value, [id]: hit.title }
 }
 
+/** 已完成的任务只能查看：编辑、转日程、开始专注、删除都关掉 */
+const readOnly = computed(() => selected.value?.status === '已完成')
+
 function openTask(t: TodoRow) {
   selectedId.value = t.id
   showDetail.value = true
@@ -215,8 +210,46 @@ async function saveNote(v: string) {
   })
 }
 
+/** 详情抽屉 → 编辑：把当前待办填进草稿，复用新建任务的表单 */
+function openEdit(t: TodoRow) {
+  const remind = t.remindAt && t.dueAt ? String(Math.max(0, Math.round((t.dueAt - t.remindAt) / 60000))) : '0'
+  editingId.value = t.id
+  draft.value = {
+    title: t.title,
+    listId: t.listId,
+    priority: t.priority,
+    dueAt: t.dueAt,
+    remindText: remindOptions.some((o) => o.value === remind) ? remind : '10',
+    labelsText: (t.labels || []).join(', '),
+    note: t.note || ''
+  }
+  showModal.value = true
+}
+
 async function saveDraft() {
   if (!draft.value.title.trim()) { message.warning('请填写任务标题'); return }
+  if (editingId.value) {
+    await withLoading(async () => {
+      const dueAt = draft.value.dueAt
+      const remindMin = Number(draft.value.remindText)
+      const id = editingId.value as string
+      await store.updateTodo({
+        id,
+        title: draft.value.title.trim(),
+        listId: draft.value.listId,
+        priority: draft.value.priority,
+        dueAt,
+        remindAt: dueAt && remindMin > 0 ? dueAt - remindMin * 60000 : null,
+        labels: draft.value.labelsText.split(/[,，\s]+/).map((s) => s.trim()).filter(Boolean),
+        note: draft.value.note || null
+      })
+      showModal.value = false
+      editingId.value = null
+      draft.value = blankDraft()
+      message.success('已保存')
+    })
+    return
+  }
   await withLoading(async () => {
     const dueAt = draft.value.dueAt
     const remindMin = Number(draft.value.remindText)
@@ -259,14 +292,15 @@ async function toSchedule() {
   const t = selected.value
   if (!t) return
 
-  const startAt = t.dueAt ?? (() => { const d = new Date(); d.setHours(9, 30, 0, 0); return d.getTime() })()
+  // 没有截止时间就排到下一个整点半，避免落在一个已经过去的时间点
+  const startAt = t.dueAt ?? Math.ceil(Date.now() / 1800000) * 1800000
   const endAt = startAt + 3600000
-  // 待办清单映射到同名日程分类
+  // 待办清单映射到同名日程分类；对不上就落到第一个分类，避免产生无分类事件
   const cals = await call(() => bridge().schedule.calendars(), [] as Array<{ id: string; name: string }>)
-  const matched = cals.find((c) => c.name === t.listName)
+  const matched = cals.find((c) => c.name === t.listName) || cals[0]
 
   try {
-    await call(() => bridge().schedule.create(plain({
+    const created = await call(() => bridge().schedule.create(plain({
       title: t.title,
       startAt,
       endAt,
@@ -275,13 +309,33 @@ async function toSchedule() {
       remindMin: 10,
       recurRule: null,
       note: t.note || null
-    })))
-    await store.updateTodo({ id: t.id, scheduleId: null })
+    })), null as ScheduleRow | null)
+    await store.updateTodo({ id: t.id, scheduleId: created ? created.id : null })
     message.success('已转为日程，开始时间 ' + fmtDue(startAt))
     showDetail.value = false
+    if (created) void router.push('/schedule')
   } catch (e) {
     log.exception('todo.toSchedule', e)
     message.error('转换失败：' + (e as Error).message)
+  }
+}
+
+/** 开始专注：把这条待办绑到番茄钟；已有专注在计时就不动它 */
+async function startFocus() {
+  const t = selected.value
+  if (!t) return
+  const st = await call(() => bridge().pomodoro.state(), null as { phase?: string } | null)
+  if (st && st.phase && st.phase !== 'idle') {
+    message.info('已有专注在计时，先结束它再开始新的')
+    return
+  }
+  try {
+    await call(() => bridge().pomodoro.start(plain({ taskId: t.id })), null)
+    showDetail.value = false
+    void router.push('/pomodoro')
+  } catch (e) {
+    log.exception('todo.startFocus', e)
+    message.error('开始专注失败：' + (e as Error).message)
   }
 }
 
@@ -293,6 +347,7 @@ function pickList(id: string) {
   activeListId.value = activeListId.value === id ? null : id
 }
 function openCreate() {
+  editingId.value = null
   draft.value = blankDraft()
   draft.value.listId = activeListId.value
   showModal.value = true
@@ -305,10 +360,6 @@ onMounted(() => { store.refreshTodos().catch(() => {}) })
   <Shell>
     <template #subtitle>今日 {{ todayCount }} 项待完成 · 已完成 {{ doneCount }} 项</template>
     <template #actions>
-      <n-button-group size="small">
-        <n-button :type="view === 'list' ? 'primary' : 'default'" @click="view = 'list'">列表</n-button>
-        <n-button :type="view === 'board' ? 'primary' : 'default'" @click="view = 'board'">看板</n-button>
-      </n-button-group>
       <n-button size="small" type="primary" @click="openCreate">新建任务</n-button>
     </template>
 
@@ -332,7 +383,7 @@ onMounted(() => { store.refreshTodos().catch(() => {}) })
           </a>
         </aside>
 
-        <!-- 中栏：快速添加 + 筛选 + 任务列表/看板 -->
+        <!-- 中栏：快速添加 + 筛选 + 任务列表 -->
         <section class="card td-mid">
           <div class="td-quick">
             <n-input v-model:value="quickTitle" placeholder="快速添加任务，回车即可创建" @keyup.enter="quickAdd" />
@@ -342,7 +393,7 @@ onMounted(() => { store.refreshTodos().catch(() => {}) })
             <n-button v-for="f in filters" :key="f" size="tiny" round :type="filter === f ? 'primary' : 'default'" @click="filter = f">{{ f }}</n-button>
           </div>
 
-          <div v-if="view === 'list'" class="td-list">
+          <div class="td-list">
             <div
               v-for="t in visible"
               :key="t.id"
@@ -350,8 +401,8 @@ onMounted(() => { store.refreshTodos().catch(() => {}) })
               :class="{ done: t.status === '已完成', selected: t.id === selectedId }"
               @click="openTask(t)"
             >
-              <div class="td-task" @click.stop>
-                <n-checkbox :checked="t.status === '已完成'" @update:checked="onToggle(t)" />
+              <div class="td-task">
+                <span @click.stop><n-checkbox :checked="t.status === '已完成'" @update:checked="onToggle(t)" /></span>
                 <span class="td-title">{{ t.title }}</span>
               </div>
               <span class="td-tags">
@@ -361,27 +412,19 @@ onMounted(() => { store.refreshTodos().catch(() => {}) })
               <n-tag v-if="isOverdue(t)" size="tiny" type="error">{{ fmtDue(t.dueAt) }}</n-tag>
               <span v-else class="td-due">{{ fmtDue(t.dueAt) }}</span>
             </div>
-            <n-empty v-if="!visible.length" description="这里还没有任务" style="padding:36px 0" />
-          </div>
-
-          <div v-else class="td-board">
-            <div v-for="col in boardCols" :key="col.key" class="td-bcol">
-              <b>{{ col.key }} <span>{{ col.rows.length }}</span></b>
-              <div v-for="t in col.rows" :key="t.id" class="td-bcard" @click="openTask(t)">{{ t.title }}</div>
-            </div>
+            <n-empty v-if="!visible.length" class="td-empty" description="这里还没有任务" />
           </div>
         </section>
       </div>
     </n-spin>
 
     <!-- 详情抽屉 -->
-    <n-drawer v-model:show="showDetail" :width="340" placement="right">
+    <n-drawer v-model:show="showDetail" :width="380" placement="right">
       <n-drawer-content v-if="selected" :title="selected.title" closable :native-scrollbar="false">
         <template #header>
           <div style="display:flex;align-items:center;gap:8px;width:100%">
             <n-checkbox :checked="selected.status === '已完成'" @update:checked="onToggle(selected)" />
             <span style="flex:1">{{ selected.title }}</span>
-            <n-button size="tiny" quaternary @click="confirmDelete(selected)">删除</n-button>
           </div>
         </template>
         <div>
@@ -403,17 +446,22 @@ onMounted(() => { store.refreshTodos().catch(() => {}) })
             <n-checkbox :checked="s.done" @update:checked="onToggleSubtask(s.id)" />
             <span>{{ s.title }}</span>
           </div>
-          <n-button size="tiny" quaternary @click="onAddSubtask">+ 添加子任务</n-button>
+          <n-button size="tiny" quaternary :disabled="readOnly" @click="onAddSubtask">+ 添加子任务</n-button>
           <div class="td-note">
             备注
-            <n-input type="textarea" :value="selected.note || ''" :autosize="{ minRows: 3 }" placeholder="补充说明" @blur="saveNote(($event.target as HTMLTextAreaElement).value)" />
+            <n-input type="textarea" :value="selected.note || ''" :autosize="{ minRows: 3 }" :disabled="readOnly" placeholder="补充说明" @blur="saveNote(($event.target as HTMLTextAreaElement).value)" />
           </div>
         </div>
         <template #footer>
-          <n-space style="width:100%">
-            <n-button type="primary" size="small" @click="$router.push('/pomodoro')">开始番茄专注</n-button>
-            <n-button size="small" @click="toSchedule">转为日程</n-button>
-          </n-space>
+          <div class="td-actions">
+            <n-text v-if="readOnly" depth="3">已完成的任务只能查看，取消勾选后可继续操作</n-text>
+            <n-space style="width:100%">
+              <n-button type="primary" size="small" :disabled="readOnly" @click="openEdit(selected)">编辑</n-button>
+              <n-button size="small" :disabled="readOnly" @click="startFocus">开始专注</n-button>
+              <n-button size="small" :disabled="readOnly" @click="toSchedule">转为日程</n-button>
+              <n-button size="small" type="error" quaternary :disabled="readOnly" @click="confirmDelete(selected)">删除</n-button>
+            </n-space>
+          </div>
         </template>
       </n-drawer-content>
     </n-drawer>
@@ -434,7 +482,7 @@ onMounted(() => { store.refreshTodos().catch(() => {}) })
     </n-modal>
 
     <!-- 新建任务 -->
-    <n-modal v-model:show="showModal" preset="card" title="新建任务" style="width:480px">
+    <n-modal v-model:show="showModal" preset="card" :title="editingId ? '编辑任务' : '新建任务'" style="width:480px">
       <n-form label-placement="left" label-width="64" size="small">
         <n-form-item label="标题"><n-input v-model:value="draft.title" placeholder="任务标题" /></n-form-item>
         <n-form-item label="清单"><n-select v-model:value="draft.listId" :options="listOptions" clearable placeholder="选择清单" /></n-form-item>

@@ -1,13 +1,15 @@
 <script setup lang="ts">
-import { homeRefreshToken } from '@/composables/useHomeRefresh'
+import { useHomeCardRefresh } from '@/composables/useHomeRefresh'
 import HomeCardMenu from '@/components/home/HomeCardMenu.vue'
-import { computed, onMounted, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { NCard, NTag, NEmpty, NSpin, NButton, useMessage } from 'naive-ui'
+import { useRouter } from 'vue-router'
 import { call, bridge, hasBridge } from '@/lib/ipc'
 import { log } from '@/lib/logger'
 import type { NotificationItem } from '@/types/api'
 
 const message = useMessage()
+const router = useRouter()
 const items = ref<NotificationItem[]>([])
 const loading = ref(false)
 const marking = ref(false)
@@ -52,8 +54,18 @@ async function markAll() {
   }
 }
 
-onMounted(load)
-watch(homeRefreshToken, () => { void load() })
+/** 主进程推送新通知后（系统通知与应用内同一事件源）刷新卡片 */
+let offNotify: (() => void) | null = null
+onMounted(() => {
+  void load()
+  if (!hasBridge()) return
+  offNotify = bridge().onDataChanged((p) => { if (p.domain === 'notification') void load() })
+})
+onBeforeUnmount(() => {
+  if (offNotify) { offNotify(); offNotify = null }
+})
+const refreshTick = useHomeCardRefresh('notice')
+watch(refreshTick, () => { void load() })
 </script>
 
 <template>
@@ -66,6 +78,7 @@ watch(homeRefreshToken, () => { void load() })
     </template>
     <template #header-extra>
         <div class="hc-head-actions">
+          <n-button size="tiny" quaternary @click="router.push('/notice')">查看全部</n-button>
           <n-button size="tiny" quaternary :disabled="!unread" :loading="marking" @click="markAll">全部已读</n-button>
           <HomeCardMenu module="notice" />
         </div>
@@ -83,7 +96,7 @@ watch(homeRefreshToken, () => { void load() })
     </n-spin>
 
     <template #footer>
-      <span class="hc-muted">今日共 {{ items.length }} 条提醒 · {{ unread }} 条待处理 · 由日程/待办/快递/邮件规则汇总</span>
+      <span class="hc-muted">今日共 {{ items.length }} 条 · 未读 {{ unread }} 条 · 点「查看全部」统一管理</span>
     </template>
   </n-card>
 </template>

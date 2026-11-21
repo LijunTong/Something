@@ -36,6 +36,13 @@ function writeState(patch) {
   return next
 }
 
+/** 事件上报：延迟到写事务提交后再推，通知写入不会嵌进计时事务里 */
+function notifyEvent(dto) {
+  setImmediate(function () {
+    try { require('./notify.cjs').push(dto) } catch (e) { /* 通知失败不影响计时 */ }
+  })
+}
+
 function start(dto) {
   return withTx(function () {
     const c = cfg()
@@ -80,7 +87,7 @@ function finishSession(status, extra) {
 }
 
 function complete() {
-  return withTx(function () {
+  const st = withTx(function () {
     const cur = readState()
     const c = cfg()
     finishSession('完成', {})
@@ -94,6 +101,15 @@ function complete() {
     }
     return next
   })
+  const done = require('./notifyText.cjs').pomodoroDone(st.plannedSec, st.remainSec)
+  notifyEvent({
+    id: 'ev:pomodoro:done:' + st.round + ':' + (st.endsAt || now()),
+    module: 'pomodoro',
+    level: done.level,
+    title: done.title,
+    body: done.body
+  })
+  return st
 }
 
 function skipBreak() {
@@ -114,12 +130,51 @@ function abandon(dto) {
   })
 }
 
+/** 状态变更回调：由主进程注入，用于把自动收尾广播给所有窗口 */
+let stateListener = null
+function onStateChange(fn) { stateListener = fn }
+
+/**
+ * 绑定的任务已完成（或被删除）后，番茄钟跟着收尾：
+ * 专注中/暂停 → 记一条中断并回到待开始；休息中 → 只解除绑定，让休息照常走完。
+ * 没绑定这个任务时返回 null，调用方据此决定要不要广播。
+ */
+function endForTask(taskId) {
+  const next = withTx(function () {
+    const cur = readState()
+    if (!cur.taskId || cur.taskId !== taskId) return null
+    if (cur.phase === 'running' || cur.phase === 'paused') {
+      finishSession('中断', { reason: '任务已完成' })
+      const focusSec = cfg().focusMin * 60
+      return writeState({ phase: 'idle', remainSec: focusSec, plannedSec: focusSec, endsAt: null, taskId: null })
+    }
+    return writeState({ taskId: null })
+  })
+  if (next && stateListener) {
+    setImmediate(function () {
+      try { stateListener() } catch (e) { /* 广播失败不影响计时 */ }
+    })
+  }
+  return next
+}
+
 function tick() {
   // 渲染进程轮询：把到期的 running 自动推进到 break，break 到期回到 idle
   return withTx(function () {
     const cur = readState()
     if (cur.phase === 'running' && cur.endsAt && cur.endsAt <= now()) return complete()
-    if (cur.phase === 'break' && cur.endsAt && cur.endsAt <= now()) return skipBreak()
+    if (cur.phase === 'break' && cur.endsAt && cur.endsAt <= now()) {
+      const next = skipBreak()
+      const rest = require('./notifyText.cjs').pomodoroBreakOver()
+      notifyEvent({
+        id: 'ev:pomodoro:break:' + cur.endsAt,
+        module: 'pomodoro',
+        level: rest.level,
+        title: rest.title,
+        body: rest.body
+      })
+      return next
+    }
     return cur
   })
 }
@@ -167,5 +222,6 @@ module.exports = {
   state: readState, start: start, pause: pause, resume: resume, complete: complete,
   abandon: abandon, skipBreak: skipBreak, tick: tick, setTask: setTask,
   config: cfg, saveConfig: function (p) { return withTx(function () { return saveCfg(p) }) },
-  stats: stats, weekStats: weekStats, recent: recent
+  stats: stats, weekStats: weekStats, recent: recent,
+  endForTask: endForTask, onStateChange: onStateChange
 }

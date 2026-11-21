@@ -102,7 +102,7 @@ function openAdd() {
   showForm.value = true
 }
 
-function openEdit(row: MailAccount) {
+async function openEdit(row: MailAccount) {
   editingId.value = row.id
   testText.value = ''
   form.value = {
@@ -112,6 +112,13 @@ function openEdit(row: MailAccount) {
     username: row.username || '', secret: '', syncDays: row.syncDays || 30
   }
   showForm.value = true
+  // 授权码明文保存在本机：编辑时先取回填进密码框（默认掩码），点眼睛才显示明文
+  try {
+    const r = await call(() => bridge().mail.revealSecret({ id: row.id }), null as unknown as { id: string; value: string } | null)
+    if (r && r.value) form.value.secret = r.value
+  } catch (e) {
+    log.exception('settings.mailRevealSecret', e)
+  }
 }
 
 async function submit() {
@@ -232,8 +239,8 @@ onMounted(load)
           </div>
         </n-form-item>
         <n-form-item label="用户名"><n-input v-model:value="form.username" placeholder="默认与邮箱地址相同" /></n-form-item>
-        <n-form-item :label="editingId ? '授权码（可留空）' : '授权码'">
-          <n-input v-model:value="form.secret" type="password" show-password-on="click" placeholder="仅加密保存在本机" />
+        <n-form-item label="授权码">
+          <n-input v-model:value="form.secret" type="password" show-password-on="click" placeholder="明文保存在本机，默认掩码，点眼睛可查看" />
         </n-form-item>
         <n-form-item label="同步范围">
           <n-select v-model:value="form.syncDays" :options="syncOptions" />

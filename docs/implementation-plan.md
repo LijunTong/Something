@@ -1,4 +1,4 @@
-> **技术栈更新（用户最终选定）**：Electron + Node.js + Vue 3 + Vite + Pinia + SQLite（better-sqlite3）。本文下方第一节的「静态站点/localStorage」为早期方案，已被桌面版取代；功能梳理、数据模型、逐屏映射与联动设计保持不变。桌面版实现见 `README-桌面版.md`，源码在 `electron/` 与 `src/`。
+> **技术栈更新（用户最终选定）**：Electron + Node.js + Vue 3 + Vite + Pinia + SQLite（better-sqlite3）。本文下方第一节的「静态站点/localStorage」为早期方案，已被桌面版取代；功能梳理、数据模型、逐屏映射与联动设计保持不变。桌面版实现见 `README.md`，源码在 `electron/` 与 `src/`。
 
 # 个人效率工具集 · 功能实现梳理
 

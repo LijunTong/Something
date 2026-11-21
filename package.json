@@ -1,5 +1,5 @@
 {
-  "name": "efficiency-toolkit",
+  "name": "something",
   "version": "1.0.0",
   "private": true,
   "type": "module",
@@ -15,6 +15,7 @@
   },
   "dependencies": {
     "better-sqlite3": "^11.8.1",
+    "grid-layout-plus": "1.1.1",
     "naive-ui": "^2.45.3",
     "pinia": "^2.3.0",
     "unplugin-vue-components": "^32.1.0",
@@ -36,8 +37,8 @@
     "better-sqlite3@11.10.0": true
   },
   "build": {
-    "appId": "com.efficiency.toolkit",
-    "productName": "EfficiencyToolkit",
+    "appId": "com.something.jijianshi",
+    "productName": "Something",
     "directories": {
       "output": "release",
       "buildResources": "build"
@@ -69,12 +70,12 @@
       "allowToChangeInstallationDirectory": true,
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
-      "shortcutName": "效率工具集",
-      "artifactName": "EfficiencyToolkit-Setup-${version}.exe"
+      "shortcutName": "几件事",
+      "artifactName": "Something-Setup-${version}.exe"
     },
     "electronDist": "node_modules/electron/dist"
   },
-  "description": "本地优先的效率工具集：待办 / 日程 / 番茄钟 / 信息流 / 快递 / 邮件 / 天气",
+  "description": "几件事（Something）：本地优先的待办 / 日程 / 番茄钟 / 信息流 / 快递 / 邮件 / 天气",
   "author": {
     "name": "YG"
   }

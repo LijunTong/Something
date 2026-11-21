@@ -38,3 +38,8 @@ Thumbs.db
 
 # 设计走查截图（本地留档，不入库）
 .shots/
+
+# 分发产物与本地探针（安装包、托盘诊断留档不上库）
+release/
+traycheck/
+.preview/

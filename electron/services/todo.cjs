@@ -91,25 +91,43 @@ function updateRaw(dto) {
   return getOne(dto.id)
 }
 
+/**
+ * 绑定的待办完成后，番茄钟要跟着收尾。
+ * 延后到事务之外再调，避免在写事务里嵌套另一个服务的事务。
+ */
+function notifyTaskDone(id) {
+  setImmediate(function () {
+    try { require('./pomodoro.cjs').endForTask(id) } catch (e) { /* 番茄钟收尾失败不影响待办 */ }
+  })
+}
+
 /** 对外入口：自带事务。 */
 function update(dto) {
-  return withTx(function () { return updateRaw(dto) })
+  // 只在「未完成 → 已完成」这一刻触发，改标题等普通编辑不打扰番茄钟
+  const prev = dto && dto.status ? get().prepare('SELECT status FROM todo WHERE id = ?').get(dto.id) : null
+  const row = withTx(function () { return updateRaw(dto) })
+  if (row && row.status === '已完成' && (!prev || prev.status !== '已完成')) notifyTaskDone(dto.id)
+  return row
 }
 
 function toggle(id) {
-  return withTx(function () {
+  const row = withTx(function () {
     const cur = get().prepare('SELECT status FROM todo WHERE id = ?').get(id)
     if (!cur) throw new Error('TODO_NOT_FOUND')
     const next = cur.status === '已完成' ? '未开始' : '已完成'
     return updateRaw({ id: id, status: next })
   })
+  if (row && row.status === '已完成') notifyTaskDone(id)
+  return row
 }
 
 function remove(id) {
-  return withTx(function () {
+  withTx(function () {
     get().prepare('DELETE FROM todo WHERE id = ?').run(id)
-    return true
   })
+  // 任务被删掉也算结束，否则计时器会挂在一个不存在的任务上
+  notifyTaskDone(id)
+  return true
 }
 
 function reorder(ids) {

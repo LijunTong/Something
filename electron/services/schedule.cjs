@@ -68,9 +68,12 @@ function range(dto) {
   const from = dto && dto.from ? dto.from : 0
   const to = dto && dto.to ? dto.to : Number.MAX_SAFE_INTEGER
   const rows = camelAll(get().prepare('SELECT s.*, c.name AS calendar_name, c.color AS calendar_color, c.visible AS calendar_visible FROM schedule s LEFT JOIN schedule_calendar c ON c.id = s.calendar_id WHERE s.status != ? ORDER BY s.start_at ASC').all('取消'))
-  // SQLite 里 visible 存的是 INTEGER(0/1)，不是布尔。
-  // 之前的 `!== false` 对 0 和 1 都为真，过滤形同虚设。
-  const visible = rows.filter(function (r) { return r.calendarVisible !== 0 && r.calendarVisible !== false })
+  // 只按「所属日历是否隐藏」过滤；没有分类的日程（calendar_id 为 NULL）一律显示。
+  // camel() 会把 NULL 的 calendar_visible 转成 false，直接参与过滤会把这类日程全部藏掉。
+  const visible = rows.filter(function (r) {
+    if (!r.calendarId) return true
+    return r.calendarVisible !== 0 && r.calendarVisible !== false
+  })
   const out = []
   visible.forEach(function (r) {
     expand(r, from, to).forEach(function (inst) { out.push(inst) })

@@ -7,12 +7,11 @@ import type { ShortcutSetting } from '@/types/api'
 const { settings, save } = useSettings()
 const message = useMessage()
 
-type ShortcutKey = 'search' | 'newTodo' | 'focus' | 'viewSwitch'
+type ShortcutKey = 'search' | 'newTodo' | 'focus'
 const ROWS: Array<{ key: ShortcutKey; label: string; hint: string }> = [
   { key: 'search', label: '全局搜索', hint: '任意页面唤起搜索弹窗' },
   { key: 'newTodo', label: '新建任务', hint: '在待办页打开新建任务弹窗' },
-  { key: 'focus', label: '开始 / 暂停专注', hint: '在番茄钟页控制计时' },
-  { key: 'viewSwitch', label: '切换待办视图', hint: '待办页在清单 / 看板间切换（Ctrl+1-2 表示 1 到 2）' }
+  { key: 'focus', label: '开始 / 暂停专注', hint: '在番茄钟页控制计时' }
 ]
 
 const recording = ref<ShortcutKey | null>(null)
@@ -64,7 +63,7 @@ async function onKey(e: KeyboardEvent) {
 }
 
 async function resetDefault() {
-  const def: ShortcutSetting = { search: 'Ctrl+K', newTodo: 'N', focus: 'F', viewSwitch: 'Ctrl+1-2' }
+  const def: ShortcutSetting = { search: 'Ctrl+K', newTodo: 'N', focus: 'F' }
   try {
     await save('shortcuts', def)
     message.success('已恢复默认快捷键')

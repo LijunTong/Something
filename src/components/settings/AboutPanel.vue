@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import SectionTitle from '@/components/settings/SectionTitle.vue'
+import BrandMark from '@/components/BrandMark.vue'
 import { onMounted, ref } from 'vue'
 import { NCard, NButton, NTag, NModal, NDescriptions, NDescriptionsItem, NAlert, NList, NListItem, useMessage } from 'naive-ui'
 import { call, bridge, hasBridge } from '@/lib/ipc'
@@ -38,14 +39,14 @@ function checkUpdate() {
     <template #header-extra><n-tag size="small" type="success">纯本地</n-tag></template>
 
     <div class="set-about">
-      <span class="brand-mark set-about-mark"><svg viewBox="0 0 24 24"><use href="#i-grid" /></svg></span>
+      <span class="brand-mark set-about-mark"><BrandMark /></span>
       <div>
-        <h2 class="set-about-title">效率工具集</h2>
-        <span class="set-muted">版本 {{ info?.version || '1.0.0' }}（本地构建）</span>
+        <h2 class="set-about-title">几件事</h2>
+        <span class="set-muted">Something · 版本 {{ info?.version || '1.0.0' }}（本地构建）</span>
       </div>
     </div>
 
-    <p class="set-muted">纯本地个人效率工具集，无账户体系、无云同步、不含智能功能。</p>
+    <p class="set-muted">几件事（Something）是一套纯本地的个人效率工具，无账户体系、无云同步、不含智能功能。</p>
 
     <n-alert type="info" :bordered="false">
       本应用不提供账户注册与登录；天气、快递、信息流与邮件需要联网，联网结果只做本地缓存。

@@ -10,6 +10,7 @@ import Shell from '@/components/Shell.vue'
 import WeatherSourcePanel from '@/components/settings/WeatherSourcePanel.vue'
 import { call, bridge, plain, hasBridge } from '@/lib/ipc'
 import { log } from '@/lib/logger'
+import { heroGradient as heroGradientOf } from '@/theme/sky'
 import type { AllSettings, NotificationItem, WeatherCity, WeatherCitySearchResult, WeatherData, WeatherSetting } from '@/types/api'
 import '@/styles/weather.css'
 
@@ -83,24 +84,10 @@ const aqiType = computed(() => {
 const popLegend = computed(() => weather.value?.hourly.slice(0, 3).map((h) => h.pop) ?? [])
 
 /**
- * 英雄卡渐变按天气现象取色（雨蓝、阴灰、晴/多云取品牌青绿、雷紫、雾石灰）。
- * 文字始终白色，保证任何配色下对比度都在 4.5:1 以上。
+ * 英雄卡渐变按天气现象取色：晴偏蓝、多云蓝灰、阴/雨偏灰、雷石板紫、雪冷灰蓝、雾霾暖灰。
+ * 具体色值在 src/theme/sky.ts 统一维护（对白字对比度均 ≥ 4.5:1）。
  */
-const heroGradient = computed(() => {
-  const cond = String(weather.value?.now?.cond || '')
-  const rules: Array<[RegExp, [string, string]]> = [
-    [/雷/, ['#312e81', '#0e7490']],
-    [/雪/, ['#1e3a8a', '#64748b']],
-    [/雨/, ['#1e3a8a', '#0e7490']],
-    [/雾|霾|沙|尘/, ['#3f3f46', '#78716c']],
-    [/阴/, ['#334155', '#475569']],
-    [/多云|少云|晴间多云/, ['#115e59', '#0f766e']],
-    [/晴/, ['#0b5f58', '#14b8a6']]
-  ]
-  const hit = rules.find(([re]) => re.test(cond))
-  const [from, to] = hit ? hit[1] : ['#0b5f58', '#14b8a6']
-  return 'linear-gradient(135deg, ' + from + ' 0%, ' + to + ' 100%)'
-})
+const heroGradient = computed(() => heroGradientOf(String(weather.value?.now?.cond || '')))
 
 /** 每 refreshMin 分钟静默刷新一次；页面关闭或频率变化时重建定时器 */
 function scheduleRefresh() {

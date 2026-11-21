@@ -1,0 +1,38 @@
+/* 通知中心：只写布局与刻度，颜色/字号取自主题令牌 */
+.nt-card { min-height: 420px; }
+.nt-toolbar { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 8px; }
+.nt-toolbar-end { margin-left: auto; display: flex; align-items: center; gap: 10px; }
+.nt-module.nt-module { width: 148px; flex: 0 0 auto; }
+.nt-count { color: var(--muted); font-size: var(--fs-12); font-variant-numeric: tabular-nums; }
+
+.nt-group { display: flex; flex-direction: column; }
+.nt-group + .nt-group { margin-top: 18px; }
+.nt-group-title { margin: 12px 0 2px; color: var(--muted); font-size: var(--fs-11); font-weight: 600; }
+
+.nt-row { display: grid; grid-template-columns: 22px minmax(0, 1fr) auto; align-items: start; gap: 12px; padding: 10px 0; min-height: 56px; }
+.nt-ico { display: grid; place-items: center; width: 22px; height: 22px; padding: 0; border: 0; background: transparent; color: var(--muted); cursor: pointer; }
+.nt-ico:hover { color: var(--primary); }
+.nt-ico svg { width: 17px; height: 17px; }
+.nt-main { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.nt-title { display: flex; align-items: center; gap: 6px; min-width: 0; }
+.nt-title > span:first-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.nt-body { color: var(--muted); font-size: var(--fs-12); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.nt-side { display: flex; align-items: center; gap: 10px; }
+.nt-time { color: var(--muted); font-size: var(--fs-11); font-variant-numeric: tabular-nums; white-space: nowrap; }
+/* 行内操作默认收起：11 条通知各挂两个按钮会把列表读成按钮墙，指到哪行才露出哪行 */
+.nt-actions { display: flex; align-items: center; gap: 2px; min-width: 88px; justify-content: flex-end; opacity: 0; }
+.nt-row:hover .nt-actions,
+.nt-row:focus-within .nt-actions { opacity: 1; }
+@media (hover: none) { .nt-actions { opacity: 1; } }
+.nt-more { display: flex; justify-content: center; margin-top: 14px; }
+/* 空态在卡片里垂直居中，而不是贴在筛选条下面 */
+.nt-card > .n-card-content { display: flex; flex-direction: column; flex: 1 1 auto; min-height: 0; }
+.nt-card .n-spin-container,
+.nt-card .n-spin-content { display: flex; flex-direction: column; flex: 1 1 auto; min-height: 0; }
+.nt-empty { flex: 1 1 auto; justify-content: center; padding: 40px 0; }
+.nt-muted { color: var(--muted); font-size: var(--fs-12); }
+
+@media (max-width: 900px) {
+  .nt-side { flex-direction: column; align-items: flex-end; gap: 4px; }
+  .nt-actions { min-width: 0; }
+}

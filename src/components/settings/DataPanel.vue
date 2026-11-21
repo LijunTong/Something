@@ -243,7 +243,7 @@ onMounted(loadStorage)
             <i :style="{ background: s.color }"></i>{{ s.label }} {{ s.size }}
           </span>
         </div>
-        <p class="set-muted">
+        <p class="set-note">
           数据库文件 {{ dbText }} · 待办 {{ storage?.counts.todo ?? 0 }} · 日程 {{ storage?.counts.schedule ?? 0 }} · 邮件 {{ storage?.counts.mail ?? 0 }} · 文章 {{ storage?.counts.feed ?? 0 }}
         </p>
       </n-card>
@@ -276,6 +276,26 @@ onMounted(loadStorage)
           <span class="set-muted" v-if="settings.backup.lastAt">上次备份 {{ new Date(settings.backup.lastAt).toLocaleString('zh-CN') }}</span>
           <span class="set-muted" v-else>尚未执行过备份</span>
         </div>
+
+        <SectionTitle title="加密" />
+        <div class="set-field">
+          <span class="set-field-key">为备份文件设置密码</span>
+          <n-switch :value="settings.backup.encrypted" @update:value="(v: boolean) => saveBackup({ encrypted: v })" />
+        </div>
+        <div class="set-field">
+          <span class="set-field-key">密码</span>
+          <n-input
+            class="set-input"
+            size="small"
+            type="password"
+            show-password-on="click"
+            :disabled="!settings.backup.encrypted"
+            placeholder="仅在本次备份时使用"
+            :value="backupPassword"
+            @update:value="(v: string) => (backupPassword = v)"
+          />
+        </div>
+        <p class="set-note">密码只在本次备份的内存中使用，不写入数据库；忘记密码将无法恢复对应备份文件。</p>
       </n-card>
 
       <n-card size="small" title="导出与导入">
@@ -290,7 +310,7 @@ onMounted(loadStorage)
             @click="exportAs(x.kind)"
           >{{ x.label }}</n-button>
         </div>
-        <p class="set-muted">导出文件写入本机 exports 目录，完成后会自动打开所在位置。</p>
+        <p class="set-note">导出文件写入本机 exports 目录，完成后会自动打开所在位置。</p>
 
         <SectionTitle title="从备份恢复" />
         <div class="set-actions">
@@ -299,27 +319,6 @@ onMounted(loadStorage)
           </n-upload>
           <span class="set-muted">恢复会覆盖当前数据，请先备份</span>
         </div>
-      </n-card>
-
-      <n-card size="small" title="加密备份">
-        <div class="set-field">
-          <span class="set-field-key">为备份文件设置密码</span>
-          <n-switch :value="settings.backup.encrypted" @update:value="(v: boolean) => saveBackup({ encrypted: v })" />
-        </div>
-        <div class="set-field">
-          <span class="set-field-key">密码</span>
-          <n-input
-            class="set-input"
-            size="small"
-            type="password"
-            show-password-on="click"
-            :disabled="!settings.backup.encrypted"
-            placeholder="仅在本次备份时使用，不写入数据库"
-            :value="backupPassword"
-            @update:value="(v: string) => (backupPassword = v)"
-          />
-        </div>
-        <p class="set-muted">密码只在本次备份的内存中使用；忘记密码将无法恢复对应备份文件。</p>
       </n-card>
 
       <n-card size="small" title="备份记录">

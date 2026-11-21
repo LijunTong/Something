@@ -3,27 +3,48 @@
    这里出现的字号取自 tokens.css 的设计令牌，属于「首页 8 张卡片内部布局」这一产品独占视觉
    （AGENTS.md 1.2），不涉及任何硬编码色值。 */
 
-.home-grid {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 16px;
-  align-items: stretch;
-  grid-auto-rows: minmax(236px, auto);
+/* 单位网格：坐标与宽高由 grid-layout-plus 计算（行高 40px、间距 16px、列数 3/2/1）。
+   库的 margin 同时作用在容器外侧，用负 margin 抵掉，卡片仍与页面栅格对齐。 */
+.home-grid-wrap { margin: -16px -16px 0; }
+/* 库把变量默认值声明在 .vgl-layout 自身上（占位块默认红色），必须用两级选择器压过它 */
+.home-grid-wrap .home-grid {
+  --vgl-placeholder-bg: var(--primary-soft);
+  --vgl-placeholder-opacity: 40%;
+  --vgl-item-dragging-opacity: 88%;
+  --vgl-resizer-border-color: var(--primary);
+  position: relative;
 }
-.home-span2 { grid-column: span 2; }
-.home-grid > .n-card { display: flex; flex-direction: column; }
 
-/* 卡片高度预留：加载中与加载后占同样高度，滚动时下方列表不会被顶动 */
-.hc-card { min-height: 300px; }
-.hc-card-weather,
-.hc-card-schedule { min-height: 318px; }
-.hc-card-todo,
-.hc-card-pomodoro,
-.hc-card-parcel { min-height: 344px; }
-.hc-card-feed,
-.hc-card-mail { min-height: 278px; }
-.hc-card-notice { min-height: 248px; }
+/* 格子：卡片组件本身不改尺寸，坐标与宽高由库写在 .vgl-item 上；右下角是库渲染的缩放手柄 */
+.home-grid .vgl-item { display: flex; flex-direction: column; min-width: 0; min-height: 0; }
+.home-grid .vgl-item > .n-card { display: flex; flex-direction: column; height: 100%; min-height: 0; }
 
+/* 空态在卡片里垂直居中：内容区与 spin 容器吃满卡片剩余高度，只有 n-empty 自己被拉高并居中。
+   有列表时列表仍从顶部开始排；缩到最小尺寸时内容在卡片内部滚动，不撑破网格。 */
+.home-grid .vgl-item > .n-card > .n-card-content { display: flex; flex-direction: column; flex: 1 1 auto; min-height: 0; overflow: auto; }
+.home-grid .vgl-item > .n-card .n-spin-container,
+.home-grid .vgl-item > .n-card .n-spin-content { display: flex; flex-direction: column; flex: 1 1 auto; min-height: 0; }
+.home-grid .vgl-item > .n-card .n-empty { flex: 1 1 auto; justify-content: center; }
+
+/* 卡片内的变化不外溢：数据刷新只重排本卡，不牵动整页滚动高度 */
+.hc-card { contain: layout style; }
+
+/* 卡片标题区是拖动把手（drag-allow-from 见 Home.vue）；锁定时恢复默认光标，
+   并禁掉文字选中：否则在锁定的卡片上拖动会选区并带着页面一起滚动 */
+.home-grid .vgl-item > .n-card > .n-card-header { cursor: grab; }
+.home-grid.is-locked { user-select: none; }
+.home-grid.is-locked .vgl-item > .n-card > .n-card-header { cursor: default; }
+
+/* 缩放手柄：库默认常驻显示，这里收紧到悬停/聚焦才出现，避免每张卡右下角都挂一个角标 */
+.home-grid .vgl-item__resizer { opacity: 0; }
+.home-grid .vgl-item:hover .vgl-item__resizer,
+.home-grid .vgl-item:focus-within .vgl-item__resizer { opacity: 1; }
+.home-grid.is-locked .vgl-item__resizer { opacity: 0; }
+
+/* 列表行标题统一单行省略。换行会改变行高 → 卡片长高 → 整行卡片与页面滚动高度一起跳。 */
+.hc-todo-text strong,
+.hc-notice-main strong,
+.hc-mail-main strong { display: block; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
 /* 通用卡片头 */
 /* 卡片头部：标题区与右上角操作区（原有入口 + 卡片菜单） */
 .hc-head { display: flex; align-items: center; gap: 8px; min-width: 0; }
@@ -77,11 +98,5 @@
 .hc-notice-row { display: grid; grid-template-columns: 18px minmax(0, 1fr); gap: 8px; align-items: start; padding: 6px 0; }
 .hc-notice-main { display: flex; flex-direction: column; min-width: 0; }
 
-@media (max-width: 1180px) {
-  .home-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .home-span2 { grid-column: span 2; }
-}
-@media (max-width: 860px) {
-  .home-grid { grid-template-columns: 1fr; }
-  .home-span2 { grid-column: span 1; }
-}
+/* 列数断点在 src/composables/useHomeLayout.ts（1180/860），由 Home.vue 写入 --home-cols，
+   保证「显示列数」与「计算缩放步长/实际宽度」只有一个来源。 */

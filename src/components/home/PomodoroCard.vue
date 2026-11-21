@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { homeRefreshToken } from '@/composables/useHomeRefresh'
+import { useHomeCardRefresh } from '@/composables/useHomeRefresh'
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import HomeCardMenu from '@/components/home/HomeCardMenu.vue'
@@ -103,7 +103,8 @@ function tick() {
   if (remain.value === 0) { void load() }
 }
 
-watch(homeRefreshToken, () => { void load() })
+const refreshTick = useHomeCardRefresh('pomodoro')
+watch(refreshTick, () => { void load() })
 
 onMounted(async () => {
   await load()

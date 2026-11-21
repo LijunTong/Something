@@ -52,6 +52,7 @@ const api = {
   mail: {
     accounts: call('mail:accounts'), addAccount: call('mail:addAccount'),
     updateAccount: call('mail:updateAccount'), removeAccount: call('mail:removeAccount'),
+    revealSecret: call('mail:revealSecret'),
     testAccount: call('mail:testAccount'), sync: call('mail:sync'), folders: call('mail:folders'),
     list: call('mail:list'), read: call('mail:read'), send: call('mail:send'), saveDraft: call('mail:saveDraft'),
     markRead: call('mail:markRead'), toggleStar: call('mail:toggleStar'), remove: call('mail:remove'),
@@ -64,13 +65,23 @@ const api = {
     clearCache: call('settings:clearCache'), clearTrash: call('settings:clearTrash'),
     resetAll: call('settings:resetAll'), setWeatherKey: call('settings:setWeatherKey'),
     setWeatherJwt: call('settings:setWeatherJwt'), clearWeatherJwt: call('settings:clearWeatherJwt'),
-    testWeather: call('settings:testWeather')
+    revealSecret: call('settings:revealSecret'), testWeather: call('settings:testWeather')
   },
   search: { query: call('search:query') },
   notification: {
     today: call('notification:today'), unreadCount: call('notification:unreadCount'),
     markAllRead: call('notification:markAllRead'), create: call('notification:create'),
-    remove: call('notification:remove')
+    remove: call('notification:remove'),
+    counts: call('notification:counts'), list: call('notification:list'),
+    markRead: call('notification:markRead'), clearRead: call('notification:clearRead'),
+    // 事件上报：主进程统一决定系统通知/应用内通知（去重、免打扰、隐私都在主进程判定）
+    push: call('notification:push'), test: call('notification:test'),
+    // 应用内通知浮层订阅：主进程推送事件时回调
+    onEvent: function (cb) {
+      const handler = function (_e, payload) { cb(payload) }
+      ipcRenderer.on('notify:event', handler)
+      return function () { ipcRenderer.removeListener('notify:event', handler) }
+    }
   },
   log: {
     write: call('log:write'),
@@ -82,12 +93,7 @@ const api = {
     info: call('system:info'), ping: call('system:ping'), openPath: call('system:openPath'),
     openExternal: call('system:openExternal'), chooseDir: call('system:chooseDir'),
     setLaunchAtLogin: call('system:setLaunchAtLogin'), loginItemEnabled: call('system:loginItemEnabled'),
-    trayInfo: call('system:trayInfo'), trayHint: call('system:trayHint'), trayProbe: call('system:trayProbe'),
-    onTrayProbeFailed: function (cb) {
-      const handler = function () { cb() }
-      ipcRenderer.on('tray:probe-failed', handler)
-      return function () { ipcRenderer.removeListener('tray:probe-failed', handler) }
-    }
+    trayInfo: call('system:trayInfo'), trayHint: call('system:trayHint')
   },
   window: {
     minimize: call('window:minimize'), toggleMaximize: call('window:toggleMaximize'),

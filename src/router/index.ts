@@ -8,6 +8,7 @@ import Feed from '@/views/Feed.vue'
 import Parcel from '@/views/Parcel.vue'
 import Mail from '@/views/Mail.vue'
 import Settings from '@/views/Settings.vue'
+import Notice from '@/views/Notice.vue'
 
 const routes = [
   { path: '/', name: 'home', component: Home, meta: { title: '仪表盘' } },
@@ -18,6 +19,7 @@ const routes = [
   { path: '/feed', name: 'feed', component: Feed, meta: { title: '信息流' } },
   { path: '/parcel', name: 'parcel', component: Parcel, meta: { title: '快递' } },
   { path: '/mail', name: 'mail', component: Mail, meta: { title: '邮件' } },
+  { path: '/notice', name: 'notice', component: Notice, meta: { title: '通知' } },
   { path: '/settings', name: 'settings', component: Settings, meta: { title: '设置' } }
 ]
 

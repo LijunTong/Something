@@ -153,7 +153,7 @@ function toggleLater(id) {
 // 说明：网络请求必须放在 better-sqlite3 的同步事务之外，这里先并发抓取，再一次性写库。
 const FETCH_TIMEOUT_MS = 12000
 const MAX_ITEMS_PER_FETCH = 50
-const FETCH_USER_AGENT = 'EfficiencyToolkit/1.0 (local RSS reader)'
+const FETCH_USER_AGENT = 'Something/1.0 (local RSS reader)'
 
 // 去掉标签、还原实体，得到可直接排版的纯文本；段落用空行分隔，阅读器按空行分段。
 function stripHtml(input) {

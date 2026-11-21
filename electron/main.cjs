@@ -1,5 +1,5 @@
 // Electron 主进程：窗口、数据库生命周期、IPC 注册。
-const { app, BrowserWindow, shell, dialog, Tray, Menu, nativeImage } = require('electron')
+const { app, BrowserWindow, shell, dialog, Tray, Menu, nativeImage, session } = require('electron')
 const path = require('node:path')
 const fs = require('node:fs')
 const { z } = require('zod')
@@ -25,9 +25,14 @@ const feedSvc = require('./services/feed.cjs')
 const parcelSvc = require('./services/parcel.cjs')
 const mailSvc = require('./services/mail.cjs')
 const notificationSvc = require('./services/notification.cjs')
+const notifySvc = require('./services/notify.cjs')
 const searchSvc = require('./services/search.cjs')
 
-const isDev = !app.isPackaged
+// 开发/生产方式只由 VITE_URL 决定：只有 scripts/dev.cjs 会注入它（同时拉起 Vite）。
+// 未注入时即使未打包也只加载 dist，避免 npm start 去连一个没启动的 5173。
+const DEV_URL = process.env.VITE_URL || ''
+const isDev = !!DEV_URL
+const DIST_INDEX = path.join(__dirname, '..', 'dist', 'index.html')
 let win = null
 let registry = null
 
@@ -40,7 +45,7 @@ const defaultDataDir = app.getPath('userData')
 const dataCandidates = [
   path.join(app.getAppPath(), '.data'),
   path.join(path.dirname(app.getPath('exe')), 'data'),
-  path.join(app.getPath('temp'), 'efficiency-toolkit')
+  path.join(app.getPath('temp'), 'something')
 ]
 const dataDir = pickDataDir({
   override: process.env.TK_DATA_DIR,
@@ -57,6 +62,16 @@ if (path.resolve(dataDir.dir) !== path.resolve(defaultDataDir)) {
   } catch (e) {
     console.error('[db] 无法切换数据目录 ' + dataDir.dir + ': ' + e.message)
   }
+}
+
+// 改名迁移：旧版本（efficiency-toolkit）的数据目录里若已有库，首次启动整库复制过来，
+// 避免升级后「数据不见了」。只在目标目录还没有库时执行一次，失败不影响启动。
+try {
+  const legacyDir = path.join(path.dirname(dataDir.dir), 'efficiency-toolkit')
+  const migrated = copyLegacyDb(legacyDir, dataDir.dir)
+  if (migrated) console.log('[db] 已从旧数据目录迁移: ' + migrated.from)
+} catch (e) {
+  console.error('[db] 旧数据迁移失败: ' + e.message)
 }
 
 // 部分机器的 GPU 进程无法启动（日志表现为 "GPU process launch failed: error_code=18"
@@ -113,12 +128,11 @@ if (!singleLock) {
   app.quit()
 }
 // 与 electron-builder 的 appId 保持一致：打包后快捷方式带的 AUMID 会让托盘/通知归属到本应用
-if (process.platform === 'win32') app.setAppUserModelId('com.efficiency.toolkit')
+if (process.platform === 'win32') app.setAppUserModelId('com.something.jijianshi')
 let quitting = false
 let tray = null
 let trayHintShown = false
 let suppressMinimizeHide = false
-let trayProbeTimer = null
 /**
  * 打包后资源在 app.asar 里，nativeImage / Tray 读不到 asar 内的图片，
  * 所以 assets 通过 asarUnpack 外置到 app.asar.unpacked，这里按同样规则换算路径。
@@ -129,7 +143,29 @@ function assetPath(name) {
 }
 const ICON_PATH = assetPath('icon.png')
 // Windows 托盘优先用 ICO（多尺寸），PNG 作为回退
-const TRAY_ICON_PATH = process.platform === 'win32' ? assetPath('tray.ico') : assetPath('tray.png')
+const TRAY_ICON_PATH = process.platform === 'win32' ? assetPath('tray-16.ico') : assetPath('tray.png')
+
+/**
+ * 托盘菜单项图标（16pt，由 Icons.vue 的线性图标渲染而来）。
+ * 菜单图标在部分平台/主题下不渲染，取不到就静默跳过，不影响菜单本身。
+ */
+const menuIconCache = new Map()
+function menuIcon(name) {
+  if (menuIconCache.has(name)) return menuIconCache.get(name)
+  let img = null
+  try {
+    let loaded = nativeImage.createFromPath(assetPath('menu-' + name + '.png'))
+    if (loaded && !loaded.isEmpty()) {
+      // 菜单小图标固定 16pt，资源比这个大就压回去，避免图标顶到菜单行高
+      if (loaded.getSize().width > 16) loaded = loaded.resize({ width: 16, height: 16, quality: 'best' })
+      img = loaded
+    }
+  } catch (e) {
+    img = null
+  }
+  menuIconCache.set(name, img)
+  return img
+}
 
 /** 读取窗口行为设置（关闭/最小化到托盘、开机启动） */
 function windowPrefs() {
@@ -138,8 +174,6 @@ function windowPrefs() {
 }
 
 function showMainWindow() {
-  // 任何一次托盘交互都说明图标可点，取消自检的自动恢复
-  if (trayProbeTimer) { clearTimeout(trayProbeTimer); trayProbeTimer = null }
   if (!win) { createWindow(); return }
   if (win.isMinimized()) win.restore()
   win.show()
@@ -154,7 +188,7 @@ function hintTrayOnce(force) {
   if (process.platform !== 'win32') return
   try {
     tray.displayBalloon({
-      title: '效率工具集仍在后台运行',
+      title: '几件事仍在后台运行',
       content: '窗口已收进系统托盘。如果任务栏右下角没看到图标，点一下 ^ 展开隐藏图标，双击图标即可恢复窗口。',
       iconType: 'info'
     })
@@ -163,32 +197,73 @@ function hintTrayOnce(force) {
   }
 }
 
+/** 开机启动：系统登录项是唯一状态源，菜单勾选态以它为准 */
+function loginAtStartup() {
+  try { return !!app.getLoginItemSettings().openAtLogin } catch (e) { return !!windowPrefs().launchAtLogin }
+}
+
+/** 托盘里改开机启动：写系统登录项 + 落设置，再广播给设置页保持两处一致 */
+function toggleLoginAtStartup(enabled) {
+  const on = !!enabled
+  try {
+    const opts = { openAtLogin: on }
+    // 开发态没有安装包，登录项指向当前 Electron 可执行文件 + 应用目录
+    if (!app.isPackaged) { opts.path = process.execPath; opts.args = [app.getAppPath()] }
+    app.setLoginItemSettings(opts)
+  } catch (e) {
+    logger.warn('system', 'launch_at_login_toggle_failed', { message: e && e.message })
+  }
+  settingsSvc.set({ window: Object.assign(windowPrefs(), { launchAtLogin: on }) })
+  if (registry) {
+    BrowserWindow.getAllWindows().forEach(function (w) {
+      if (!w.isDestroyed()) registry.broadcast(w.webContents, 'settings', 'set')
+    })
+  }
+  logger.info('system', 'launch_at_login_toggled', { enabled: on })
+}
+
+/**
+ * 托盘菜单：窗口显示/隐藏交给托盘图标单击切换，菜单里只放开机启动开关。
+ */
+function buildTrayMenu() {
+  return Menu.buildFromTemplate([
+    { label: '开机启动', type: 'checkbox', checked: loginAtStartup(), click: function (item) { toggleLoginAtStartup(item.checked); updateTrayMenu() } },
+    { type: 'separator' },
+    { label: '仪表盘', icon: menuIcon('dashboard'), click: function () { showMainWindow(); win && win.webContents.send('app:navigate', '/') } },
+    { label: '待办', icon: menuIcon('todo'), click: function () { showMainWindow(); win && win.webContents.send('app:navigate', '/todo') } },
+    { label: '天气', icon: menuIcon('weather'), click: function () { showMainWindow(); win && win.webContents.send('app:navigate', '/weather') } },
+    { label: '设置', icon: menuIcon('settings'), click: function () { showMainWindow(); win && win.webContents.send('app:navigate', '/settings') } },
+    { type: 'separator' },
+    { label: '退出', icon: menuIcon('quit'), click: function () { quitting = true; app.quit() } }
+  ])
+}
+
+/** 窗口可见性变化后重建托盘菜单，保证勾选态同步 */
+function updateTrayMenu() {
+  if (!tray || tray.isDestroyed()) return
+  tray.setContextMenu(buildTrayMenu())
+}
+
 function createTray() {
   if (tray && !tray.isDestroyed()) return
   // 32px 图标在高 DPI 下更清晰；Windows 会自动缩放到托盘尺寸
-  // 官方示例走 data URL（16x16 PNG）：不经过文件/asar 路径，最稳
-  let image = nativeImage.createFromDataURL('data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAADLUlEQVR4nE2TzYscRRjGn/et6unu2Z6dmZ3V0Wwwa4RkJWpEo+5hIehNwYiHCYq5qugfIAQSljnE9SKecpBcxOPkIFHEEASREDDZxBgiISTZVScf635kdsjOV3dX1Ru6g2Ad6gOqnnrq+b1F+H+TeQY1XTYlAFPt0xPxYPxZa2UfgFcB7GKGE+Kf2YwW1p97vZftAwS0H/PqV2oanL9Ti6L1TwjuDVgzwyRPclgAw8EaQATwSj5cZ/OsYvsWZYeR9QCeX27t3rKVH/1q8ZlCvInAbsF3PfgcW80GqSvQyrCOe8O69WoVz3a7zdzBO5tfVZTYBWPlfVJUVnE/VQQWEBOY8jeBAThocrjVm3a30j3Qae9ParS/DBMvPlN8ojzn1gbwnHLCxAOX5LZSMVDE+eiRByMGIUEWt2apOwhv60Qnn4bVaK5zbyN5XJW818JdXIDG5eQvpEQwLsGbxZcQkAcFxu/x37iUXEXN76LTLxmtmBq94cDt0I/pQ6X9FFEAgcNN8y8GcJj2apj1ZrBuh1AIMB6UcTG5IgVtCeQe6NTZ+pgL+YvqIal6pYwIfhtdx810BXVvEooIsQM6qUFAgFOPEIMZEL6vSYgcHM6OrqFmxqFJoW02MJIEPnm4ka7giroBZoUB3ce1pA0QSSbjiDZ0JpSIQWt4HmUdQUTy9c7Cdjzl1bFCGqfiS5CcN2BF4ENDHlXQms6S1mD0bR99N4SFxU5dhxZGO11Fx3Qx58+goqJc5MJoCcuykYmJA69pBsUJrEypKorsY9P18Hn1Axx/8BOu2rvYpqqY9XdjSk9gJCmyq5fNEokIpTZYzArlAvmKCqTt0epBHK99hG96v+D08DLGKESZx7A3mMaq7aLMRbyod1gbFdkb9U7Z7/ecoXdXF/Yy64tbNNL75GkzqUr8w3ARFY4wxkWwCA4UX8ndZXz/wD/63PC62c5u+uvJI3fzKA7cOfaeXwpOjNhGJkkRcYCMjBPJwxpInIfLWmXZJIUBPvxu2+FvG9JS1Gg11MmDJ+3bS8deCCbCj8W4l41J/f9+OIGsIjKkOWWtl6SfnmhNfXZuXua5SU33EKj/e3aXpDZnAAAAAElFTkSuQmCC')
-  if (image.isEmpty()) image = nativeImage.createFromPath(TRAY_ICON_PATH)
+
+  // Windows 托盘优先用 ICO 文件（官方文档：图标格式按平台区分），data URL 仅作兜底
+  let image = nativeImage.createFromPath(TRAY_ICON_PATH)
   if (image.isEmpty()) image = nativeImage.createFromPath(ICON_PATH)
+  if (image.isEmpty()) image = nativeImage.createFromDataURL('data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAADLUlEQVR4nE2TzYscRRjGn/et6unu2Z6dmZ3V0Wwwa4RkJWpEo+5hIehNwYiHCYq5qugfIAQSljnE9SKecpBcxOPkIFHEEASREDDZxBgiISTZVScf635kdsjOV3dX1Ru6g2Ad6gOqnnrq+b1F+H+TeQY1XTYlAFPt0xPxYPxZa2UfgFcB7GKGE+Kf2YwW1p97vZftAwS0H/PqV2oanL9Ti6L1TwjuDVgzwyRPclgAw8EaQATwSj5cZ/OsYvsWZYeR9QCeX27t3rKVH/1q8ZlCvInAbsF3PfgcW80GqSvQyrCOe8O69WoVz3a7zdzBO5tfVZTYBWPlfVJUVnE/VQQWEBOY8jeBAThocrjVm3a30j3Qae9ParS/DBMvPlN8ojzn1gbwnHLCxAOX5LZSMVDE+eiRByMGIUEWt2apOwhv60Qnn4bVaK5zbyN5XJW818JdXIDG5eQvpEQwLsGbxZcQkAcFxu/x37iUXEXN76LTLxmtmBq94cDt0I/pQ6X9FFEAgcNN8y8GcJj2apj1ZrBuh1AIMB6UcTG5IgVtCeQe6NTZ+pgL+YvqIal6pYwIfhtdx810BXVvEooIsQM6qUFAgFOPEIMZEL6vSYgcHM6OrqFmxqFJoW02MJIEPnm4ka7giroBZoUB3ce1pA0QSSbjiDZ0JpSIQWt4HmUdQUTy9c7Cdjzl1bFCGqfiS5CcN2BF4ENDHlXQms6S1mD0bR99N4SFxU5dhxZGO11Fx3Qx58+goqJc5MJoCcuykYmJA69pBsUJrEypKorsY9P18Hn1Axx/8BOu2rvYpqqY9XdjSk9gJCmyq5fNEokIpTZYzArlAvmKCqTt0epBHK99hG96v+D08DLGKESZx7A3mMaq7aLMRbyod1gbFdkb9U7Z7/ecoXdXF/Yy64tbNNL75GkzqUr8w3ARFY4wxkWwCA4UX8ndZXz/wD/63PC62c5u+uvJI3fzKA7cOfaeXwpOjNhGJkkRcYCMjBPJwxpInIfLWmXZJIUBPvxu2+FvG9JS1Gg11MmDJ+3bS8deCCbCj8W4l41J/f9+OIGsIjKkOWWtl6SfnmhNfXZuXua5SU33EKj/e3aXpDZnAAAAAElFTkSuQmCC')
   if (image.isEmpty()) {
     logger.warn('main', 'tray_icon_missing', { icon: ICON_PATH })
     return
   }
+  // 官方文档：macOS 菜单栏图标建议用 template image，系统按深/浅色模式自动反色
+  if (process.platform === 'darwin') image.setTemplateImage(true)
   // 直接交原始位图给系统缩放：手动 resize 后部分 Windows 环境拿不到托盘图标句柄
   tray = new Tray(image)
-  tray.setToolTip('效率工具集 · 单击显示/隐藏窗口，右键更多')
-  const menu = Menu.buildFromTemplate([
-    { label: '显示主窗口', click: function () { showMainWindow() } },
-    { label: '隐藏到托盘', click: function () { if (win) win.hide() } },
-    { type: 'separator' },
-    { label: '仪表盘', click: function () { showMainWindow(); win && win.webContents.send('app:navigate', '/') } },
-    { label: '待办', click: function () { showMainWindow(); win && win.webContents.send('app:navigate', '/todo') } },
-    { label: '天气', click: function () { showMainWindow(); win && win.webContents.send('app:navigate', '/weather') } },
-    { label: '设置', click: function () { showMainWindow(); win && win.webContents.send('app:navigate', '/settings') } },
-    { type: 'separator' },
-    { label: '退出', click: function () { quitting = true; app.quit() } }
-  ])
-  tray.setContextMenu(menu)
+  // 官方文档：macOS 开启后单双击合并为 click，避免窗口 toggle 被双击事件干扰
+  if (process.platform === 'darwin') tray.setIgnoreDoubleClickEvents(true)
+  tray.setToolTip('几件事 · 单击显示/隐藏窗口，右键更多')
+  updateTrayMenu()
   logger.info('main', 'tray_ready', { icon: ICON_PATH })
   // bounds 为空说明 Windows 把图标收进了 ^ 展开区：主动提示一次，避免用户以为没有托盘
   setTimeout(function () {
@@ -211,7 +286,7 @@ function createWindow() {
     height: 900,
     minWidth: 1100,
     minHeight: 700,
-    title: '效率工具集',
+    title: '几件事',
     // 自绘标题栏：系统边框与标题都关掉，拖拽区与窗口按钮由渲染层负责
     frame: false,
     titleBarStyle: 'hidden',
@@ -230,9 +305,17 @@ function createWindow() {
   })
   win.once('ready-to-show', function () { win.show() })
   if (isDev) {
-    win.loadURL(process.env.VITE_URL || 'http://localhost:5173')
+    win.loadURL(DEV_URL)
+  } else if (fs.existsSync(DIST_INDEX)) {
+    win.loadFile(DIST_INDEX)
   } else {
-    win.loadFile(path.join(__dirname, '..', 'dist', 'index.html'))
+    // 产物缺失时不显示 ERR_FILE_NOT_FOUND 白屏，直接给一条可执行的提示。
+    const hint = '<!doctype html><meta charset="utf-8"><body style="font:14px/1.7 system-ui;padding:48px;color:#0f172a">'
+      + '<h2 style="margin:0 0 12px;font-size:18px">尚未构建前端产物</h2>'
+      + '<p style="margin:0 0 8px">找不到 dist/index.html。开发模式请运行 <code>npm run dev</code>，'
+      + '普通运行请先执行 <code>npm run build</code> 再 <code>npm start</code>。</p>'
+      + '<p style="color:#64748b">预期路径：' + DIST_INDEX.replace(/</g, '&lt;') + '</p></body>'
+    win.loadURL('data:text/html;charset=utf-8,' + encodeURIComponent(hint))
   }
   win.webContents.setWindowOpenHandler(function (d) {
     shell.openExternal(d.url)
@@ -262,6 +345,9 @@ function createWindow() {
     if (suppressMinimizeHide) { suppressMinimizeHide = false; return }
     if (windowPrefs().minimizeToTray) { win.hide(); hintTrayOnce() }
   })
+  // 托盘菜单「显示主窗口」勾选态跟随窗口可见性（官方示例做法）
+  win.on('show', function () { updateTrayMenu() })
+  win.on('hide', function () { updateTrayMenu() })
   win.on('maximize', function () { win && win.webContents.send('window:maximized', true) })
   win.on('unmaximize', function () { win && win.webContents.send('window:maximized', false) })
 }
@@ -350,6 +436,8 @@ function registerIpc() {
       handler: mailSvc.updateAccount
     },
     removeAccount: { schema: z.object({ id: z.string().min(1) }), handler: mailSvc.removeAccount },
+    // 明文回显授权码：设置页默认掩码，用户点「显示」时才调
+    revealSecret: { schema: z.object({ id: z.string().min(1) }), handler: mailSvc.revealSecret },
     testAccount: mailSvc.testAccount, sync: mailSvc.sync, folders: mailSvc.folders,
     list: mailSvc.list, read: mailSvc.read, send: mailSvc.send, saveDraft: mailSvc.saveDraft,
     markRead: mailSvc.markRead, toggleStar: mailSvc.toggleStar, remove: mailSvc.remove,
@@ -421,17 +509,59 @@ function registerIpc() {
       handler: settingsSvc.setWeatherJwt
     },
     clearWeatherJwt: settingsSvc.clearWeatherJwt,
+    // 凭据明文回显：kind=weatherKey | weatherJwt，界面默认掩码
+    revealSecret: { schema: z.object({ kind: z.enum(['weatherKey', 'weatherJwt']) }), handler: settingsSvc.revealSecret },
     testWeather: settingsSvc.testWeather
   })
   registry.register('search', {
     query: { schema: z.object({ keyword: z.string().min(1).max(60) }), handler: searchSvc.query }
   })
+  // 通知写操作后广播：首页卡片、侧栏角标、通知页都靠它实时对齐
+  function broadcastNotify() {
+    BrowserWindow.getAllWindows().forEach(function (w) {
+      if (!w.isDestroyed()) registry.broadcast(w.webContents, 'notification', 'changed')
+    })
+  }
+  // 番茄钟被「任务完成」自动收尾时，各窗口立即重画计时器与任务绑定
+  pomodoroSvc.onStateChange(function () {
+    BrowserWindow.getAllWindows().forEach(function (w) {
+      if (!w.isDestroyed()) registry.broadcast(w.webContents, 'pomodoro', 'changed')
+    })
+  })
   registry.register('notification', {
     today: notificationSvc.today,
     unreadCount: notificationSvc.unreadCount,
-    markAllRead: notificationSvc.markAllRead,
+    counts: notificationSvc.counts,
+    list: {
+      schema: z.object({
+        module: z.string().max(20).optional(),
+        onlyUnread: z.boolean().optional(),
+        limit: z.number().int().min(1).max(200).optional(),
+        offset: z.number().int().min(0).optional()
+      }).optional(),
+      handler: notificationSvc.list
+    },
+    markAllRead: function () { const n = notificationSvc.markAllRead(); broadcastNotify(); return n },
+    markRead: { schema: z.string().min(1), handler: function (id) { const ok = notificationSvc.markRead(id); broadcastNotify(); return ok } },
+    clearRead: function () { const n = notificationSvc.clearRead(); broadcastNotify(); return n },
     create: notificationSvc.create,
-    remove: { schema: z.string().min(1), handler: notificationSvc.remove }
+    remove: {
+      schema: z.string().min(1),
+      handler: function (id) { const ok = notificationSvc.remove(id); broadcastNotify(); return ok }
+    },
+    // 任意模块上报一个事件：主进程统一决定系统通知/应用内通知，并做去重与免打扰判定
+    push: {
+      schema: z.object({
+        module: z.string().min(1).max(20),
+        title: z.string().min(1).max(120),
+        body: z.string().max(300).optional(),
+        level: z.enum(['normal', 'strong']).optional(),
+        id: z.string().min(1).max(160).optional()
+      }),
+      handler: notifySvc.push
+    },
+    // 设置页「发送测试通知」：两条通道各自回结果
+    test: function () { return notifySvc.test() }
   })
   registry.register('log', {
     // 渲染进程写入主进程日志文件
@@ -506,19 +636,6 @@ function registerIpc() {
     loginItemEnabled: function () {
       try { return app.getLoginItemSettings().openAtLogin } catch (e) { return false }
     },
-    // 托盘可用性自检：隐藏窗口 8 秒，期间没有托盘交互就自动恢复，
-    // 用来判断「关闭到托盘」后窗口是否真的还能找回来
-    trayProbe: function () {
-      if (!win) return false
-      win.hide()
-      if (trayProbeTimer) clearTimeout(trayProbeTimer)
-      trayProbeTimer = setTimeout(function () {
-        trayProbeTimer = null
-        if (win) { win.show(); win.focus() }
-        if (win) win.webContents.send('tray:probe-failed')
-      }, 8000)
-      return true
-    },
     // 手动定位托盘：设置页按钮调用，弹一次托盘气泡提示
     trayHint: function () {
       if (!tray || tray.isDestroyed()) return false
@@ -569,6 +686,19 @@ process.on('unhandledRejection', function (reason) {
 })
 
 app.whenReady().then(function () {
+  // 拼写词典：Chromium 默认去 redirector.gvt1.com 拉 en-us 词典，这条链路常被重置，
+  // 控制台就会刷 ssl_client_socket_impl handshake failed / net_error -100。
+  // 主窗口已关掉 spellcheck，这里把会话级词典下载一并关掉，再兜底拦掉词典请求。
+  try {
+    const ses = session.defaultSession
+    ses.setSpellCheckerEnabled(false)
+    // 词典下载地址指向本机空端口：即使有组件坚持预取，也只会在本机收到 connection refused，
+    // 不会再对 gvt1.com 发起 TLS 握手（国内这条链路会被重置，控制台即报 -100）。
+    ses.setSpellCheckerDictionaryDownloadURL('http://127.0.0.1:1/dict/')
+    ses.webRequest.onBeforeRequest({ urls: ['*://*.gvt1.com/dict/*', '*://redirector.gvt1.com/*'] }, function (details, cb) {
+      cb({ cancel: true })
+    })
+  } catch (e) {}
   logger.init(app.getPath('userData'), { level: process.env.TK_LOG_LEVEL || 'info' })
   logger.info('main', 'app_ready', { electron: process.versions.electron, node: process.versions.node })
   if (dataDir.source !== 'default' && dataDir.source !== 'env' && dataDir.source !== 'existing') {
@@ -586,6 +716,14 @@ app.whenReady().then(function () {
   const opened = conn.open(app.getPath('userData'))
   const check = conn.integrityCheck()
   seed(conn.get())
+  // 凭据改为明文落库（设置页默认掩码）：库打开后把旧版 safeStorage 密文一次改写为明文
+  try {
+    const cfgChanged = settingsSvc.migratePlain()
+    const mailChanged = mailSvc.migratePlain()
+    if (cfgChanged || mailChanged) logger.info('settings', 'secret_migrated_plain', { settings: cfgChanged, mail: mailChanged })
+  } catch (e) {
+    logger.warn('settings', 'secret_migrate_failed', String(e && e.message))
+  }
   registerIpc()
   // 启动时按设置同步系统登录项，避免用户手动改过之后状态漂移
   if (windowPrefs().launchAtLogin) {
@@ -600,6 +738,22 @@ app.whenReady().then(function () {
   createWindow()
   // 按官方示例：ready 阶段就创建托盘（不依赖窗口 ready-to-show）
   createTray()
+  // 事件通知引擎：系统通知 + 应用内通知。窗口对象每次重建都取最新的，所以传函数而不是引用
+  notifySvc.start({
+    getWindow: function () { return win },
+    icon: ICON_PATH,
+    publish: function (payload) {
+      BrowserWindow.getAllWindows().forEach(function (w) {
+        if (w.isDestroyed()) return
+        registry.broadcast(w.webContents, 'notification', 'push')
+        w.webContents.send('notify:event', payload)
+      })
+    },
+    navigate: function (to) {
+      showMainWindow()
+      if (win && !win.isDestroyed()) win.webContents.send('app:navigate', to)
+    }
+  })
   app.on('second-instance', function () { logger.info('main', 'second_instance'); showMainWindow() })
   console.log('[db] file=' + opened.file + ' version=' + opened.version + ' applied=' + JSON.stringify(opened.applied) + ' integrity=' + check.ok)
   logger.info('db', 'opened', { file: opened.file, version: opened.version, applied: opened.applied, integrity: check.ok, dataSource: dataDir.source })
@@ -609,6 +763,9 @@ app.whenReady().then(function () {
 app.on('window-all-closed', function () { if (process.platform !== 'darwin') app.quit() })
 app.on('before-quit', function () {
   quitting = true
+  notifySvc.stop()
+  // Windows 下进程退出后托盘图标可能残留在通知区直到鼠标划过，主动销毁
+  if (tray && !tray.isDestroyed()) { try { tray.destroy() } catch (e) {} }
   logger.info('main', 'app_quit')
   logger.flush()
   conn.close()

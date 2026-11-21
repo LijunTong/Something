@@ -26,11 +26,10 @@
 .td-tags { display: flex; gap: 5px; align-items: center; }
 .td-due { font-size: var(--fs-11); text-align: right; white-space: nowrap; }
 
-/* 看板 */
-.td-board { display: grid; grid-template-columns: repeat(3, minmax(0,1fr)); gap: 10px; padding: 14px; }
-.td-bcol { min-height: 200px; padding: 8px; border-radius: 8px; }
-.td-bcol > b { display: block; padding: 4px; font-size: var(--fs-12); }
-.td-bcard { margin-top: 8px; padding: 9px; border-radius: 6px; font-size: var(--fs-11); cursor: pointer; }
+.td-actions { display: flex; flex-direction: column; gap: 8px; width: 100%; }
+
+/* 任务列表为空时，提示居中而不是贴在列表顶部 */
+.td-empty { display: flex; flex-direction: column; justify-content: center; min-height: 280px; padding: 36px 0; }
 
 /* 详情抽屉内 */
 .td-subtitle { margin: 12px 0 4px; font-size: var(--fs-12); font-weight: 600; }

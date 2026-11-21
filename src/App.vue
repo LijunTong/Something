@@ -78,6 +78,8 @@ function palette(dark: boolean, accent: string): Record<string, string> {
     '--shadow-card': dark ? '0 1px 2px rgba(0,0,0,.4)' : '0 1px 2px rgba(0,0,0,.03)',
     '--shadow-hover': dark ? '0 2px 10px rgba(0,0,0,.45)' : '0 2px 8px rgba(15,118,110,.07)',
     '--overlay': dark ? 'rgba(2,6,23,.6)' : 'rgba(15,23,42,.38)',
+    // 品牌标里的「白色面板」：浅色下是白卡，深色下换成深底，避免整枚标在深色里发光
+    '--brand-plate': dark ? '#0f172a' : '#ffffff',
     '--toast-bg': dark ? '#0b1220' : '#1f2937',
     '--toast-text': '#ffffff',
     '--focus-bg': '#0b1220'

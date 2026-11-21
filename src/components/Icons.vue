@@ -42,6 +42,7 @@
   <symbol id="i-reply" viewBox="0 0 24 24"><path d="m9 8-5 4 5 4M4 12h9a6 6 0 0 1 6 6v2"/></symbol>
   <symbol id="i-paperclip" viewBox="0 0 24 24"><path d="M20 11.5 12 19a4 4 0 0 1-5.7-5.7l8-8a2.8 2.8 0 0 1 4 4l-8 8a1.6 1.6 0 0 1-2.3-2.3l7-7"/></symbol>
   <symbol id="i-print" viewBox="0 0 24 24"><path d="M6 9V3h12v6M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2M6 15h12v6H6z"/></symbol>
+  <symbol id="i-monitor" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="12" rx="2"/><path d="M9 20h6M12 16v4"/></symbol>
   <symbol id="i-moon" viewBox="0 0 24 24"><path d="M20 15a8 8 0 0 1-11-11 8 8 0 1 0 11 11Z"/></symbol>
   <symbol id="i-pause" viewBox="0 0 24 24"><path d="M8 5v14M16 5v14"/></symbol>
   <symbol id="i-play" viewBox="0 0 24 24"><path d="m7 4 12 8-12 8z"/></symbol>

@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch, h } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { NMenu, NTag } from 'naive-ui'
+import { NMenu } from 'naive-ui'
 import type { MenuOption } from 'naive-ui'
 import Shell from '@/components/Shell.vue'
 import AppearancePanel from '@/components/settings/AppearancePanel.vue'
@@ -47,7 +47,8 @@ const MODULE_ROUTES: Record<string, string> = {
 const route = useRoute()
 const router = useRouter()
 const { load } = useSettings()
-const active = ref<string>('data')
+// 默认落在「外观」：设置页最常改的是主题与侧边栏
+const active = ref<string>('appearance')
 
 function icon(name: string) {
   return () => h('svg', { class: 'set-menu-icon', viewBox: '0 0 24 24' }, [h('use', { href: '#' + name })])
@@ -92,15 +93,11 @@ onMounted(async () => {
 <template>
   <Shell>
     <template #subtitle>
-      所有配置保存在本机，不会上传到任何服务器 · 当前面板：{{ currentLabel }}
-    </template>
-    <template #actions>
-      <n-tag size="small" type="success">本地 SQLite</n-tag>
-      <n-tag size="small">全部配置保存在本机</n-tag>
+      当前面板：{{ currentLabel }} · 配置只保存在本机
     </template>
 
     <div class="set-layout">
-      <n-card class="set-nav" size="small" :content-style="'padding:4px'">
+      <n-card class="set-nav" size="small" :content-style="'padding:6px'">
         <n-menu
           v-model:value="active"
           :options="menuOptions"

@@ -14,12 +14,24 @@ export interface TodoRow {
 export interface TodoStats { pending: number; done: number; overdue: number; focusSeconds: number }
 export interface AppearanceSetting { theme: '浅色' | '深色' | '跟随系统'; accent: string; font: '小' | '中' | '大'; sidebarExpand: boolean }
 export interface NotifySetting {
-  desktop: boolean; weather: boolean; schedule: boolean; todo: boolean
+  /** 应用内通知：通知表（今日通知）+ 应用内浮层 */
+  inApp: boolean
+  /** 系统通知：Windows 通知中心 toast */
+  desktop: boolean
+  /** 系统通知仅在窗口不在前台时弹出，前台只走应用内 */
+  systemOnlyAway: boolean
+  weather: boolean; schedule: boolean; todo: boolean
   pomodoro: boolean; parcel: boolean; mail: boolean
+  /** 免打扰时段总开关：关掉后 dndStart/dndEnd 仅作为下次开启时的记忆值 */
+  dndOn: boolean
   dndStart: string; dndEnd: string; privacy: string
+  /** 每个模块的提示音（音频名，默认「蜂鸣」），缺失时回退蜂鸣 */
+  sounds: NotifySounds
 }
+export type NotifySoundModule = 'weather' | 'schedule' | 'todo' | 'pomodoro' | 'parcel' | 'mail'
+export type NotifySounds = Record<NotifySoundModule, string>
 export interface ShortcutSetting {
-  search: string; newTodo: string; focus: string; viewSwitch: string
+  search: string; newTodo: string; focus: string
   /** 历史字段：快捷添加按钮已移除，仅保留兼容 */
   quickAdd?: string
 }
@@ -45,6 +57,19 @@ export interface ModulesSetting {
   dashboard: boolean; weather: boolean; schedule: boolean; todo: boolean
   pomodoro: boolean; feed: boolean; parcel: boolean; mail: boolean; notice: boolean
 }
+/** 首页卡片布局：x/y 为网格坐标（列 0..2、行从 0 起），w/h 为网格单位（行高 40px，间距 16px） */
+export interface HomeCardLayout {
+  key: 'weather' | 'schedule' | 'todo' | 'pomodoro' | 'feed' | 'parcel' | 'mail' | 'notice'
+  x: number
+  y: number
+  w: number
+  h: number
+}
+export interface HomeSetting {
+  layout: HomeCardLayout[]
+  /** 锁定后首页卡片不能拖动、不能缩放 */
+  locked: boolean
+}
 export interface WindowSetting {
   /** 关闭窗口时隐藏到托盘（不退出进程） */
   closeToTray: boolean
@@ -56,6 +81,7 @@ export interface WindowSetting {
 export interface AllSettings {
   appearance: AppearanceSetting; notify: NotifySetting; shortcuts: ShortcutSetting; window: WindowSetting
   backup: BackupSetting; weather: WeatherSetting; feed: FeedSetting; modules: ModulesSetting
+  home: HomeSetting
 }
 export interface StorageSegment { key: string; label: string; color: string; bytes: number }
 export interface StorageUsage {
@@ -78,6 +104,21 @@ export interface SearchGroup { module: string; label: string; items: SearchItem[
 export interface NotificationItem {
   id: string; module: string; level: string; title: string; body: string | null
   at: number; read: boolean; derived?: boolean
+}
+export interface NotifyListQuery { module?: string; onlyUnread?: boolean; limit?: number; offset?: number }
+export interface NotifyCounts { total: number; unread: number; byModule: Record<string, number> }
+export interface NotifyPage { items: NotificationItem[]; total: number; offset: number; limit: number; hasMore: boolean }
+/** 主进程推送的事件（应用内浮层消费）：与 notification 表里的行同源 */
+export interface NotificationEvent {
+  /** 提示音名，渲染层据此播放 assets/sounds 里的音频 */
+  sound?: string
+  id: string; module: string; level: 'normal' | 'strong'
+  title: string; body: string | null; at: number
+}
+/** 事件上报结果：两条通道各自是否真的推送成功 */
+export interface NotifyPushResult {
+  ok: boolean; id: string | null; inApp: boolean; system: boolean
+  reason: string | null
 }
 
 export interface Api {
@@ -115,7 +156,9 @@ export interface Api {
     setWeatherKey(dto: { key: string }): Promise<IpcResult<WeatherSetting>>
     /** JWT 凭据：开发者 ID / 项目 ID / 凭据 ID / Ed25519 私钥（PEM） */
     setWeatherJwt(dto: { developerId: string; projectId: string; keyId: string; privateKey?: string }): Promise<IpcResult<WeatherSetting>>
-    clearWeatherJwt(): Promise<IpcResult<WeatherSetting>>
+    /** 凭据明文回显：界面默认掩码，用户点「显示」时按需取明文 */
+  revealSecret(dto: { kind: 'weatherKey' | 'weatherJwt' }): Promise<IpcResult<{ kind: string; value: string }>>
+  clearWeatherJwt(): Promise<IpcResult<WeatherSetting>>
     testWeather(): Promise<IpcResult<WeatherTestResult>>
   }
   search: {
@@ -125,8 +168,17 @@ export interface Api {
     today(): Promise<IpcResult<NotificationItem[]>>
     unreadCount(): Promise<IpcResult<number>>
     markAllRead(): Promise<IpcResult<number>>
+    counts(): Promise<IpcResult<NotifyCounts>>
+    list(dto?: NotifyListQuery): Promise<IpcResult<NotifyPage>>
+    markRead(id: string): Promise<IpcResult<boolean>>
+    clearRead(): Promise<IpcResult<number>>
     create(dto: { module: string; level?: string; title: string; body?: string }): Promise<IpcResult<string>>
     remove(id: string): Promise<IpcResult<boolean>>
+    /** 事件上报：主进程统一决定系统通知/应用内通知，并做去重、免打扰、隐私判定 */
+    push(dto: { module: string; title: string; body?: string; level?: 'normal' | 'strong'; id?: string }): Promise<IpcResult<NotifyPushResult>>
+    /** 设置页自检：两条通道各回结果 */
+    test(): Promise<IpcResult<NotifyPushResult>>
+    onEvent(cb: (event: NotificationEvent) => void): () => void
   }
   log: {
     write(dto: { level?: 'debug' | 'info' | 'warn' | 'error'; scope?: string; message: string; meta?: unknown }): Promise<IpcResult<boolean>>
@@ -150,8 +202,6 @@ export interface Api {
     setLaunchAtLogin(dto: { enabled: boolean }): Promise<IpcResult<boolean>>
     loginItemEnabled(): Promise<IpcResult<boolean>>
     trayHint(): Promise<IpcResult<boolean>>
-    trayProbe(): Promise<IpcResult<boolean>>
-    onTrayProbeFailed(cb: () => void): () => void
     trayInfo(): Promise<IpcResult<{ created: boolean; alive: boolean; iconPath: string; iconEmpty: boolean; iconSize: { width: number; height: number } | null; bounds: { x: number; y: number; width: number; height: number } | null }>>
   }
   onDataChanged(cb: (payload: { domain: string; action: string; at: number }) => void): () => void
@@ -296,6 +346,8 @@ export interface MailApi {
   addAccount(dto: Record<string, unknown>): Promise<IpcResult<MailAccount[]>>
   updateAccount(dto: Record<string, unknown>): Promise<IpcResult<MailAccount[]>>
   removeAccount(dto: { id: string }): Promise<IpcResult<MailAccount[]>>
+  /** 明文回显授权码：默认掩码，点「显示」时按需取 */
+  revealSecret(dto: { id: string }): Promise<IpcResult<{ id: string; value: string }>>
   testAccount(dto: Record<string, unknown>): Promise<IpcResult<{ ok: boolean; code?: string; message?: string; imap?: { ok: boolean; message?: string } | null; smtp?: { ok: boolean; message?: string } | null }>>
   sync(dto: { accountId: string; limit?: number }): Promise<IpcResult<{ ok: boolean; accountId: string; added: number; updated: number; total: number }>>
   folders(accountId?: string): Promise<IpcResult<MailFolder[]>>

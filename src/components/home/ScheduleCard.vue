@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { homeRefreshToken } from '@/composables/useHomeRefresh'
+import { useHomeCardRefresh } from '@/composables/useHomeRefresh'
 import { computed, onMounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import HomeCardMenu from '@/components/home/HomeCardMenu.vue'
@@ -39,7 +39,8 @@ async function load() {
   }
 }
 onMounted(load)
-watch(homeRefreshToken, () => { void load() })
+const refreshTick = useHomeCardRefresh('schedule')
+watch(refreshTick, () => { void load() })
 </script>
 
 <template>

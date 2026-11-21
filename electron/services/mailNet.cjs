@@ -25,7 +25,7 @@ function authText(err, fallback) {
 async function sendClientId(session, host) {
   if (!/(163|126|yeah|188)\./i.test(String(host || ''))) return
   try {
-    await session.cmd('ID ("name" "EfficiencyToolkit" "version" "1.0" "vendor" "local")')
+    await session.cmd('ID ("name" "Something" "version" "1.0" "vendor" "local")')
   } catch (e) {
     // 服务端不支持 ID 时忽略即可
   }

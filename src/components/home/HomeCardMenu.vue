@@ -2,12 +2,15 @@
 import { NDropdown, NButton } from 'naive-ui'
 import { useMessage } from 'naive-ui'
 import { useHomeCards, CARD_META, type CardKey } from '@/composables/useHomeCards'
+import { triggerHomeRefresh } from '@/composables/useHomeRefresh'
 
 const props = defineProps<{ module: CardKey }>()
 const { setVisible } = useHomeCards()
 const message = useMessage()
 
 function handle(key: string) {
+  // 只重载本卡：走单卡令牌，不牵动其他卡片，也不改首页「数据更新于」时间
+  if (key === 'refresh') triggerHomeRefresh(props.module)
   if (key === 'hide') {
     void setVisible(props.module, false).then(() => {
       message.info('已隐藏「' + CARD_META[props.module].label + '」卡片，可在「卡片设置」里恢复')
@@ -22,7 +25,7 @@ function handle(key: string) {
     <n-dropdown
       trigger="click"
       placement="bottom-end"
-      :options="[{ label: '隐藏此卡片', key: 'hide' }]"
+      :options="[{ label: '刷新', key: 'refresh' }, { label: '隐藏此卡片', key: 'hide' }]"
       @select="handle"
     >
       <n-button size="tiny" quaternary circle :title="'卡片设置：' + CARD_META[module].label" aria-label="卡片菜单">

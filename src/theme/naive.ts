@@ -39,7 +39,8 @@ export const lightOverrides: GlobalThemeOverrides = {
     boxShadow2: '0 4px 16px rgba(15,23,42,.08)',
     boxShadow3: '0 24px 64px rgba(15,23,42,.16)'
   },
-  Card: { borderRadius: '12px', paddingMedium: '16px', paddingLarge: '18px', titleFontSize: '15px' },
+  // 卡片内边距比原型略宽 2px：设置页一行一个开关，这点余量就能让行与行之间透气
+  Card: { borderRadius: '12px', paddingMedium: '18px', paddingLarge: '20px', titleFontSize: '15px', titleFontWeight: '600' },
   // 正文 14px 后按钮略增高度，避免字形贴边
   Button: { borderRadiusMedium: '8px', borderRadiusSmall: '6px', fontWeight: '500', heightTiny: '26px', heightSmall: '30px', heightMedium: '34px' },
   // placeholder 默认 #c2c2c2 不达 AA，改用令牌里的 muted 值
@@ -103,6 +104,10 @@ export const darkOverrides: GlobalThemeOverrides = {
     textColor3: '#7b8a9a',
     borderColor: '#334155',
     dividerColor: '#334155',
+    // 深色下的语义色必须提亮：沿用浅色的 #146c33 等深色值，标签/提示条在深底上读不出来
+    successColor: '#4ade80',
+    warningColor: '#fdba74',
+    errorColor: '#f87171',
     bodyColor: '#0f172a',
     cardColor: '#1e293b',
     modalColor: '#1e293b',

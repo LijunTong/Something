@@ -1,49 +1,57 @@
-/* 设置页：只写布局。颜色/圆角/字号/边框一律走 src/theme/naive.ts 主题变量。
+/* 设置页：只写布局与刻度。颜色/字号/圆角一律取 App.vue 注入的主题令牌与 src/theme/naive.ts，
    分段用量条与色块的颜色来自后端数据（StorageSegment.color / 强调色选项），属于数据驱动，不在此硬编码。 */
 
-.set-layout { display: grid; grid-template-columns: 180px minmax(0, 1fr); gap: 16px; align-items: start; }
+/* 两栏：导航定宽，内容区收在 760px 内。设置项不是表格，行拉得太长时「标签—控件」的联系会断。 */
+.set-layout { display: grid; grid-template-columns: 196px minmax(0, 1fr); gap: 20px; align-items: start; }
 .set-nav { position: sticky; top: 0; }
-.set-content { display: flex; flex-direction: column; gap: 16px; min-width: 0; }
+.set-content { display: flex; flex-direction: column; gap: 16px; min-width: 0; max-width: 800px; }
 
 /* 长面板（数据与存储）拆成同级卡片：分区靠卡片边界与标题层级表达 */
-.set-sections { display: flex; flex-direction: column; gap: 12px; }
+.set-sections { display: flex; flex-direction: column; gap: 16px; }
 
-/* 短面板内部的二级分区：用 Naive 分隔线的标题承载，不再用裸文本当小标题 */
-/* 二级分区标签：与上方内容拉开 20px、与下方选项贴近，形成「上宽下紧」的节奏 */
-.set-section { margin: 20px 0 6px; }
-.set-section:first-child { margin-top: 2px; }
-.set-field + .set-field { margin-top: 2px; }
+/* 二级分区：上方留白大于下方，形成「上宽下紧」的分组节奏 */
+.set-section { margin: 26px 0 10px; }
+.set-section:first-child { margin-top: 0; }
 
-.set-field { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 40px; padding: 2px 0; }
-.set-field-key { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
-.set-hint { display: block; }
-.set-field-value { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-align: right; }
-.set-inline { display: flex; align-items: center; gap: 8px; min-width: 0; }
+/* 行：44px 起步 + 8px 行距，相邻开关不再粘成一片 */
+.set-field { display: flex; align-items: center; justify-content: space-between; gap: 24px; min-height: 44px; padding: 3px 0; }
+.set-field + .set-field { margin-top: 8px; }
+.set-field-key { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.set-hint { display: block; color: var(--muted); font-size: var(--fs-11); line-height: 1.5; }
+.set-field-value { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-align: right; color: var(--text-2); }
+.set-inline { display: flex; align-items: center; gap: 10px; min-width: 0; }
 .set-inline-end { justify-content: flex-end; }
 .set-inline-between { justify-content: space-between; width: 100%; }
-.set-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 12px; }
-.set-muted { display: block; }
-p.set-muted { margin: 10px 0 0; }
+.set-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin-top: 16px; }
 
-.set-usage { display: flex; align-items: center; gap: 12px; }
+
+
+/* 卡片尾注：整张卡只留一条整段说明，代替每行下面各挂一句 */
+/* 中文没有词间空格，按 ch 限宽会压成很窄的一列：用 em 近似「一行多少字」 */
+.set-note { display: block; max-width: 52em; margin: 16px 0 0; color: var(--muted); font-size: var(--fs-12); line-height: 1.65; }
+.set-muted { display: block; color: var(--muted); }
+p.set-muted { margin: 12px 0 0; max-width: 52em; line-height: 1.65; }
+
+.set-usage { display: flex; align-items: center; gap: 14px; }
 .set-bar { display: flex; flex: 1; height: 14px; overflow: hidden; }
 .set-bar i { display: block; height: 100%; }
 .set-usage-total { white-space: nowrap; font-variant-numeric: tabular-nums; }
-.set-legend { display: flex; flex-wrap: wrap; gap: 8px 18px; margin-top: 10px; }
+.set-legend { display: flex; flex-wrap: wrap; gap: 8px 18px; margin-top: 12px; color: var(--text-2); font-size: var(--fs-12); }
 .set-legend i { display: inline-block; width: 9px; height: 9px; margin-right: 5px; }
 
 /* 导出的四个动作排成两列，避免长按钮在窄卡里折成毛边 */
-.set-export-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+.set-export-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
 
-.set-colors { display: flex; gap: 10px; }
+/* 分区标题行：标题在左、行尾放该分区的操作入口（如自定义取色的圆形按钮） */
+.set-colors { display: flex; gap: 12px; }
 .set-swatch-check { width: 14px; height: 14px; }
 
 /* 列表行：文本区固定占满剩余宽度，右侧操作区按内容宽度，避免长说明被压成竖排 */
-.set-list { display: flex; flex-direction: column; gap: 2px; }
-.set-list-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 10px; min-height: 44px; }
-.set-list-main { display: flex; flex-direction: column; min-width: 0; }
+.set-list { display: flex; flex-direction: column; gap: 8px; }
+.set-list-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 12px; min-height: 52px; }
+.set-list-main { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
 .set-list-main strong { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.set-list-main small { display: block; }
+.set-list-main small { display: block; color: var(--muted); font-size: var(--fs-11); }
 .set-cell { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
 
 /* 控件宽度：Naive 内部的 .n-input/.n-base-selection 默认 width:100%，且运行时样式注入更晚，
@@ -53,20 +61,24 @@ p.set-muted { margin: 10px 0 0; }
 .set-select.set-select { width: 130px; flex: 0 0 auto; }
 .set-select-wide.set-select-wide { width: 220px; flex: 0 0 auto; }
 .set-time.set-time { width: 110px; flex: 0 0 auto; }
+/* 提示音下拉：与开关同排，宽度固定，避免行内被拉满 */
+.set-sound.set-sound { width: 132px; flex: 0 0 auto; }
+/* 自定义取色器：跟在色块后面单独一行 */
 .set-key-input.set-key-input { width: 150px; flex: 0 0 auto; }
 .set-port.set-port { width: 88px; flex: 0 0 auto; }
 
-.set-footbar { display: flex; align-items: flex-start; gap: 8px; margin-top: 18px; padding: 10px 12px; }
+/* 页脚提示条：整页只有这一处长期提示，不再与页头副标题重复叮咛 */
+.set-footbar { display: flex; align-items: flex-start; gap: 8px; margin-top: 20px; max-width: 760px; padding: 10px 12px; }
 .set-footbar svg { width: 14px; height: 14px; flex: none; margin-top: 2px; }
 .set-menu-icon { width: 16px; height: 16px; }
 
 .set-modal { width: 560px; max-width: 92vw; }
-.set-about { display: flex; align-items: center; gap: 12px; }
-.set-about-mark { display: grid; place-items: center; width: 44px; height: 44px; }
-.set-about-title { margin: 0; }
+.set-about { display: flex; align-items: center; gap: 14px; }
+.set-about-mark { display: grid; place-items: center; width: 48px; height: 48px; }
+.set-about-title { margin: 0; font-size: var(--fs-title); line-height: 1.25; }
 .set-result { margin-top: 12px; }
 
-@media (max-width: 1100px) { .set-layout { grid-template-columns: 156px minmax(0, 1fr); } }
+@media (max-width: 1180px) { .set-layout { grid-template-columns: 172px minmax(0, 1fr); } }
 @media (max-width: 900px) {
   .set-layout { grid-template-columns: 1fr; }
   .set-nav { position: static; }

@@ -29,6 +29,24 @@ const apiKeyHintText = computed(() => settings.value.weather.apiKeySet
   ? '已保存（尾号 ' + (settings.value.weather.apiKeyHint || '****') + '），粘贴新 Key 可覆盖'
   : '粘贴 API Key 后保存')
 const savingJwt = ref(false)
+const revealing = ref(false)
+/** 明文回显：默认掩码，用户点「显示」时把库里的明文填进输入框（密码框眼睛再切换可见） */
+async function reveal(kind: 'weatherKey' | 'weatherJwt') {
+  revealing.value = true
+  try {
+    const r = await call(() => bridge().settings.revealSecret({ kind }), null as unknown as { kind: string; value: string } | null)
+    const value = r ? String(r.value || '') : ''
+    if (!value) { message.warning(kind === 'weatherKey' ? '本机没有保存 API Key' : '本机没有保存 JWT 私钥'); return }
+    if (kind === 'weatherKey') keyInput.value = value
+    else jwtForm.value.privateKey = value
+    message.success('已填入明文，输入框右侧的眼睛可切换显示')
+  } catch (e) {
+    log.exception('settings.revealSecret', e)
+    message.error('读取失败：' + ((e as Error).message || '未知错误'))
+  } finally {
+    revealing.value = false
+  }
+}
 const authModeText = computed(() => {
   const mode = settings.value.weather.authMode
   if (mode === 'jwt') return 'JWT 已配置'
@@ -100,7 +118,7 @@ async function saveJwt() {
     })), null as unknown as WeatherSetting)
     if (next) await save('weather', next)
     jwtForm.value.privateKey = ''
-    message.success('JWT 凭据已加密保存在本机，可直接点「测试连接」验证')
+    message.success('JWT 凭据已明文保存在本机，可直接点「测试连接」验证')
   } catch (e) {
     log.exception('settings.weatherJwt', e)
     message.error('保存失败：' + ((e as Error).message || '未知错误'))
@@ -142,7 +160,7 @@ async function saveKey() {
     await call(() => bridge().settings.setWeatherKey({ key: keyInput.value.trim() }))
     keyInput.value = ''
     await save('weather', { ...settings.value.weather, apiKeySet: true })
-    message.success('API Key 已加密保存在本机')
+    message.success('API Key 已明文保存在本机（界面默认掩码）')
   } catch (e) {
     log.exception('settings.weatherKey', e)
     message.error('保存失败：' + ((e as Error).message || '未知错误'))
@@ -193,7 +211,7 @@ onMounted(async () => {
     </template>
 
     <n-alert type="info" :bordered="false">
-      天气与预警由和风天气获取；JWT 私钥或 API Key 经系统加密后仅保存在本机。界面会回显开发者 ID / 项目 ID / 凭据 ID 与 Key 尾号，私钥不回显。
+      天气与预警由和风天气获取；JWT 私钥与 API Key 明文保存在本机数据库，设置页默认掩码，需要时点「显示已保存」再切换明文查看。
     </n-alert>
 
     <SectionTitle title="数据源" />
@@ -261,13 +279,14 @@ onMounted(async () => {
         size="small"
         type="textarea"
         :autosize="{ minRows: 4, maxRows: 8 }"
-        :placeholder="settings.weather.jwtSet ? '已保存（私钥不回显），留空则沿用原私钥' : '-----BEGIN PRIVATE KEY----- ... -----END PRIVATE KEY-----'"
+        :placeholder="settings.weather.jwtSet ? '已保存（默认掩码），留空则沿用原私钥，点「显示已保存」可查看' : '-----BEGIN PRIVATE KEY----- ... -----END PRIVATE KEY-----'"
         :value="jwtForm.privateKey"
         @update:value="(v: string) => (jwtForm.privateKey = v)"
       />
     </div>
     <div class="set-actions">
       <n-button size="small" type="primary" :loading="savingJwt" @click="saveJwt">保存 JWT 凭据</n-button>
+      <n-button size="small" :disabled="!settings.weather.jwtSet" :loading="revealing" @click="reveal('weatherJwt')">显示已保存</n-button>
       <n-button size="small" :disabled="!settings.weather.jwtSet" @click="clearJwt">清除 JWT</n-button>
       <n-button size="small" quaternary @click="openDocs">认证文档</n-button>
     </div>
@@ -288,6 +307,7 @@ onMounted(async () => {
           @update:value="(v: string) => (keyInput = v)"
         />
         <n-button size="small" type="primary" :loading="savingKey" @click="saveKey">保存</n-button>
+        <n-button size="small" :disabled="!settings.weather.apiKeySet" :loading="revealing" @click="reveal('weatherKey')">显示已保存</n-button>
         <n-button size="small" :disabled="!settings.weather.apiKeySet" @click="clearKey">清除</n-button>
       </div>
     </div>
