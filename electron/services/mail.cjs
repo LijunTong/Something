@@ -277,15 +277,16 @@ async function sync(dto) {
 
     const findOne = get().prepare('SELECT id FROM mail WHERE account_id = ? AND msg_id = ?')
     const ins = get().prepare('INSERT INTO mail (id,account_id,folder_id,uid,msg_id,from_name,from_addr,to_addrs,cc_addrs,subject,snippet,body_html,body_text,has_attach,sent_at,read,starred,important,labels) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)')
-    const upd = get().prepare('UPDATE mail SET subject = ?, snippet = ?, body_text = ?, read = ?, starred = ? WHERE id = ?')
+    const upd = get().prepare('UPDATE mail SET subject = ?, snippet = ?, body_text = ?, body_html = ?, read = ?, starred = ? WHERE id = ?')
     let added = 0
     let updated = 0
     messages.forEach(function (m) {
       const snippet = String(m.bodyText || '').replace(/\s+/g, ' ').trim().slice(0, 120)
-      const bodyHtml = '<div>' + String(m.bodyText || '').split('\n').join('<br>') + '</div>'
+      // 有 MIME 的 text/html 就存原文，没有则留空，由阅读器回落到纯文本（不再伪造 <div>+<br> 的假 HTML）
+      const bodyHtml = m.bodyHtml ? String(m.bodyHtml) : null
       const hit = findOne.get(accountId, m.msgId)
       if (hit) {
-        upd.run(m.subject, snippet, m.bodyText || '', m.read ? 1 : 0, m.starred ? 1 : 0, hit.id)
+        upd.run(m.subject, snippet, m.bodyText || '', bodyHtml, m.read ? 1 : 0, m.starred ? 1 : 0, hit.id)
         updated += 1
         return
       }
@@ -307,7 +308,8 @@ async function sync(dto) {
 function list(filter) {
   const f = filter || {}
   return withLog('查询邮件', { accountId: f.accountId, folderId: f.folderId }, function () {
-    const where = ['1=1']
+    // 停用的账户不出现在任何邮件列表（含统一收件箱与首页卡片），与左栏隐藏保持一致
+    const where = ['m.account_id IN (SELECT id FROM mail_account WHERE enabled = 1)']
     const args = []
     if (f.accountId) { where.push('m.account_id = ?'); args.push(f.accountId) }
     if (f.folderId) { where.push('m.folder_id = ?'); args.push(f.folderId) }

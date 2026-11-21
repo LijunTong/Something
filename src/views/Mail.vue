@@ -6,14 +6,16 @@ import {
   useMessage, useDialog
 } from 'naive-ui'
 import Shell from '@/components/Shell.vue'
+import MailBodyFrame from '@/components/MailBodyFrame.vue'
 import MailAccountsPanel from '@/components/settings/MailAccountsPanel.vue'
 import { call, bridge, plain } from '@/lib/ipc'
 import { log } from '@/lib/logger'
+import { webmailUrl } from '@/lib/webmail'
 import type { MailAccount, MailApi, MailFolder, MailRow } from '@/types/api'
+import '@/styles/side-nav.css'
 import '@/styles/mail.css'
 
 type FolderPick = { accountId?: string; folderId?: string; kind: string; label: string }
-type ComposeForm = { accountId: string | null; to: string; cc: string; subject: string; body: string }
 type RuleRow = {
   id?: string; name?: string; priority?: number; enabled?: boolean
   conditions?: unknown; actions?: unknown
@@ -39,11 +41,7 @@ const loading = ref(false)
 const selectedIds = ref<string[]>([])
 const checkedAll = ref(false)
 const showRemoteImages = ref(false)
-const showHtml = ref(false)
-const quickReply = ref('')
-
-const showCompose = ref(false)
-const compose = ref<ComposeForm>({ accountId: null, to: '', cc: '', subject: '', body: '' })
+const showHtml = ref(true)
 
 const showRules = ref(false)
 const rules = ref<RuleRow[]>([])
@@ -65,9 +63,8 @@ const actionOptions = [
   { label: '静默', value: 'silent' }
 ]
 
-const accountOptions = computed(() =>
-  accounts.value.filter((a) => a.enabled).map((a) => ({ label: a.alias + ' <' + a.email + '>', value: a.id }))
-)
+/** 停用账户在邮件页完全不出现：左栏、文件夹加载、未读统计、邮件列表都只认这份清单 */
+const enabledAccounts = computed(() => accounts.value.filter((a) => a.enabled))
 const unreadTotal = computed(() =>
   folders.value.filter((f) => f.kind === 'inbox').reduce((sum, f) => sum + Number(f.unreadCount || 0), 0)
 )
@@ -78,15 +75,16 @@ const lastSync = computed(() => {
   const d = new Date(ts)
   return (d.getMonth() + 1) + '月' + d.getDate() + '日 ' + String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0')
 })
-const subtitle = computed(() => '未读 ' + unreadTotal.value + ' · 共 ' + accounts.value.length + ' 个账户 · 最后同步 ' + lastSync.value)
+const subtitle = computed(() =>
+  enabledAccounts.value.length
+    ? '未读 ' + unreadTotal.value + ' · 共 ' + enabledAccounts.value.length + ' 个账户 · 最后同步 ' + lastSync.value
+    : '未启用邮箱账户 · 到「账户管理」开启'
+)
 
 function fmtUnknown(v: unknown): string {
   if (Array.isArray(v)) return v.map(fmtUnknown).filter(Boolean).join('、')
   if (v && typeof v === 'object') return Object.values(v as Record<string, unknown>).map((x) => String(x)).join(' ')
   return v == null ? '' : String(v)
-}
-function splitAddrs(text: string): string[] {
-  return text.split(/[,，;；\s]+/).map((s) => s.trim()).filter(Boolean)
 }
 function fmtTime(ts: number | null): string {
   if (!ts) return ''
@@ -115,27 +113,25 @@ function labelsOf(row: MailRow): string[] {
   }
   return []
 }
-/** 正文 HTML：默认拦截脚本与远程图片，只在用户点「显示图片」后放行 http(s) 图片 */
-function safeHtml(html: string | null | undefined): string {
-  if (!html) return ''
-  let out = String(html)
-  out = out.replace(/<\s*(script|style|iframe|object|embed)[\s\S]*?<\s*\/\s*\1\s*>/gi, '')
-  out = out.replace(/\son[a-z]+\s*=\s*("[^"]*"|'[^']*'|[^\s>]+)/gi, '')
-  if (!showRemoteImages.value) {
-    out = out.replace(/<img([^>]*?)src\s*=\s*("[^"]*"|'[^']*'|[^\s>]+)/gi, '<img$1data-blocked-src=$2')
-  }
-  return out
-}
-
 async function loadAccounts() {
   try {
     accounts.value = normalizeAccounts(await call(() => mailApi().accounts(), [] as MailAccount[]))
+    ensureActive()
   } catch (e) { log.exception('mail.accounts', e) }
+}
+/** 当前选中的账户被停用（或删除）时，回到统一收件箱，避免右栏留着不可见账户的正文 */
+function ensureActive() {
+  const id = active.value.accountId
+  if (!id) return
+  if (enabledAccounts.value.some((a) => a.id === id)) return
+  active.value = { kind: 'inbox', label: '统一收件箱' }
+  selected.value = null
+  void loadMails()
 }
 async function loadFolders() {
   try {
     const all: MailFolder[] = []
-    for (const a of normalizeAccounts(accounts.value)) {
+    for (const a of enabledAccounts.value) {
       const rows = await call(() => mailApi().folders(plain(a.id)), [] as MailFolder[])
       all.push(...rows)
     }
@@ -207,8 +203,8 @@ async function openMail(row: MailRow) {
     const detail = await call(() => mailApi().read(plain(row.id)), { ...row })
     selected.value = detail
     showRemoteImages.value = false
-    showHtml.value = false
-    quickReply.value = ''
+    // 有 MIME HTML 就直接按 HTML 阅读；纯文本邮件自动落到纯文本分支
+    showHtml.value = Boolean(detail.bodyHtml)
     await loadMails()
   } catch (e) {
     log.exception('mail.read', e)
@@ -279,67 +275,24 @@ const initial = computed(() => {
 })
 const fromLabel = computed(() => selected.value?.fromName || selected.value?.fromAddr || '未知发件人')
 
-function reply() {
-  const cur = selected.value
-  if (!cur) return
-  openCompose(cur.fromAddr || '', cur.subject ? 'Re: ' + cur.subject : '', '\n\n---- 原邮件 ----\n' + (cur.bodyText || cur.snippet || ''))
-}
-function forward() {
-  const cur = selected.value
-  if (!cur) return
-  openCompose('', cur.subject ? 'Fwd: ' + cur.subject : '', '\n\n---- 转发邮件 ----\n' + (cur.bodyText || cur.snippet || ''))
-}
-function openCompose(to = '', subject = '', body = '') {
-  compose.value = { accountId: compose.value.accountId ?? accounts.value[0]?.id ?? null, to, cc: '', subject, body }
-  showCompose.value = true
-}
-function composePayload() {
-  const c = compose.value
-  return {
-    accountId: c.accountId as string,
-    toAddrs: splitAddrs(c.to),
-    ccAddrs: splitAddrs(c.cc),
-    subject: c.subject || '(无主题)',
-    bodyText: c.body,
-    snippet: c.body.slice(0, 120)
-  }
-}
-function sendCompose() {
-  const c = compose.value
-  if (!c.accountId) { message.warning('请选择发件账户'); return }
-  if (!splitAddrs(c.to).length) { message.warning('请填写收件人'); return }
+/**
+ * 写邮件/回复不在本应用里做：按账户邮箱域名打开对应服务商网页版，交给系统浏览器。
+ * 目标账户优先级：指定账户 → 当前选中账户 → 第一个启用账户。
+ */
+function openWebmail(accountId?: string | null) {
+  const pickAccount = (id?: string | null) => accounts.value.find((a) => a.id === id)
+  const acct = pickAccount(accountId) || pickAccount(active.value.accountId) || enabledAccounts.value[0]
+  if (!acct) { message.warning('请先在账户管理中添加并启用邮箱账户'); return }
+  const url = webmailUrl(acct.email)
+  if (!url) { message.warning('该账户邮箱地址无法识别，无法打开网页邮箱'); return }
   void (async () => {
     try {
-      const r = await call(() => mailApi().send(plain(composePayload())), { ok: false, id: '', delivered: false })
-      showCompose.value = false
-      if (r.delivered) message.success('邮件已通过 SMTP 发出')
-      else message.warning('已保存到「已发送」：该账户未配置 SMTP，未真实投递')
-      await loadFolders()
-      await loadMails()
+      await call(() => bridge().system.openExternal({ url }))
     } catch (e) {
-      log.exception('mail.send', e)
-      message.error('发送失败')
+      log.exception('mail.webmail', e)
+      message.error('打开网页邮箱失败：' + url)
     }
   })()
-}
-function saveComposeDraft() {
-  const c = compose.value
-  if (!c.accountId) { message.warning('请选择发件账户'); return }
-  void (async () => {
-    try {
-      await call(() => mailApi().saveDraft(plain(composePayload())))
-      message.success('草稿已保存')
-      await loadMails()
-    } catch (e) {
-      log.exception('mail.saveDraft', e)
-      message.error('保存草稿失败')
-    }
-  })()
-}
-function quickSend() {
-  const cur = selected.value
-  if (!cur || !quickReply.value.trim()) { message.warning('请输入回复内容'); return }
-  openCompose(cur.fromAddr || '', cur.subject ? 'Re: ' + cur.subject : '', quickReply.value)
 }
 async function toTodo() {
   const cur = selected.value
@@ -432,6 +385,12 @@ onMounted(async () => {
   await loadFolders()
   await loadMails()
 })
+/** 账户抽屉里改完启用状态后走同一条链路：先刷新账户，再按启用清单重算文件夹与列表 */
+async function reloadAll() {
+  await loadAccounts()
+  await loadFolders()
+  await loadMails()
+}
 </script>
 
 <template>
@@ -441,53 +400,52 @@ onMounted(async () => {
       <n-button size="small" :loading="loading" @click="syncAll">同步</n-button>
       <n-button size="small" @click="openRules">收件规则</n-button>
       <n-button size="small" @click="openAccounts">账户管理</n-button>
-      <n-button size="small" type="primary" @click="openCompose()">写邮件</n-button>
+      <n-button size="small" type="primary" @click="openWebmail()">网页邮箱</n-button>
     </template>
 
     <div class="mail-layout">
       <!-- 左栏：账户与文件夹 -->
       <aside class="card ml-side">
-        <n-button
-          quaternary
-          block
-          class="ml-nav"
-          :type="active.kind === 'inbox' && !active.accountId ? 'primary' : 'default'"
-          @click="pick({ kind: 'inbox', label: '统一收件箱' })"
+        <!-- 导航行与待办页 .td-nav 同构：图标 + 名称 + 计数，选中态主色反白。
+             用 <a> 而不是 n-button，是因为 n-button 自带底色/圆角，压不成待办那种条目。 -->
+        <a
+          class="side-nav"
+          :class="{ on: active.kind === 'inbox' && !active.accountId }"
+          href="#"
+          @click.prevent="pick({ kind: 'inbox', label: '统一收件箱' })"
         >
-          <template #icon><svg class="mi" aria-hidden="true"><use href="#i-inbox" /></svg></template>
-          <span class="ml-nav-label">统一收件箱</span>
-          <n-tag v-if="unreadTotal" size="tiny" :bordered="false">{{ unreadTotal }}</n-tag>
-        </n-button>
+          <svg class="mi" aria-hidden="true"><use href="#i-inbox" /></svg>
+          <span class="side-nav-label">统一收件箱</span>
+          <span v-if="unreadTotal" class="side-nav-count">{{ unreadTotal }}</span>
+        </a>
 
-        <template v-for="a in accounts" :key="a.id">
-          <div class="ml-group">
+        <template v-for="a in enabledAccounts" :key="a.id">
+          <div class="side-nav-group">
             <span>{{ a.alias }}</span>
-            <small>{{ a.email }}</small>
+            <span class="side-nav-sub">{{ a.email }}</span>
           </div>
-          <n-button
-            quaternary
-            block
-            class="ml-nav"
-            :type="active.accountId === a.id && active.kind === 'inbox' ? 'primary' : 'default'"
-            @click="pickFolderByKind(a.id, 'inbox')"
+          <a
+            class="side-nav"
+            :class="{ on: active.accountId === a.id && active.kind === 'inbox' }"
+            href="#"
+            @click.prevent="pickFolderByKind(a.id, 'inbox')"
           >
-            <template #icon><svg class="mi" aria-hidden="true"><use href="#i-inbox" /></svg></template>
-            <span class="ml-nav-label">收件箱</span>
-            <n-tag v-if="unreadOf(a.id)" size="tiny" :bordered="false">{{ unreadOf(a.id) }}</n-tag>
-          </n-button>
-          <n-button
+            <svg class="mi" aria-hidden="true"><use href="#i-inbox" /></svg>
+            <span class="side-nav-label">收件箱</span>
+            <span v-if="unreadOf(a.id)" class="side-nav-count">{{ unreadOf(a.id) }}</span>
+          </a>
+          <a
             v-for="f in foldersOf(a.id).filter((x) => x.kind !== 'inbox')"
             :key="f.id"
-            quaternary
-            block
-            class="ml-nav"
-            :type="active.folderId === f.id ? 'primary' : 'default'"
-            @click="pickFolder(f)"
+            class="side-nav"
+            :class="{ on: active.folderId === f.id }"
+            href="#"
+            @click.prevent="pickFolder(f)"
           >
-            <template #icon><svg class="mi" aria-hidden="true"><use href="#i-folder" /></svg></template>
-            <span class="ml-nav-label">{{ f.name }}</span>
-            <n-tag v-if="f.unreadCount" size="tiny" :bordered="false">{{ f.unreadCount }}</n-tag>
-          </n-button>
+            <svg class="mi" aria-hidden="true"><use href="#i-folder" /></svg>
+            <span class="side-nav-label">{{ f.name }}</span>
+            <span v-if="f.unreadCount" class="side-nav-count">{{ f.unreadCount }}</span>
+          </a>
         </template>
 
         <div class="ml-side-foot">
@@ -567,11 +525,9 @@ onMounted(async () => {
       <section class="card ml-read">
         <template v-if="selected">
           <div class="ml-tools">
-            <n-button size="tiny" quaternary title="回复" @click="reply">
-              <template #icon><svg class="mi" aria-hidden="true"><use href="#i-reply" /></svg></template>
-            </n-button>
-            <n-button size="tiny" quaternary title="转发" @click="forward">
-              <template #icon><svg class="mi" aria-hidden="true"><use href="#i-send" /></svg></template>
+            <n-button size="tiny" quaternary title="在网页邮箱中打开" @click="openWebmail(selected.accountId)">
+              <template #icon><svg class="mi" aria-hidden="true"><use href="#i-mail" /></svg></template>
+              网页邮箱
             </n-button>
             <n-button size="tiny" quaternary title="星标" :type="selected.starred ? 'warning' : 'default'" @click="toggleStar(selected)">
               <template #icon><svg class="mi" aria-hidden="true"><use href="#i-star" /></svg></template>
@@ -615,8 +571,13 @@ onMounted(async () => {
                 </n-button>
               </div>
 
-              <!-- 正文 HTML 先过滤脚本与事件属性；远程图片在未授权时替换为 data 属性 -->
-              <div v-if="showHtml && selected.bodyHtml" class="ml-html" v-html="safeHtml(selected.bodyHtml)"></div>
+              <!-- 正文用沙箱 iframe 渲染：邮件自带的 style/表格不会泄漏到应用外壳，
+                   沙箱不给 allow-scripts，CSP 再兜一层；远程图片未授权时不发请求 -->
+              <MailBodyFrame
+                v-if="showHtml && selected.bodyHtml"
+                :html="selected.bodyHtml"
+                :allow-remote-images="showRemoteImages"
+              />
               <div v-else class="ml-body-text">{{ selected.bodyText || selected.snippet || '（无正文）' }}</div>
 
               <div v-for="(att, i) in selected.attachments || []" :key="att.id || att.filename || i" class="ml-attach">
@@ -626,11 +587,6 @@ onMounted(async () => {
                   <span>{{ fmtSize(att.size) }}</span>
                 </div>
               </div>
-
-              <div class="ml-reply">
-                <n-input v-model:value="quickReply" size="small" placeholder="快速回复…" />
-                <n-button size="small" type="primary" @click="quickSend">回复</n-button>
-              </div>
             </div>
           </n-scrollbar>
         </template>
@@ -638,34 +594,11 @@ onMounted(async () => {
       </section>
     </div>
 
-    <!-- 写邮件 -->
-    <n-modal v-model:show="showCompose" preset="card" title="新邮件" class="ml-modal" :bordered="false">
-      <n-form label-placement="left" :label-width="56" size="small">
-        <n-form-item label="发件">
-          <n-select v-model:value="compose.accountId" :options="accountOptions" placeholder="选择发件账户" />
-        </n-form-item>
-        <n-form-item label="收件人">
-          <n-input v-model:value="compose.to" placeholder="多个地址用逗号分隔" />
-        </n-form-item>
-        <n-form-item label="抄送"><n-input v-model:value="compose.cc" placeholder="可选" /></n-form-item>
-        <n-form-item label="主题"><n-input v-model:value="compose.subject" placeholder="邮件主题" /></n-form-item>
-        <n-form-item label="正文">
-          <n-input v-model:value="compose.body" type="textarea" :autosize="{ minRows: 8, maxRows: 16 }" placeholder="正文" />
-        </n-form-item>
-      </n-form>
-      <template #footer>
-        <div class="dlg-foot">
-          <n-button size="small" @click="saveComposeDraft">保存草稿</n-button>
-          <n-button size="small" @click="showCompose = false">取消</n-button>
-          <n-button size="small" type="primary" @click="sendCompose">发送</n-button>
-        </div>
-      </template>
-    </n-modal>
-
     <!-- 邮箱账户抽屉：新增/编辑/测试/删除都在这里，不再跳设置页 -->
     <n-drawer v-model:show="showAccounts" :width="760" placement="right">
       <n-drawer-content title="邮箱账户" closable :native-scrollbar="false">
-        <MailAccountsPanel embedded @changed="loadAccounts().then(loadFolders).then(loadMails)" />
+        <!-- 启用/停用账户后重走一遍加载链：左栏、文件夹、列表都按启用清单重算 -->
+        <MailAccountsPanel embedded @changed="reloadAll" />
       </n-drawer-content>
     </n-drawer>
 

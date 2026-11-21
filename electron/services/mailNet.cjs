@@ -165,8 +165,12 @@ function bufferToString(buf, charset) {
   const cs = String(charset || 'utf-8').toLowerCase().replace(/["']/g, '').trim()
   if (cs === 'utf-8' || cs === 'utf8' || cs === 'us-ascii' || cs === 'ascii' || cs === '') return buf.toString('utf8')
   if (cs === 'iso-8859-1' || cs === 'latin1' || cs === 'windows-1252') return buf.toString('latin1')
-  // Node 没有内置 GBK/GB18030 解码器，按 utf8 尽力解码，避免整封信丢失
-  return buf.toString('utf8')
+  // 其余编码交给 ICU（TextDecoder 支持 gb18030/gbk/big5/shift_jis/koi8-r 等）；不支持时回落 utf8，不让整封信解析失败
+  try {
+    return new TextDecoder(cs).decode(buf)
+  } catch (e) {
+    return buf.toString('utf8')
+  }
 }
 
 function decodeMimeWords(value) {
@@ -266,7 +270,8 @@ function stripTags(html) {
     .trim()
 }
 
-// 正文解析：multipart 里优先 text/plain，其次是 text/html（转纯文本）。
+// 正文解析：multipart 里同时保留 text/plain 与 text/html 原文。
+// text/html 的原文要给阅读器用，纯文本作为降级摘要（列表 snippet、无 HTML 兜底）。
 function parsePart(raw, depth) {
   const sep = raw.indexOf('\r\n\r\n')
   const head = sep >= 0 ? raw.slice(0, sep) : raw
@@ -278,22 +283,29 @@ function parsePart(raw, depth) {
     const m = /boundary\s*=\s*"?([^";]+)"?/i.exec(ctype)
     if (!m) return null
     const chunks = body.split('--' + m[1])
+    let plainPart = null
     let htmlPart = null
     for (let i = 0; i < chunks.length; i++) {
       let chunk = chunks[i]
       if (!chunk || chunk.trim() === '--' || chunk.trim() === '') continue
       chunk = chunk.replace(/^\r?\n/, '')
       const part = parsePart(chunk, depth + 1)
-      if (part && part.kind === 'plain' && part.text) return part
-      if (part && part.kind === 'html' && part.text) htmlPart = part
+      if (!part) continue
+      // 同一封信可能有多个 alternative 分支，各取第一个非空的即可，不要提前 return——
+      // 提前 return 会让 text/html 分支永远收集不到，阅读器就只剩纯文本。
+      if (part.kind === 'plain' && part.text && !plainPart) plainPart = part
+      if (part.kind === 'html' && part.html && !htmlPart) htmlPart = part
     }
-    return htmlPart
+    if (!plainPart && !htmlPart) return null
+    const html = htmlPart ? htmlPart.html : ''
+    const text = plainPart ? plainPart.text : (htmlPart ? htmlPart.text : '')
+    return { kind: 'mixed', text: text, html: html }
   }
   const charset = (/charset\s*=\s*"?([^";]+)"?/i.exec(ctype) || [])[1] || 'utf-8'
   const text = decodeTransfer(body, cte, charset)
-  if (/^text\/html/i.test(ctype)) return { kind: 'html', text: stripTags(text) }
-  if (/^text\/plain/i.test(ctype)) return { kind: 'plain', text: text }
-  return { kind: 'other', text: '' }
+  if (/^text\/html/i.test(ctype)) return { kind: 'html', text: stripTags(text), html: text }
+  if (/^text\/plain/i.test(ctype)) return { kind: 'plain', text: text, html: '' }
+  return { kind: 'other', text: '', html: '' }
 }
 
 // —— IMAP ——
@@ -363,6 +375,7 @@ function toMessage(fetched) {
   const rawBody = fetched.body && fetched.body.length <= MAX_BODY_BYTES ? fetched.body.toString('latin1') : ''
   const part = rawBody ? parsePart('Content-Type: ' + ctype + '\r\n\r\n' + rawBody, 0) : null
   const text = part && part.text ? part.text : ''
+  const bodyHtml = part && part.html ? part.html : ''
   const date = Date.parse(headers.date || '')
   return {
     uid: fetched.uid == null ? '' : String(fetched.uid),
@@ -373,6 +386,7 @@ function toMessage(fetched) {
     ccAddrs: parseAddressList(headers.cc || ''),
     subject: subject,
     bodyText: text,
+    bodyHtml: bodyHtml,
     hasAttach: /multipart\/mixed/i.test(ctype),
     read: /\bSeen\b/i.test(fetched.flags),
     starred: /\bFlagged\b/i.test(fetched.flags),

@@ -12,11 +12,7 @@
 .ml-list { padding: 10px; min-width: 0; }
 .ml-read { padding: 0; min-width: 0; overflow: hidden; }
 
-/* 左栏账户分组 */
-.ml-group { display: flex; flex-direction: column; gap: 2px; padding: 10px 9px 4px; min-width: 0; }
-.ml-group small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.ml-nav { width: 100%; gap: 8px; min-height: 30px; padding: 0 9px; }
-.ml-nav-label { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-align: left; }
+/* 左栏导航行与分组标题统一走 side-nav.css（与待办页同形），这里只留侧栏自身布局 */
 .ml-side-foot { margin-top: 10px; padding: 0 4px; }
 
 /* 工具栏与搜索 */
@@ -62,20 +58,16 @@
 .ml-to { display: flex; flex-direction: column; gap: 2px; margin-top: 10px; min-width: 0; }
 .ml-tagline { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
 .ml-safe { display: flex; align-items: center; gap: 8px; margin: 14px 0; }
-/* 正文：纯文本保留换行；HTML 版限制超宽元素，避免撑破阅读窗格 */
+/* 正文：纯文本保留换行；HTML 版由 MailBodyFrame 的沙箱 iframe 承载，高度随内容由组件同步 */
 .ml-body-text { white-space: pre-wrap; overflow-wrap: anywhere; }
-.ml-html { overflow-wrap: anywhere; }
-.ml-html img { max-width: 100%; height: auto; }
-.ml-html table { max-width: 100%; }
+.mail-frame { display: block; width: 100%; }
 /* 规则编辑弹窗的并排字段 */
 .ml-inline { display: flex; align-items: center; gap: 8px; width: 100%; }
-.ml-modal { width: 620px; max-width: 94vw; }
 .ml-modal-sm { width: 500px; max-width: 94vw; }
 .ml-attach { display: flex; align-items: center; gap: 10px; margin-top: 12px; padding: 10px; }
 .ml-attach-ico { display: grid; place-items: center; width: 32px; height: 32px; flex: none; }
 .ml-attach > div { display: flex; flex-direction: column; min-width: 0; }
 .ml-attach .n-button { margin-left: auto; }
-.ml-reply { display: flex; align-items: center; gap: 8px; margin-top: 18px; padding-top: 14px; }
 
 /* 弹窗与规则抽屉 */
 .dlg-foot { display: flex; justify-content: flex-end; gap: 8px; }

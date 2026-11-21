@@ -1,0 +1,68 @@
+/* 侧栏导航行：待办 / 邮件共用同一份定义，保证两页清单外形一致。
+   颜色、字号、圆角全部取主题变量（App.vue 注入 --app-primary / --on-primary / --fs-*），
+   不在这里写死色值（AGENTS.md 2.2 / 2.3）。 */
+.side-nav {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  min-width: 0;
+  min-height: 32px;
+  padding: 0 9px;
+  border-radius: 8px;
+  font-size: var(--fs-12);
+  cursor: pointer;
+}
+.side-nav svg {
+  width: 15px;
+  height: 15px;
+  flex: 0 0 auto;
+}
+.side-nav-label {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-align: left;
+}
+.side-nav-count {
+  flex: 0 0 auto;
+  font-size: var(--fs-11);
+}
+/* 选中态：主色反白，与待办页保持一致 */
+.side-nav.on {
+  background: var(--app-primary, #0f766e);
+  color: var(--on-primary);
+  font-weight: 600;
+}
+.side-nav.on svg,
+.side-nav.on .side-nav-count {
+  color: inherit;
+}
+/* 悬停反馈：只减弱不透明度，不改色值 */
+.side-nav:hover {
+  opacity: .85;
+}
+/* 分组小标题（智能清单 / 我的清单 / 账户名） */
+.side-nav-group {
+  padding: 6px 8px;
+  font-size: var(--fs-11);
+  color: var(--muted);
+}
+/* 分组标题里的副标题：邮箱地址一行 */
+.side-nav-sub {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--fs-11);
+  color: var(--muted-2);
+}
+/* 清单前的色点，与 Schedule 页的 .dotc 同形 */
+.side-nav-dot {
+  width: 8px;
+  height: 8px;
+  flex: 0 0 8px;
+  border-radius: 999px;
+}
