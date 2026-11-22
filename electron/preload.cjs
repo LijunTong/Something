@@ -94,6 +94,7 @@ const api = {
   system: {
     info: call('system:info'), ping: call('system:ping'), openPath: call('system:openPath'),
     openExternal: call('system:openExternal'), chooseDir: call('system:chooseDir'),
+    checkUpdate: call('system:checkUpdate'),
     setLaunchAtLogin: call('system:setLaunchAtLogin'), loginItemEnabled: call('system:loginItemEnabled'),
     trayInfo: call('system:trayInfo'), trayHint: call('system:trayHint')
   },

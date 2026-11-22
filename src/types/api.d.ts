@@ -1,6 +1,24 @@
 // 渲染进程与主进程 IPC 类型契约
 export interface IpcResult<T> { ok: boolean; data?: T; error?: { code: string; message: string } }
 
+/** 检查更新结果：版本号唯一来源是 package.json 的 version，发布 tag 为 v + version */
+export interface UpdateCheckResult {
+  /** 当前应用版本（app.getVersion()，即 package.json.version） */
+  current: string
+  /** GitHub 最新正式发布的版本号（去掉 tag 前缀 v），无发布时为 null */
+  latest: string | null
+  hasUpdate: boolean
+  /** 对应发布页地址，或有更新时直接指向该版本 */
+  url: string
+  repo: string
+  name: string | null
+  publishedAt: string | null
+  notes: string
+  /** 仓库还没有任何正式发布 */
+  noRelease: boolean
+  checkedAt: number
+}
+
 export interface TodoListRow { id: string; name: string; color: string | null; sort: number; deletedAt?: number | null }
 export interface TodoSubtask { id: string; todoId: string; title: string; done: boolean; sort: number }
 export interface TodoRow {
@@ -204,6 +222,8 @@ export interface Api {
   }
   system: {
     info(): Promise<IpcResult<{ version: string; userData: string; defaultUserData: string; dataSource: string; db: string }>>
+    /** 检查更新：读 GitHub 最新正式发布并与当前版本比对 */
+    checkUpdate(): Promise<IpcResult<UpdateCheckResult>>
     chooseDir(dto?: { title?: string; defaultPath?: string }): Promise<IpcResult<{ path: string | null }>>
     ping(): Promise<IpcResult<string>>
     openPath(p: string): Promise<IpcResult<boolean>>

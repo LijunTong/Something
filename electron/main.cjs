@@ -27,6 +27,7 @@ const mailSvc = require('./services/mail.cjs')
 const notificationSvc = require('./services/notification.cjs')
 const notifySvc = require('./services/notify.cjs')
 const searchSvc = require('./services/search.cjs')
+const updateSvc = require('./services/update.cjs')
 
 // 开发/生产方式只由 VITE_URL 决定：只有 scripts/dev.cjs 会注入它（同时拉起 Vite）。
 // 未注入时即使未打包也只加载 dist，避免 npm start 去连一个没启动的 5173。
@@ -701,7 +702,9 @@ function registerIpc() {
         await shell.openExternal(url)
         return true
       }
-    }
+    },
+    // 检查更新：读 GitHub 最新发布与当前版本比对，只回数据；是否跳转由渲染层决定
+    checkUpdate: function () { return updateSvc.check() }
   })
 }
 

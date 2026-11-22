@@ -1,14 +1,19 @@
 <script setup lang="ts">
 import SectionTitle from '@/components/settings/SectionTitle.vue'
 import BrandMark from '@/components/BrandMark.vue'
-import { onMounted, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { NCard, NButton, NTag, NModal, NDescriptions, NDescriptionsItem, NAlert, NList, NListItem, useMessage } from 'naive-ui'
 import { call, bridge, hasBridge } from '@/lib/ipc'
 import { log } from '@/lib/logger'
+import type { UpdateCheckResult } from '@/types/api'
 
 const message = useMessage()
 const info = ref<{ version: string; userData: string; db: string } | null>(null)
 const showLicense = ref(false)
+const checking = ref(false)
+
+// 版本号唯一来源：package.json 的 version，运行时由主进程 app.getVersion() 返回
+const versionText = computed(() => (info.value?.version ? 'v' + info.value.version : '未在 Electron 中运行'))
 
 const LICENSES = [
   { name: 'Vue 3', license: 'MIT' },
@@ -29,20 +34,50 @@ onMounted(async () => {
   }
 })
 
-function checkUpdate() {
-  message.info('当前为本地构建版本，不提供在线更新通道；升级请替换安装包后重启应用。')
+// 检查更新：主进程读 GitHub 最新正式发布并与当前版本比对；
+// 有新版直接打开该版本的发布页，没有就提示已是最新。
+async function checkUpdate() {
+  if (!hasBridge()) {
+    message.warning('检查更新需要在桌面应用内运行')
+    return
+  }
+  if (checking.value) return
+  checking.value = true
+  try {
+    const res: UpdateCheckResult | null = await call(() => bridge().system.checkUpdate(), null)
+    if (!res) {
+      message.warning('未取到版本信息')
+      return
+    }
+    if (res.hasUpdate) {
+      message.success('发现新版本 v' + res.latest + '，正在打开 GitHub 发布页')
+      await call(() => bridge().system.openExternal({ url: res.url }), false)
+    } else if (res.noRelease) {
+      message.info('当前版本 ' + versionText.value + '，仓库还没有发布版本')
+      await call(() => bridge().system.openExternal({ url: res.url }), false)
+    } else {
+      message.success('已是最新版本 ' + versionText.value)
+    }
+  } catch (e) {
+    log.exception('settings.about.update', e)
+    message.error('检查更新失败：网络不可达或 GitHub 接口异常，请稍后再试')
+  } finally {
+    checking.value = false
+  }
 }
 </script>
 
 <template>
   <n-card size="small" title="关于">
-    <template #header-extra><n-tag size="small" type="success">纯本地</n-tag></template>
+    <template #header-extra>
+      <n-tag size="small" type="success">{{ versionText }}</n-tag>
+    </template>
 
     <div class="set-about">
       <span class="brand-mark set-about-mark"><BrandMark /></span>
       <div>
         <h2 class="set-about-title">几件事</h2>
-        <span class="set-muted">Something · 版本 {{ info?.version || '1.0.0' }}（本地构建）</span>
+        <span class="set-muted">Something · 版本 {{ versionText }}（本地构建）</span>
       </div>
     </div>
 
@@ -54,6 +89,7 @@ function checkUpdate() {
 
     <SectionTitle title="运行信息" />
     <n-descriptions :column="1" label-placement="left" size="small">
+      <n-descriptions-item label="版本号">{{ versionText }}</n-descriptions-item>
       <n-descriptions-item label="数据目录">{{ info?.userData || '未在 Electron 中运行' }}</n-descriptions-item>
       <n-descriptions-item label="数据库文件">{{ info?.db || '—' }}</n-descriptions-item>
       <n-descriptions-item label="作者">Joont</n-descriptions-item>
@@ -61,7 +97,7 @@ function checkUpdate() {
     </n-descriptions>
 
     <div class="set-actions">
-      <n-button size="small" @click="checkUpdate">检查更新</n-button>
+      <n-button size="small" :loading="checking" @click="checkUpdate">检查更新</n-button>
       <n-button size="small" @click="showLicense = true">查看开源许可</n-button>
     </div>
 
