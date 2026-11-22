@@ -42,13 +42,13 @@ function fail(msg) {
 // Run a command in the repo root and return trimmed stdout; throws on non-zero exit.
 function run(cmd, args, opts) {
   const o = opts || {}
-  const res = spawnSync(cmd, args, {
-    cwd: root,
-    encoding: 'utf8',
-    stdio: o.capture === false ? 'inherit' : ['ignore', 'pipe', 'pipe'],
-    shell: process.platform === 'win32' && !!o.shell,
-    env: { ...process.env, ...(o.env || {}) }
-  })
+  const stdio = o.capture === false ? 'inherit' : ['ignore', 'pipe', 'pipe']
+  const env = { ...process.env, ...(o.env || {}) }
+  // Windows ships npx/npm as .cmd shims; spawnSync cannot exec those directly
+  // (EINVAL), so route them through cmd.exe.
+  const res = process.platform === 'win32' && /\.cmd$/i.test(cmd)
+    ? spawnSync(process.env.ComSpec || 'cmd.exe', ['/d', '/s', '/c', [cmd].concat(args).join(' ')], { cwd: root, encoding: 'utf8', stdio, env })
+    : spawnSync(cmd, args, { cwd: root, encoding: 'utf8', stdio, env })
   const out = (res.stdout || '') + (res.stderr || '')
   if (res.error) fail(cmd + ' -> ' + res.error.message)
   if (res.status !== 0) {
