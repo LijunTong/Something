@@ -23,7 +23,9 @@ export const lightOverrides: GlobalThemeOverrides = {
     fontWeightStrong: '600',
     textColorBase: '#1f2937',
     textColor1: '#1f2937',
-    textColor2: '#5f6b7a',
+    // 四档文字层级（审计 H 方案）：textColor1=标题 --text / textColor2=正文 --text-2 /
+    // textColor3=元信息 --muted。此前 2 与 3 同值，导致列表正文与时间戳一个颜色。
+    textColor2: '#3f4b56',
     textColor3: '#5f6b7a',
     borderColor: '#e5e7eb',
     dividerColor: '#e5e7eb',
@@ -111,8 +113,9 @@ export const darkOverrides: GlobalThemeOverrides = {
     ...lightOverrides.common,
     textColorBase: '#e2e8f0',
     textColor1: '#e2e8f0',
-    textColor2: '#94a3b8',
-    textColor3: '#7b8a9a',
+    // 深色同样两档分开：正文更亮、元信息更暗（对应 App.vue 的 --text-2 / --muted）
+    textColor2: '#cbd5e1',
+    textColor3: '#94a3b8',
     borderColor: '#334155',
     dividerColor: '#334155',
     // 深色下的语义色必须提亮：沿用浅色的 #146c33 等深色值，标签/提示条在深底上读不出来

@@ -202,8 +202,8 @@ onUnmounted(() => {
   <Shell>
     <template #subtitle>今日已完成 {{ stats.count }} 个番茄 · 专注 {{ Math.floor(stats.minutes / 60) }} 小时 {{ stats.minutes % 60 }} 分</template>
     <template #actions>
-      <n-button size="small" @click="focusMode = true">全屏专注模式</n-button>
-      <n-button size="small" quaternary @click="openSettings">设置</n-button>
+      <n-button size="medium" @click="focusMode = true">全屏专注模式</n-button>
+      <n-button size="medium" quaternary @click="openSettings">设置</n-button>
     </template>
 
     <div class="pm-layout">

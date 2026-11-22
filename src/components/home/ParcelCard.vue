@@ -3,7 +3,7 @@ import { useHomeCardRefresh } from '@/composables/useHomeRefresh'
 import { computed, onMounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import HomeCardMenu from '@/components/home/HomeCardMenu.vue'
-import { NCard, NTag, NEmpty, NSpin, NButton, NModal, NForm, NFormItem, NInput, useMessage } from 'naive-ui'
+import { NCard, NEmpty, NSpin, NButton, NModal, NForm, NFormItem, NInput, useMessage } from 'naive-ui'
 import { call, bridge, hasBridge } from '@/lib/ipc'
 import { log } from '@/lib/logger'
 import { triggerHomeRefresh } from '@/composables/useHomeRefresh'
@@ -75,7 +75,7 @@ watch(refreshTick, () => { void load() })
       <div class="hc-head">
         <!-- 只有标题文字进快递页，卡片其它区域不跳转 -->
         <n-button text size="small" @click="router.push('/parcel')">快递</n-button>
-        <n-tag size="tiny" :type="pendingPickup ? 'warning' : 'default'">{{ pendingPickup ? pendingPickup + ' 个待取件' : rows.length + ' 个在途' }}</n-tag>
+        <span class="hc-status"><i class="hc-dot" :class="pendingPickup ? 'is-warn' : 'is-info'" />{{ pendingPickup ? pendingPickup + ' 个待取件' : rows.length + ' 个在途' }}</span>
       </div>
     </template>
     <template #header-extra>
@@ -103,7 +103,7 @@ watch(refreshTick, () => { void load() })
             <template v-if="p.station"> · {{ p.station }}</template>
           </small>
         </span>
-        <n-tag size="tiny" :type="p.status === '待取件' ? 'warning' : 'default'">{{ p.status }}</n-tag>
+        <span class="hc-status"><i class="hc-dot" :class="p.status === '待取件' ? 'is-warn' : 'is-info'" />{{ p.status }}</span>
       </div>
     </n-spin>
 

@@ -2,7 +2,7 @@
 import { useHomeCardRefresh } from '@/composables/useHomeRefresh'
 import HomeCardMenu from '@/components/home/HomeCardMenu.vue'
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
-import { NCard, NTag, NEmpty, NSpin, NButton, useMessage } from 'naive-ui'
+import { NCard, NEmpty, NSpin, NButton, useMessage } from 'naive-ui'
 import { useRouter } from 'vue-router'
 import { call, bridge, hasBridge } from '@/lib/ipc'
 import { log } from '@/lib/logger'
@@ -77,7 +77,7 @@ watch(refreshTick, () => { void load() })
       <div class="hc-head">
         <!-- 只有标题文字进通知页，卡片其它区域不跳转 -->
         <n-button text size="small" @click="router.push('/notice')">今日通知</n-button>
-        <n-tag size="tiny" :type="unread ? 'warning' : 'success'">{{ unread ? unread + ' 条待处理' : '全部已读' }}</n-tag>
+        <span class="hc-status"><i class="hc-dot" :class="unread ? 'is-warn' : 'is-ok'" />{{ unread ? unread + ' 条待处理' : '全部已读' }}</span>
       </div>
     </template>
     <template #header-extra>

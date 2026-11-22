@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, watch } from 'vue'
-import { useMessage, useDialog, NButton, NInput, NSelect, NModal, NForm, NFormItem, NDrawer, NDrawerContent, NSpace, NCalendar, NTag, NCheckbox, NEmpty, NDatePicker, NAlert } from 'naive-ui'
+import { useMessage, useDialog, NButton, NInput, NSelect, NModal, NForm, NFormItem, NDrawer, NDrawerContent, NSpace, NTag, NCheckbox, NEmpty, NDatePicker, NAlert } from 'naive-ui'
 import { useAppStore } from '@/stores/app'
 import Shell from '@/components/Shell.vue'
 import { call, bridge, plain } from '@/lib/ipc'
@@ -87,6 +87,47 @@ function eventsOfDay(year: number, month: number, date: number) {
   return eventsByDay.value[year + '-' + month + '-' + date] || []
 }
 
+const WEEK_LABELS = ['周一', '周二', '周三', '周四', '周五', '周六', '周日']
+
+/** 月网格：周一为首列，向前补到整周，末尾整行全是下月日期时裁掉 */
+const monthCells = computed(() => {
+  const y = panelYear.value
+  const m = panelMonth.value
+  const offset = (new Date(y, m - 1, 1).getDay() + 6) % 7
+  const todayKey = keyOf(Date.now())
+  const selKey = keyOf(calValue.value)
+  const cells: Array<{ ts: number; day: number; inMonth: boolean; isToday: boolean; isSelected: boolean; events: ScheduleRow[] }> = []
+  for (let i = 0; i < 42; i++) {
+    const d = new Date(y, m - 1, 1 - offset + i)
+    const ts = d.getTime()
+    const k = keyOf(ts)
+    cells.push({
+      ts,
+      day: d.getDate(),
+      inMonth: d.getFullYear() === y && d.getMonth() + 1 === m,
+      isToday: k === todayKey,
+      isSelected: k === selKey,
+      events: eventsByDay.value[k] ?? []
+    })
+  }
+  while (cells.length > 35 && !cells.slice(-7).some((c) => c.inMonth)) cells.length -= 7
+  return cells
+})
+
+function shiftMonth(delta: number) {
+  const d = new Date(panelYear.value, panelMonth.value - 1 + delta, 1)
+  onPanelChange({ year: d.getFullYear(), month: d.getMonth() + 1 })
+}
+
+/** 点某天只切当日侧栏；点到上/下月的日期时顺带把面板切过去 */
+function pickDay(c: { ts: number; inMonth: boolean }) {
+  calValue.value = c.ts
+  if (!c.inMonth) {
+    const d = new Date(c.ts)
+    onPanelChange({ year: d.getFullYear(), month: d.getMonth() + 1 })
+  }
+}
+
 function fmtTime(ts: number) {
   const d = new Date(ts)
   return String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0')
@@ -139,10 +180,6 @@ function onPanelChange(info: { year: number; month: number }) {
   panelYear.value = info.year
   panelMonth.value = info.month
   void load()
-}
-
-function onPick(v: number) {
-  calValue.value = v
 }
 
 function goToday() {
@@ -364,11 +401,11 @@ watch([focusKey, focusAtQuery], () => { void applyFocus(focusKey.value, focusAtQ
 
 <template>
   <Shell>
-    <template #subtitle>{{ monthLabel }} · 本月 {{ monthEvents.length }} 个日程</template>
+    <template #subtitle>本月 {{ monthEvents.length }} 个日程 · 点日期看当日安排</template>
     <template #actions>
-      <n-button size="small" @click="goToday">今天</n-button>
-      <n-button size="small" @click="exportICS">导出 ICS</n-button>
-      <n-button size="small" type="primary" @click="openCreate">新建日程</n-button>
+      <n-button size="medium" @click="goToday">今天</n-button>
+      <n-button size="medium" @click="exportICS">导出 ICS</n-button>
+      <n-button size="medium" type="primary" @click="openCreate">新建日程</n-button>
     </template>
 
     <n-alert v-if="hint" :type="hint.type" closable :bordered="false" class="focus-hint" @close="dismissHint">
@@ -380,19 +417,38 @@ watch([focusKey, focusAtQuery], () => { void applyFocus(focusKey.value, focusAtQ
 
     <div class="sc-month-layout">
       <section class="card sc-month-main">
-        <n-calendar
-          v-model:value="calValue"
-          :first-day-of-week="1"
-          @panel-change="onPanelChange"
-          @update:value="onPick"
-        >
-          <template #header="{ year, month }">
-            <div style="font-size:14px;font-weight:600">{{ year }} 年 {{ month }} 月</div>
-          </template>
-          <template #default="{ year, month, date }">
-            <div style="display:flex;flex-direction:column;gap:2px;height:100%;overflow:hidden" @click="calValue = new Date(year, month - 1, date).getTime()">
+        <!--
+          月视图自写 7 列网格（AGENTS.md 1.1.1 降级第 4 级）：n-calendar 的周名只渲染在
+          第一行 7 个单元格内部（Calendar.mjs:280），主题键里没有「非本月 / 今日」的文字色
+          （styles/light.mjs:24-45），#default 插槽只承载事件条、换不掉日期与周名。
+          三级（主题 / 插槽 / 同类组件）都压不住列标题与三态，故自写紧凑月网格。
+        -->
+        <div class="sc-cal-head">
+          <div class="sc-cal-title">{{ monthLabel }}</div>
+          <div class="sc-cal-nav">
+            <n-button size="tiny" quaternary aria-label="上一个月" title="上一个月" @click="shiftMonth(-1)">
+              <template #icon><svg viewBox="0 0 24 24"><use href="#i-chev-l" /></svg></template>
+            </n-button>
+            <n-button size="tiny" quaternary aria-label="下一个月" title="下一个月" @click="shiftMonth(1)">
+              <template #icon><svg viewBox="0 0 24 24"><use href="#i-chev-r" /></svg></template>
+            </n-button>
+          </div>
+        </div>
+        <div class="sc-cal-week">
+          <div v-for="w in WEEK_LABELS" :key="w" class="sc-cal-wd">{{ w }}</div>
+        </div>
+        <div class="sc-cal-grid">
+          <div
+            v-for="c in monthCells"
+            :key="c.ts"
+            class="sc-cal-cell"
+            :class="{ 'is-out': !c.inMonth, 'is-sel': c.isSelected }"
+            @click="pickDay(c)"
+          >
+            <div class="sc-cal-day" :class="{ 'is-today': c.isToday }">{{ c.day }}</div>
+            <div class="sc-cal-evs">
               <div
-                v-for="e in eventsOfDay(year, month, date).slice(0, 3)"
+                v-for="e in c.events.slice(0, 3)"
                 :key="e.id + '-' + (e.instanceAt ?? e.startAt)"
                 class="sc-month-chip"
                 :class="[colorOf(e), { 'focus-flash': isFocused(e) }]"
@@ -402,10 +458,10 @@ watch([focusKey, focusAtQuery], () => { void applyFocus(focusKey.value, focusAtQ
               >
                 <b>{{ fmtTime(e.instanceAt ?? e.startAt) }} {{ e.title }}</b>
               </div>
-              <span v-if="eventsOfDay(year, month, date).length > 3" style="font-size:10px;opacity:.7">+{{ eventsOfDay(year, month, date).length - 3 }} 更多</span>
+              <span v-if="c.events.length > 3" class="sc-cal-more">+{{ c.events.length - 3 }}</span>
             </div>
-          </template>
-        </n-calendar>
+          </div>
+        </div>
       </section>
 
       <aside class="sc-month-side">

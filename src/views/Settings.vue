@@ -116,12 +116,12 @@ onMounted(async () => {
         <n-card v-else size="small" title="未选择面板">
           <span class="set-muted">从左侧选择一个设置面板。</span>
         </n-card>
+        <!-- 页脚提示放在内容列里：跟着卡片同宽同左沿，不再自带宽窄（原先是第三条右轨） -->
+        <div class="set-footbar">
+          <svg viewBox="0 0 24 24"><use href="#i-warn" /></svg>
+          <span>本应用不提供账户体系与云同步，所有数据仅保存在本机。请定期备份，卸载或清除浏览器数据可能导致数据丢失。</span>
+        </div>
       </section>
-    </div>
-
-    <div class="set-footbar">
-      <svg viewBox="0 0 24 24"><use href="#i-warn" /></svg>
-      <span>本应用不提供账户体系与云同步，所有数据仅保存在本机。请定期备份，卸载或清除浏览器数据可能导致数据丢失。</span>
     </div>
   </Shell>
 </template>

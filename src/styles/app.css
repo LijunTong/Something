@@ -95,7 +95,10 @@ input, textarea { caret-color: var(--primary); }
 
 .content { flex: 1; min-height: 0; }
 .content-inner { padding: 24px 28px 32px; }
-.page-head { display: flex; align-items: flex-end; justify-content: space-between; gap: 16px; margin-bottom: 16px; }
+/* 页头基线：标题块与右侧操作区按「上沿对齐」，让按钮压在第一行标题上。
+   用 flex-end 时按钮底边贴的是副标题底边，标题中心与按钮中心相差 25px（实测），整页最显眼的
+   两组元素不在一条视觉轴上。标题行高 1.3×21≈27px、按钮 30px，上沿对齐后中心只差 1.4px。 */
+.page-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; margin-bottom: 16px; }
 h1 { margin: 0; font-size: var(--fs-title); line-height: 1.3; font-weight: 650; letter-spacing: -.01em; }
 .page-sub { margin: 5px 0 0; color: var(--muted); font-size: var(--fs-12); }
 .head-actions { display: flex; align-items: center; gap: 8px; }

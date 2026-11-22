@@ -3,7 +3,7 @@ import { useHomeCardRefresh } from '@/composables/useHomeRefresh'
 import { computed, onMounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import HomeCardMenu from '@/components/home/HomeCardMenu.vue'
-import { NCard, NTag, NEmpty, NSpin, NButton, useMessage } from 'naive-ui'
+import { NCard, NEmpty, NSpin, NButton, NEllipsis, useMessage } from 'naive-ui'
 import { call, bridge, hasBridge } from '@/lib/ipc'
 import { log } from '@/lib/logger'
 import type { FeedItem, FeedSource } from '@/types/api'
@@ -68,7 +68,7 @@ watch(refreshTick, () => { void load() })
       <div class="hc-head">
         <!-- 只有标题文字进信息流页，卡片其它区域不跳转 -->
         <n-button text size="small" @click="router.push('/feed')">信息流</n-button>
-        <n-tag size="tiny" :type="items.length ? 'warning' : 'success'">未读 {{ items.length }}</n-tag>
+        <span class="hc-status"><i class="hc-dot" :class="items.length ? 'is-warn' : 'is-ok'" />未读 {{ items.length }}</span>
       </div>
     </template>
     <template #header-extra>
@@ -89,7 +89,9 @@ watch(refreshTick, () => { void load() })
         @keydown.enter="router.push({ path: '/feed', query: { focus: item.id } })"
       >
         <div class="hc-feed-row">
-          <n-button class="hc-feed-title" text size="tiny" @click.stop="router.push({ path: '/feed', query: { focus: item.id } })">{{ item.title }}</n-button>
+          <!-- 标题用 n-ellipsis：单行省略号交给组件渲染（自写 text-overflow 压不住按钮内部 span，
+               截断处没有省略号，看起来像文字被切断）。整行已经是链接，标题不再重复包按钮 -->
+          <n-ellipsis class="hc-feed-title" :line-clamp="1">{{ item.title }}</n-ellipsis>
           <n-button size="tiny" quaternary @click.stop="later(item)">稍后读</n-button>
         </div>
         <small class="hc-muted">{{ item.sourceTitle || '来源未知' }} · {{ ago(item.publishedAt) }}</small>

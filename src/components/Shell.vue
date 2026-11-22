@@ -47,7 +47,7 @@ const immersive = computed(() => route.query.immersive === '1')
 /** 侧栏折叠开关：与设置页「外观 › 侧边栏」同一个配置项，点哪边都同步 */
 async function toggleSidebar() {
   const base: AppearanceSetting = store.settings?.appearance ?? {
-    theme: '浅色', accent: '#0f766e', font: '小', sidebarExpand: true
+    theme: '浅色', accent: '#0f766e', font: '中', sidebarExpand: true
   }
   try {
     await store.saveSettings({ appearance: { ...base, sidebarExpand: !sidebarExpand.value } })
@@ -83,7 +83,7 @@ const themeIcon = computed(() => {
 const themeTitle = computed(() => '主题：' + store.themeMode + '（点击切换到' + nextTheme.value + '）')
 async function toggleTheme() {
   const base: AppearanceSetting = store.settings?.appearance ?? {
-    theme: '浅色', accent: '#0f766e', font: '小', sidebarExpand: true
+    theme: '浅色', accent: '#0f766e', font: '中', sidebarExpand: true
   }
   try {
     await store.saveSettings({ appearance: { ...base, theme: nextTheme.value } })
@@ -221,7 +221,7 @@ function badgeOf(item: { badge?: string }): number {
           <div class="content-inner">
             <div class="page-head">
               <div><h1>{{ title }}</h1><p class="page-sub"><slot name="subtitle">数据保存在本机 SQLite 数据库</slot></p></div>
-              <div class="head-actions"><slot name="actions" /></div>
+              <div v-if="$slots.actions" class="head-actions"><slot name="actions" /></div>
             </div>
             <slot />
           </div>

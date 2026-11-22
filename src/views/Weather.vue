@@ -364,20 +364,20 @@ onBeforeUnmount(() => { if (refreshTimer) { clearInterval(refreshTimer); refresh
     </template>
     <template #actions>
       <div class="wx-head-actions">
-        <n-tag size="small" :type="sourceTagType">{{ sourceLabel }}</n-tag>
+        <span class="hc-status"><i class="hc-dot" :class="sourceTagType === 'warning' ? 'is-warn' : sourceTagType === 'success' ? 'is-ok' : 'is-info'" />{{ sourceLabel }}</span>
         <n-select
           class="wx-city-select"
-          size="small"
+          size="medium"
           :value="currentId"
           :options="cityOptions"
           @update:value="(v: string) => switchCity(v)"
         />
-        <n-button size="small" @click="openDrawer">多城市管理</n-button>
-        <n-button size="small" :loading="loading" @click="loadWeather(true)">刷新</n-button>
-        <n-button size="small" quaternary @click="openSourceSettings">数据源设置</n-button>
+        <n-button size="medium" @click="openDrawer">多城市管理</n-button>
+        <n-button size="medium" :loading="loading" @click="loadWeather(true)">刷新</n-button>
+        <n-button size="medium" quaternary @click="openSourceSettings">数据源设置</n-button>
         <n-button-group class="wx-unit-group">
-          <n-button size="small" :type="unit === 'C' ? 'primary' : 'default'" @click="setUnit('C')">°C</n-button>
-          <n-button size="small" :type="unit === 'F' ? 'primary' : 'default'" @click="setUnit('F')">°F</n-button>
+          <n-button size="medium" :type="unit === 'C' ? 'primary' : 'default'" @click="setUnit('C')">°C</n-button>
+          <n-button size="medium" :type="unit === 'F' ? 'primary' : 'default'" @click="setUnit('F')">°F</n-button>
         </n-button-group>
       </div>
     </template>

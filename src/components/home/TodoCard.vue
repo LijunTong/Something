@@ -3,7 +3,7 @@ import { useHomeCardRefresh } from '@/composables/useHomeRefresh'
 import { computed, nextTick, onMounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import HomeCardMenu from '@/components/home/HomeCardMenu.vue'
-import { NCard, NTag, NCheckbox, NEmpty, NSpin, NButton, NModal, NForm, NFormItem, NInput, NSelect, NDatePicker, useMessage } from 'naive-ui'
+import { NCard, NCheckbox, NEmpty, NSpin, NButton, NModal, NForm, NFormItem, NInput, NSelect, NDatePicker, useMessage } from 'naive-ui'
 import { call, bridge, hasBridge } from '@/lib/ipc'
 import { log } from '@/lib/logger'
 import { triggerHomeRefresh } from '@/composables/useHomeRefresh'
@@ -144,7 +144,7 @@ watch(refreshTick, () => { void load() })
       <div class="hc-head">
         <!-- 只有标题文字进待办页，卡片其它区域不跳转 -->
         <n-button text size="small" @click="router.push('/todo')">今日待办</n-button>
-        <n-tag size="tiny" :type="todayPending ? 'warning' : 'success'">剩余 {{ todayPending }}</n-tag>
+        <span class="hc-status"><i class="hc-dot" :class="todayPending ? 'is-warn' : 'is-ok'" />剩余 {{ todayPending }}</span>
       </div>
     </template>
     <template #header-extra>
@@ -171,9 +171,9 @@ watch(refreshTick, () => { void load() })
             <template v-if="t.labels.length"> · {{ t.labels.join(' / ') }}</template>
           </small>
         </span>
-        <n-tag v-if="t.priority === '高'" size="tiny" type="warning">高</n-tag>
-        <n-tag v-else-if="t.priority === '中'" size="tiny">中</n-tag>
-        <n-tag v-else size="tiny" type="info">低</n-tag>
+        <span class="hc-status" :title="'优先级：' + t.priority">
+          <i class="hc-dot" :class="t.priority === '高' ? 'is-warn' : t.priority === '中' ? 'is-info' : ''" />{{ t.priority }}
+        </span>
       </div>
     </n-spin>
 

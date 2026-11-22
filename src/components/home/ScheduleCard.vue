@@ -3,7 +3,7 @@ import { useHomeCardRefresh } from '@/composables/useHomeRefresh'
 import { computed, onMounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import HomeCardMenu from '@/components/home/HomeCardMenu.vue'
-import { NCard, NTag, NEmpty, NSpin, NButton, NTimeline, NTimelineItem, NModal, NForm, NFormItem, NInput, NSelect, NDatePicker, useMessage } from 'naive-ui'
+import { NCard, NEmpty, NSpin, NButton, NTimeline, NTimelineItem, NModal, NForm, NFormItem, NInput, NSelect, NDatePicker, useMessage } from 'naive-ui'
 import { call, bridge, hasBridge } from '@/lib/ipc'
 import { log } from '@/lib/logger'
 import { triggerHomeRefresh } from '@/composables/useHomeRefresh'
@@ -90,7 +90,7 @@ watch(refreshTick, () => { void load() })
       <div class="hc-head">
         <!-- 只有标题文字进日程页，卡片其它区域不跳转 -->
         <n-button text size="small" @click="router.push('/schedule')">今日日程</n-button>
-        <n-tag size="tiny">{{ rows.length }} 条</n-tag>
+        <span class="hc-status">{{ rows.length }} 条</span>
       </div>
     </template>
     <template #header-extra>
@@ -116,8 +116,8 @@ watch(refreshTick, () => { void load() })
           @keydown.enter="router.push({ path: '/schedule', query: { focus: row.id, at: String(row.startAt) } })"
         >
           <div class="hc-tl-row">
-            <n-tag v-if="row.calendarName" size="tiny">{{ row.calendarName }}</n-tag>
-            <n-tag v-if="row.remindMin > 0" size="tiny" type="warning">提前 {{ row.remindMin }} 分钟</n-tag>
+            <span v-if="row.calendarName" class="hc-status"><i class="hc-dot is-info" />{{ row.calendarName }}</span>
+            <span v-if="row.remindMin > 0" class="hc-status"><i class="hc-dot is-warn" />提前 {{ row.remindMin }} 分钟</span>
             <span class="hc-muted">{{ row.place || row.note || '未填写地点' }}</span>
           </div>
         </n-timeline-item>

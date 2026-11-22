@@ -515,16 +515,16 @@ async function reloadAll() {
     <template #subtitle>{{ subtitle }}</template>
     <template #actions>
       <n-select
-        size="small"
+        size="medium"
         class="ml-auto-sync"
         :value="autoSyncMin"
         :options="autoSyncOptions"
         @update:value="changeAutoSync"
       />
-      <n-button size="small" :loading="loading" @click="syncAll">同步</n-button>
-      <n-button size="small" @click="openRules">收件规则</n-button>
-      <n-button size="small" @click="openAccounts">账户管理</n-button>
-      <n-button size="small" type="primary" @click="openWebmail()">网页邮箱</n-button>
+      <n-button size="medium" :loading="loading" @click="syncAll">同步</n-button>
+      <n-button size="medium" @click="openRules">收件规则</n-button>
+      <n-button size="medium" @click="openAccounts">账户管理</n-button>
+      <n-button size="medium" type="primary" @click="openWebmail()">网页邮箱</n-button>
     </template>
 
     <div class="mail-layout">
@@ -640,6 +640,7 @@ async function reloadAll() {
                   <time>{{ fmtTime(m.sentAt) }}</time>
                 </div>
                 <div class="ml-subj">
+                  <span v-if="m.important" class="hc-status ml-flag"><i class="hc-dot is-warn" />重要</span>
                   <n-text :depth="m.read ? 3 : 1" :strong="!m.read">{{ m.subject || '（无主题）' }}</n-text>
                 </div>
                 <div class="ml-sum">
@@ -647,7 +648,6 @@ async function reloadAll() {
                   <svg v-if="m.hasAttach" class="mi" aria-hidden="true"><use href="#i-paperclip" /></svg>
                 </div>
               </div>
-              <n-tag v-if="m.important" size="tiny" type="warning">重要</n-tag>
             </div>
             <div v-if="!mails.length" class="ml-empty"><n-empty description="此文件夹暂无邮件" /></div>
           </n-scrollbar>

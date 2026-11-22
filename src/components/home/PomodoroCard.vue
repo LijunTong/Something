@@ -3,7 +3,7 @@ import { useHomeCardRefresh } from '@/composables/useHomeRefresh'
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import HomeCardMenu from '@/components/home/HomeCardMenu.vue'
-import { NCard, NTag, NProgress, NButton, NEmpty, NModal, NForm, NFormItem, NInputNumber, useMessage } from 'naive-ui'
+import { NCard, NProgress, NButton, NEmpty, NModal, NForm, NFormItem, NInputNumber, useMessage } from 'naive-ui'
 import { call, bridge, hasBridge } from '@/lib/ipc'
 import { log } from '@/lib/logger'
 import type { PomodoroConfig, PomodoroState, PomodoroStats, TodoRow } from '@/types/api'
@@ -160,7 +160,7 @@ onBeforeUnmount(() => { if (timer) clearInterval(timer) })
       <div class="hc-head">
         <!-- 只有标题文字进番茄页，卡片其它区域不跳转 -->
         <n-button text size="small" @click="router.push('/pomodoro')">番茄钟</n-button>
-        <n-tag size="tiny" :type="state?.phase === 'running' ? 'success' : 'default'">{{ phaseText }}</n-tag>
+        <span class="hc-status"><i class="hc-dot" :class="state?.phase === 'running' ? 'is-ok' : ''" />{{ phaseText }}</span>
       </div>
     </template>
     <template #header-extra>
@@ -217,16 +217,17 @@ onBeforeUnmount(() => { if (timer) clearInterval(timer) })
       <n-button v-else size="small" type="primary" block @click="resume">继续</n-button>
     </div>
 
-    <!-- 番茄进度用 n-tag 表示完成/未完成，避免自绘圆点 -->
+    <!-- 番茄进度：每个目标一个圆点，完成填橙、未完成留灰槽（n-tag 在这里只是重复的状态块，已收敛） -->
     <div class="hc-tomatoes">
       <span>
-        <n-tag
-          v-for="n in Math.max(goal, 1)"
-          :key="n"
-          size="tiny"
-          :type="n <= doneCount ? 'warning' : 'default'"
-          round
-        >{{ n }}</n-tag>
+        <span class="hc-tomato-dots" :aria-label="'今日 ' + doneCount + ' / 目标 ' + goal">
+          <i
+            v-for="n in Math.max(goal, 1)"
+            :key="n"
+            class="hc-dot"
+            :class="n <= doneCount ? 'is-warn' : 'is-empty'"
+          />
+        </span>
         <span class="hc-muted">今日 {{ doneCount }} 个番茄</span>
       </span>
       <span class="hc-muted">目标 {{ goal }} 个 · {{ stats?.minutes ?? 0 }} 分钟</span>

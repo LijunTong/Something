@@ -3,7 +3,7 @@ import { useHomeCardRefresh } from '@/composables/useHomeRefresh'
 import { computed, onMounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import HomeCardMenu from '@/components/home/HomeCardMenu.vue'
-import { NCard, NTag, NSpin, NEmpty, NButton } from 'naive-ui'
+import { NCard, NSpin, NEmpty, NButton } from 'naive-ui'
 import { call, bridge, hasBridge } from '@/lib/ipc'
 import { log } from '@/lib/logger'
 import type { WeatherCity, WeatherData } from '@/types/api'
@@ -80,7 +80,7 @@ watch(refreshTick, () => { void load() })
       <div class="hc-head">
         <!-- 只有标题文字进天气页，卡片其它区域不跳转 -->
         <n-button text size="small" @click="open">天气<template v-if="data?.name"> · {{ data.name }}</template></n-button>
-        <n-tag size="tiny">{{ data?.fromCache ? '本地缓存' : '已更新' }}</n-tag>
+        <span class="hc-status"><i class="hc-dot" :class="data?.fromCache ? 'is-warn' : 'is-ok'" />{{ data?.fromCache ? '本地缓存' : '已更新' }}</span>
       </div>
     </template>
     <template #header-extra>
