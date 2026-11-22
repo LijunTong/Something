@@ -144,6 +144,40 @@ if (tagRef.ok) {
   }
 }
 
+// better-sqlite3 ships as a compiled .node binary compiled against the Electron ABI.
+// The build directory is easy to lose (a failed electron-rebuild wipes it), and a
+// package built without it installs fine but crashes on first DB access. Refill it
+// from the published prebuilt binaries before touching the bundler.
+const nativeRel = path.join('node_modules', 'better-sqlite3', 'build', 'Release', 'better_sqlite3.node')
+const nativeAbs = path.join(root, nativeRel)
+
+function electronRuntimeVersion() {
+  const bin = path.join(root, 'node_modules', 'electron', 'dist', 'electron.exe')
+  if (!fs.existsSync(bin)) return ''
+  const res = spawnSync(bin, ['-p', 'process.versions.electron'], {
+    encoding: 'utf8',
+    env: { ...process.env, ELECTRON_RUN_AS_NODE: '1' }
+  })
+  return (res.stdout || '').trim()
+}
+
+if (!fs.existsSync(nativeAbs)) {
+  const ev = electronRuntimeVersion()
+  if (!ev) fail('missing ' + nativeRel + ' and cannot detect the Electron version to refill it')
+  log('native', 'better_sqlite3.node missing; fetching prebuilt for Electron ' + ev)
+  const bin = path.join(root, 'node_modules', '.bin', process.platform === 'win32' ? 'prebuild-install.cmd' : 'prebuild-install')
+  if (fs.existsSync(bin)) {
+    run(bin, ['-r', 'electron', '-t', ev, '--arch', 'x64'], {
+      cwd: path.join(root, 'node_modules', 'better-sqlite3'),
+      allowFail: true
+    })
+  }
+  if (!fs.existsSync(nativeAbs)) {
+    fail('better_sqlite3.node still missing. Run: npx prebuild-install -r electron -t ' + ev + ' (inside node_modules/better-sqlite3), or install Visual Studio Build Tools and run "npm run rebuild"')
+  }
+  log('native', 'restored ' + nativeRel)
+}
+
 log('preflight', 'repo=' + root)
 log('preflight', 'branch=' + branch + ' version=' + version + ' tag=' + tag + ' head=' + headSha.slice(0, 7))
 
@@ -178,6 +212,14 @@ if (!OPT.skipBuild) {
   fail('installer missing: ' + installer)
 }
 if (!fs.existsSync(installer)) fail('installer was not produced: ' + installer)
+
+// The unpacked payload must carry the native module too; a package without it
+// installs fine and then dies on the first database call.
+const unpackedNative = path.join(root, 'release', 'win-unpacked', 'resources', 'app.asar.unpacked', nativeRel)
+if (!fs.existsSync(unpackedNative)) {
+  fail('packaged app is missing ' + nativeRel + '; refuse to publish a broken installer')
+}
+log('package', 'native module bundled ok')
 const sizeMb = (fs.statSync(installer).size / 1024 / 1024).toFixed(1)
 log('package', installer + ' (' + sizeMb + ' MB)')
 
