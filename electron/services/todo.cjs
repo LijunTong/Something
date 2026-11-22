@@ -45,6 +45,46 @@ function lists() {
   return camelAll(get().prepare('SELECT * FROM todo_list WHERE deleted_at IS NULL ORDER BY sort ASC').all())
 }
 
+/** 按名称找清单（忽略大小写与首尾空格）：新建待办时输入的是名字，避免重复建同名清单。 */
+function findListByName(name) {
+  const n = String(name || '').trim()
+  if (!n) return null
+  return get().prepare('SELECT * FROM todo_list WHERE deleted_at IS NULL AND lower(name) = lower(?)').get(n) || null
+}
+
+/** 新建清单；同名已存在则直接复用。返回清单行。 */
+function createList(dto) {
+  return withTx(function () {
+    const name = String((dto && dto.name) || '').trim()
+    if (!name) throw new Error('LIST_NAME_REQUIRED')
+    const existed = findListByName(name)
+    if (existed) return camel(existed)
+    const id = uid('list')
+    const max = get().prepare('SELECT COALESCE(MAX(sort),-1) AS m FROM todo_list').get()
+    get().prepare('INSERT INTO todo_list (id,name,color,sort) VALUES (?,?,?,?)')
+      .run(id, name, (dto && dto.color) || null, (max ? max.m : -1) + 1)
+    return camel(get().prepare('SELECT * FROM todo_list WHERE id = ?').get(id))
+  })
+}
+
+/**
+ * 删除清单：清单下的待办一并删除（子任务由 todo_subtask 的外键级联清掉）。
+ * 这是有意的破坏性语义 —— 空清单留着没意义，孤儿待办又会散落在「全部」里。
+ */
+function removeList(id) {
+  const removed = withTx(function () {
+    const row = get().prepare('SELECT * FROM todo_list WHERE id = ?').get(id)
+    if (!row) throw new Error('LIST_NOT_FOUND')
+    const ids = get().prepare('SELECT id FROM todo WHERE list_id = ?').all(id).map(function (r) { return r.id })
+    get().prepare('DELETE FROM todo WHERE list_id = ?').run(id)
+    get().prepare('DELETE FROM todo_list WHERE id = ?').run(id)
+    return { list: camel(row), removedTodos: ids, count: ids.length }
+  })
+  // 待办没了，绑在上面的番茄计时也要收尾，否则计时器会挂在不存在的任务上
+  removed.removedTodos.forEach(function (tid) { notifyTaskDone(tid) })
+  return { list: removed.list, count: removed.count }
+}
+
 function getOne(id) {
   const row = get().prepare('SELECT * FROM todo WHERE id = ?').get(id)
   if (!row) return null
@@ -165,4 +205,4 @@ function stats() {
   return { pending: pending, done: done, overdue: overdue, focusSeconds: focus }
 }
 
-module.exports = { list: list, lists: lists, get: getOne, create: create, update: update, toggle: toggle, remove: remove, reorder: reorder, addSubtask: addSubtask, toggleSubtask: toggleSubtask, stats: stats }
+module.exports = { list: list, lists: lists, createList: createList, removeList: removeList, get: getOne, create: create, update: update, toggle: toggle, remove: remove, reorder: reorder, addSubtask: addSubtask, toggleSubtask: toggleSubtask, stats: stats }

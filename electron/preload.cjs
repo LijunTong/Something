@@ -10,7 +10,8 @@ const api = {
     list: call('todo:list'), get: call('todo:get'), create: call('todo:create'),
     update: call('todo:update'), toggle: call('todo:toggle'), remove: call('todo:remove'),
     reorder: call('todo:reorder'), addSubtask: call('todo:addSubtask'),
-    toggleSubtask: call('todo:toggleSubtask'), lists: call('todo:lists'), stats: call('todo:stats')
+    toggleSubtask: call('todo:toggleSubtask'), lists: call('todo:lists'), stats: call('todo:stats'),
+    createList: call('todo:createList'), removeList: call('todo:removeList')
   },
   schedule: {
     range: call('schedule:range'), get: call('schedule:get'), create: call('schedule:create'),

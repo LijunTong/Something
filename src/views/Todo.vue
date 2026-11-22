@@ -8,7 +8,7 @@ import {
 import { useRouter } from 'vue-router'
 import { useAppStore } from '@/stores/app'
 import Shell from '@/components/Shell.vue'
-import type { TodoRow, ScheduleRow } from '@/types/api'
+import type { TodoRow, TodoListRow, ScheduleRow } from '@/types/api'
 import { call, bridge, plain } from '@/lib/ipc'
 import { isTypingTarget, matchesCombo } from '@/lib/shortcut'
 import { log } from '@/lib/logger'
@@ -257,8 +257,48 @@ function openEdit(t: TodoRow) {
   showModal.value = true
 }
 
+/**
+ * 草稿里的清单可能是「刚输入的新名字」而不是 id（n-select 的 tag 模式）：
+ * 落库前统一解析，找不到就在后端建一条，名字相同则复用已有的那条。
+ */
+async function resolveDraftListId(): Promise<string | null> {
+  const raw = draft.value.listId
+  if (!raw) return null
+  const text = String(raw).trim()
+  if (!text) return null
+  if (store.todoLists.some((l) => l.id === text)) return text
+  const row = await store.createTodoList(text)
+  return row ? row.id : null
+}
+
+/** 删除清单：清单下的待办一起删，删前把受影响的条数说清楚 */
+function confirmRemoveList(l: TodoListRow) {
+  const affected = store.todos.filter((t) => t.listId === l.id).length
+  dialog.warning({
+    title: '删除清单',
+    content: affected
+      ? '「' + l.name + '」下还有 ' + affected + ' 条待办，删除清单会把它们一起删除。确定删除？'
+      : '确定删除清单「' + l.name + '」？',
+    positiveText: '删除',
+    negativeText: '取消',
+    onPositiveClick: async () => {
+      await withLoading(async () => {
+        const removed = await store.removeTodoList(l.id)
+        if (activeListId.value === l.id) activeListId.value = null
+        if (draft.value.listId === l.id) draft.value.listId = null
+        if (selectedId.value && !store.todos.some((t) => t.id === selectedId.value)) {
+          selectedId.value = null
+          showDetail.value = false
+        }
+        message.success(removed ? '已删除清单及 ' + removed + ' 条待办' : '已删除清单')
+      })
+    }
+  })
+}
+
 async function saveDraft() {
   if (!draft.value.title.trim()) { message.warning('请填写任务标题'); return }
+  const listId = await resolveDraftListId()
   if (editingId.value) {
     await withLoading(async () => {
       const dueAt = draft.value.dueAt
@@ -267,7 +307,7 @@ async function saveDraft() {
       await store.updateTodo({
         id,
         title: draft.value.title.trim(),
-        listId: draft.value.listId,
+        listId,
         priority: draft.value.priority,
         dueAt,
         remindAt: dueAt && remindMin > 0 ? dueAt - remindMin * 60000 : null,
@@ -285,7 +325,7 @@ async function saveDraft() {
     const dueAt = draft.value.dueAt
     const remindMin = Number(draft.value.remindText)
     await store.addTodo(draft.value.title.trim(), {
-      listId: draft.value.listId,
+      listId,
       priority: draft.value.priority,
       dueAt,
       remindAt: dueAt && remindMin > 0 ? dueAt - remindMin * 60000 : null,
@@ -424,7 +464,11 @@ watch(focusKey, (v) => { void applyFocus(String(v || '')) })
           </a>
           <div class="td-group">我的清单</div>
           <a v-for="l in store.todoLists" :key="l.id" class="td-nav" :class="{ on: activeListId === l.id }" href="#" @click.prevent="pickList(l.id)">
-            <span class="dotc" :style="{ background: l.color || 'var(--muted-2)' }"></span><span>{{ l.name }}</span><span>{{ listCount(l.id) }}</span>
+            <span class="dotc" :style="{ background: l.color || 'var(--muted-2)' }"></span><span class="td-name">{{ l.name }}</span>
+            <n-button class="td-list-del" text size="tiny" @click.stop="confirmRemoveList(l)">
+              <template #icon><svg class="td-del-ico"><use href="#i-trash"/></svg></template>
+            </n-button>
+            <span class="td-count">{{ listCount(l.id) }}</span>
           </a>
         </aside>
 
@@ -531,7 +575,17 @@ watch(focusKey, (v) => { void applyFocus(String(v || '')) })
     <n-modal v-model:show="showModal" preset="card" :title="editingId ? '编辑任务' : '新建任务'" style="width:480px">
       <n-form label-placement="left" label-width="64" size="small">
         <n-form-item label="标题"><n-input v-model:value="draft.title" placeholder="任务标题" /></n-form-item>
-        <n-form-item label="清单"><n-select v-model:value="draft.listId" :options="listOptions" clearable placeholder="选择清单" /></n-form-item>
+        <!-- 清单既能选已有项，也能直接输入新名字：tag 模式把输入内容当作值，保存时再落库 -->
+        <n-form-item label="清单">
+          <n-select
+            v-model:value="draft.listId"
+            :options="listOptions"
+            filterable
+            tag
+            clearable
+            placeholder="选择或输入新清单，回车创建"
+          />
+        </n-form-item>
         <n-form-item label="优先级"><n-select v-model:value="draft.priority" :options="priorityOptions" /></n-form-item>
         <n-form-item label="截止">
           <n-date-picker v-model:value="draft.dueAt" type="datetime" clearable style="width:100%" placeholder="选择截止日期与时间" />

@@ -13,6 +13,12 @@
 .td-nav.on > span:nth-last-child(1) { color: inherit; }
 /* 悬停反馈（纯布局/交互态，不改外观色值） */
 .td-nav:hover { opacity: .85; }
+/* 清单行：名称占剩余宽度，计数贴右；删除按钮只在悬停时显形（只调 flex/opacity，外观交给 n-button 主题） */
+.td-nav .td-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.td-nav .td-count { margin-left: auto; }
+.td-nav .td-list-del { flex: 0 0 auto; margin-left: 6px; opacity: 0; pointer-events: none; }
+.td-nav:hover .td-list-del { opacity: 1; pointer-events: auto; }
+.td-nav .td-del-ico { width: 13px; height: 13px; }
 
 /* 中栏 */
 .td-mid { padding: 0; min-width: 0; }

@@ -156,6 +156,10 @@ export interface Api {
     addSubtask(dto: { todoId: string; title: string }): Promise<IpcResult<TodoRow>>
     toggleSubtask(id: string): Promise<IpcResult<TodoRow>>
     lists(): Promise<IpcResult<TodoListRow[]>>
+    /** 新建清单；同名（忽略大小写）已存在时直接返回原有清单 */
+    createList(dto: { name: string; color?: string | null }): Promise<IpcResult<TodoListRow>>
+    /** 删除清单，清单下的待办一并删除 */
+    removeList(id: string): Promise<IpcResult<{ list: TodoListRow; count: number }>>
     stats(): Promise<IpcResult<TodoStats>>
   }
   schedule: ScheduleApi

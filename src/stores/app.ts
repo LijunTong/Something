@@ -126,6 +126,20 @@ export const useAppStore = defineStore('app', {
       await this.refreshTodos()
     },
 
+    /** 新建清单（同名会复用已有清单），返回落库后的清单行 */
+    async createTodoList(name: string) {
+      const row = await call(() => bridge().todo.createList({ name }), null as TodoListRow | null)
+      await this.refreshTodos()
+      return row
+    },
+
+    /** 删除清单，清单下的待办一并删除 */
+    async removeTodoList(id: string) {
+      const res = await call(() => bridge().todo.removeList(id), null as { count: number } | null)
+      await this.refreshTodos()
+      return res ? res.count : 0
+    },
+
     async addSubtask(todoId: string, title: string) {
       await call(() => bridge().todo.addSubtask({ todoId, title }))
       await this.refreshTodos()

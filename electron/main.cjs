@@ -380,6 +380,8 @@ function registerIpc() {
     addSubtask: todoSvc.addSubtask,
     toggleSubtask: todoSvc.toggleSubtask,
     lists: todoSvc.lists,
+    createList: todoSvc.createList,
+    removeList: todoSvc.removeList,
     stats: todoSvc.stats
   })
   registry.register('schedule', {
