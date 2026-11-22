@@ -63,6 +63,23 @@ function git(args, opts) {
   return run('git', args, opts)
 }
 
+// GitHub over HTTPS needs a stored credential. When credential.helper is not
+// configured globally the first attempt fails with "could not read Username";
+// retry once against the Windows credential store (wincred) before giving up.
+function pushGit(args) {
+  const first = git(args, { allowFail: true })
+  if (first.ok) return
+  if (/could not read Username|terminal prompts disabled|Authentication failed/i.test(first.out || '')) {
+    log('push', 'credential helper missing in config; retrying with wincred')
+    const retry = git(['-c', 'credential.helper=wincred'].concat(args), { allowFail: true })
+    if (retry.ok) return
+    console.error(retry.out)
+    fail('git ' + args.join(' ') + ' failed even with wincred')
+  }
+  console.error(first.out)
+  fail('git ' + args.join(' ') + ' exited with ' + first.status)
+}
+
 function ask(question) {
   if (OPT.yes) return true
   process.stdout.write(question + ' [y/N] ')
@@ -188,9 +205,9 @@ if (OPT.skipPush) {
   log('push', 'skipped (--skip-push)')
 } else {
   log('push', 'git push origin ' + branch)
-  git(['push', 'origin', branch])
+  pushGit(['push', 'origin', branch])
   log('push', 'git push ' + (moveTag ? '-f ' : '') + 'origin ' + tag)
-  git(moveTag ? ['push', '-f', 'origin', tag] : ['push', 'origin', tag])
+  pushGit(moveTag ? ['push', '-f', 'origin', tag] : ['push', 'origin', tag])
 }
 
 /* ---------------- 6. GitHub Release ---------------- */
@@ -199,14 +216,17 @@ if (OPT.skipPush) {
 function resolveToken() {
   if (process.env.GITHUB_TOKEN) return process.env.GITHUB_TOKEN
   if (process.env.GH_TOKEN) return process.env.GH_TOKEN
-  const res = spawnSync('git', ['credential', 'fill'], {
-    cwd: root,
-    input: 'protocol=https\nhost=github.com\n\n',
-    encoding: 'utf8'
-  })
-  const text = (res.stdout || '')
-  const m = /^password=(.+)$/m.exec(text)
-  return m ? m[1].trim() : ''
+  // credential.helper is not always set in the repo/global config; ask wincred directly.
+  for (const extra of [[], ['-c', 'credential.helper=wincred']]) {
+    const res = spawnSync('git', extra.concat(['credential', 'fill']), {
+      cwd: root,
+      input: 'protocol=https\nhost=github.com\n\n',
+      encoding: 'utf8'
+    })
+    const m = /^password=(.+)$/m.exec(res.stdout || '')
+    if (m && m[1].trim()) return m[1].trim()
+  }
+  return ''
 }
 
 async function gh(pathname, init) {
