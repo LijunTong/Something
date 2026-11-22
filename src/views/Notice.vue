@@ -237,10 +237,10 @@ onBeforeUnmount(() => {
   <Shell>
     <template #subtitle>{{ subtitle }}</template>
     <template #actions>
-      <n-button size="small" :disabled="!counts.unread" :loading="busy === 'all'" @click="markAll">全部已读</n-button>
+      <n-button size="medium" :disabled="!counts.unread" :loading="busy === 'all'" @click="markAll">全部已读</n-button>
       <n-popconfirm @positive-click="clearRead">
         <template #trigger>
-          <n-button size="small" :loading="busy === 'clear'">清除已读</n-button>
+          <n-button size="medium" :loading="busy === 'clear'">清除已读</n-button>
         </template>
         删除所有已读通知？连同已读的提醒类条目一起清空。
       </n-popconfirm>

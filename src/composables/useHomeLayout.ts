@@ -157,9 +157,16 @@ export function useHomeLayout(isVisible: (key: CardKey) => boolean) {
     return JSON.parse(JSON.stringify(v)) as HomeCardLayout[]
   }
 
+  /** 列数刚变化后的静默期截止时间：这段时间里库的回写是响应式重排，不是用户拖动 */
+  let suppressUntil = 0
+  const RESIZE_SUPPRESS_MS = 600
+
   function readCols() {
     const w = window.innerWidth
-    cols.value = w <= COL_BREAK_1 ? 1 : w <= COL_BREAK_2 ? 2 : MAX_COLS
+    const next = w <= COL_BREAK_1 ? 1 : w <= COL_BREAK_2 ? 2 : MAX_COLS
+    if (next === cols.value) return
+    cols.value = next
+    suppressUntil = Date.now() + RESIZE_SUPPRESS_MS
   }
 
   onMounted(() => {
@@ -187,8 +194,16 @@ export function useHomeLayout(isVisible: (key: CardKey) => boolean) {
     return layout.value.find((i) => i.key === key) || null
   }
 
-  /** 库的 layout-updated 只带可见卡；隐藏卡的坐标保留在设置里 */
+  /**
+   * 库的 layout-updated 只带可见卡；隐藏卡的坐标保留在设置里。
+   *
+   * 关键防护：grid-layout-plus 在 col-num 变化（窗口跨断点）时也会 emit layout-updated，
+   * 载荷是「窄列空间里重排后的坐标」，不是用户意图。若把它写回 layout 并落库，等于
+   * 「把窗口拉窄」永久改写用户的首页布局，而且拉回宽窗口不会恢复（已实测复现）。
+   * 因此列数变化后的静默期内一律不接受回写（显示照旧由库重排，只是不落库）。
+   */
   function onGridLayoutUpdated(next: LayoutItem[]) {
+    if (Date.now() < suppressUntil) return
     let changed = false
     for (const it of next) {
       const cur = typeof it.i === 'string' ? item(it.i as CardKey) : null

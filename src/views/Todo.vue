@@ -398,7 +398,7 @@ watch(focusKey, (v) => { void applyFocus(String(v || '')) })
   <Shell>
     <template #subtitle>今日 {{ todayCount }} 项待完成 · 已完成 {{ doneCount }} 项</template>
     <template #actions>
-      <n-button size="small" type="primary" @click="openCreate">新建任务</n-button>
+      <n-button size="medium" type="primary" @click="openCreate">新建任务</n-button>
     </template>
 
     <n-alert v-if="hint" :type="hint.type" closable :bordered="false" class="focus-hint" @close="dismissHint">

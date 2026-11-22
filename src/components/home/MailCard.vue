@@ -3,7 +3,7 @@ import { useHomeCardRefresh } from '@/composables/useHomeRefresh'
 import { computed, onMounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import HomeCardMenu from '@/components/home/HomeCardMenu.vue'
-import { NCard, NTag, NEmpty, NSpin, NButton, useMessage } from 'naive-ui'
+import { NCard, NEmpty, NSpin, NButton, useMessage } from 'naive-ui'
 import { call, bridge, hasBridge } from '@/lib/ipc'
 import { log } from '@/lib/logger'
 import type { MailAccount, MailRow } from '@/types/api'
@@ -99,9 +99,9 @@ watch(refreshTick, () => { void load() })
       <div class="hc-head">
         <!-- 只有标题文字进邮件页，卡片其它区域不跳转 -->
         <n-button text size="small" @click="router.push('/mail')">邮件 · 未读 {{ unread }}</n-button>
-        <n-tag size="tiny" :type="accounts.length ? 'success' : 'warning'">
-          {{ accounts.length ? accounts.length + ' 个账户' : '未配置账户' }}
-        </n-tag>
+        <span class="hc-status">
+          <i class="hc-dot" :class="accounts.length ? 'is-ok' : 'is-warn'" />{{ accounts.length ? accounts.length + ' 个账户' : '未配置账户' }}
+        </span>
       </div>
     </template>
     <template #header-extra>
@@ -135,8 +135,8 @@ watch(refreshTick, () => { void load() })
             <template v-if="m.hasAttach"> · 含附件</template>
           </small>
         </span>
-        <n-tag v-if="m.important" size="tiny" type="warning">重要</n-tag>
-        <n-tag v-else size="tiny">通知</n-tag>
+        <span v-if="m.important" class="hc-status"><i class="hc-dot is-warn" />重要</span>
+        <span v-else class="hc-status"><i class="hc-dot" />通知</span>
         <time class="hc-mail-time">{{ hhmm(m.sentAt) }}</time>
       </div>
     </n-spin>

@@ -30,7 +30,9 @@
 .ml-row {
   position: relative;
   display: grid;
-  grid-template-columns: auto 24px minmax(0, 1fr) auto;
+  /* 三轨定宽：勾选 / 星标 / 正文。行内时间贴正文右沿，所有行的右轨因此一致；
+     「重要」改用行内圆点标记，不再单独占一列（原 auto 轨在有标记的行上把时间推歪 44px）。 */
+  grid-template-columns: 16px 24px minmax(0, 1fr);
   gap: 6px;
   align-items: start;
   padding: 9px 6px;
@@ -38,11 +40,14 @@
 }
 .ml-dot { width: 6px; height: 6px; margin-top: 8px; }
 .ml-star { min-width: 24px; min-height: 24px; }
+.ml-flag { flex: none; }
 .ml-body { min-width: 0; }
 .ml-line { display: flex; justify-content: space-between; gap: 8px; min-width: 0; }
 .ml-line strong { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .ml-line time { flex: none; white-space: nowrap; }
-.ml-subj { margin-top: 2px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* 主题行：可带一个「重要」圆点标记，文字仍在剩余宽度内单行省略 */
+.ml-subj { display: flex; align-items: center; gap: 6px; margin-top: 2px; min-width: 0; }
+.ml-subj > :last-child { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .ml-sum { display: flex; align-items: center; gap: 4px; margin-top: 2px; min-width: 0; overflow: hidden; }
 .ml-sum span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 /* 列表窗格里的空态居中：高度跟列表上限对齐，避免贴在窗格顶部 */

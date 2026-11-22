@@ -1,54 +1,13 @@
-/* 公共组件形态：颜色/圆角/字号全部取 App.vue 注入的主题变量（浅色/深色/强调色同步）。 */
+/* 公共组件形态：颜色/圆角/字号全部取 App.vue 注入的主题变量（浅色/深色/强调色同步）。
+   自写弹层（.drawer / .modal / .dialog / .tk-toast）与自绘控件（.input / .select / .switch / .seg /
+   .ghost-btn / .mini-cal）已全部删除：对应能力一律走 Naive UI 组件（AGENTS.md 一、二）。 */
+
 @import url('tokens.css');
-.seg { display: inline-flex; flex-shrink: 0; padding: 2px; border: 1px solid var(--border); border-radius: var(--radius-btn); background: var(--surface); }
-.seg a, .seg button { flex: 0 0 auto; display: inline-flex; align-items: center; justify-content: center; gap: 4px; white-space: nowrap; min-width: 34px; min-height: 26px; height: 26px; padding: 0 10px; border: 0; border-radius: 6px; background: transparent; color: var(--muted); font-size: var(--fs-12); cursor: pointer; }
-.seg a:hover, .seg button:hover { color: var(--primary); }
-.seg a.on, .seg button.on { background: var(--primary-soft); color: var(--primary); font-weight: 600; }
-.nav-group { display: inline-flex; align-items: center; gap: 2px; }
-.nav-group a { display: inline-grid; place-items: center; min-width: 28px; min-height: 28px; width: 28px; height: 28px; border: 1px solid var(--border); border-radius: var(--radius-btn); background: var(--surface); color: var(--muted); }
-.nav-group a:hover { color: var(--primary); border-color: var(--primary-soft); }
-.nav-group a svg { width: 15px; height: 15px; }
-.nav-group span { padding: 0 8px; font-size: var(--fs-12); font-weight: 600; }
-.drawer-mask { position: fixed; inset: 0; z-index: 40; display: none; background: var(--overlay); }
-.drawer { position: fixed; top: 0; right: 0; z-index: 41; display: flex; flex-direction: column; width: 360px; max-width: 92vw; height: 100vh; background: var(--surface); border-left: 1px solid var(--border); box-shadow: -8px 0 32px rgba(15,23,42,.14); transform: translateX(100%); transition: transform 220ms cubic-bezier(.2,.8,.2,1); overflow: auto; }
-body:has(#drawer-state:target) .drawer-mask { display: block; }
-body:has(#drawer-state:target) .drawer { transform: translateX(0); }
-.drawer-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 16px 18px; border-bottom: 1px solid var(--border); }
-.drawer-head h2 { margin: 0; font-size: var(--fs-14); }
-.drawer-body { padding: 16px 18px; flex: 1; }
-.drawer-foot { display: flex; gap: 8px; padding: 14px 18px 18px; border-top: 1px solid var(--border); }
-.drawer-foot button, .drawer-foot a { flex: 1; }
-.close-x { display: inline-grid; place-items: center; min-width: 28px; min-height: 28px; width: 28px; height: 28px; border-radius: var(--radius-btn); }
-.close-x:hover { background: var(--bg); }
-.close-x svg { width: 16px; height: 16px; }
+
+/* 详情字段行：抽屉与卡片内的 k-v 列表 */
 .field { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 36px; border-bottom: 1px dashed var(--border); font-size: var(--fs-12); }
 .field .k { color: var(--muted); }
 .field .v { text-align: right; }
-.modal-mask { position: fixed; inset: 0; z-index: 50; display: none; align-items: center; justify-content: center; background: var(--overlay); }
-.modal { width: 520px; max-width: 94vw; max-height: 88vh; overflow: auto; border-radius: var(--radius-card); background: var(--surface); box-shadow: 0 24px 64px rgba(15,23,42,.24); }
-.modal-head { display: flex; align-items: center; justify-content: space-between; padding: 16px 18px; border-bottom: 1px solid var(--border); }
-.modal-head h2 { margin: 0; font-size: var(--fs-14); }
-.modal-body { padding: 18px; }
-.modal-foot { display: flex; justify-content: flex-end; gap: 8px; padding: 14px 18px; border-top: 1px solid var(--border); background: var(--surface-2); }
-body:has(#modal-state:target) .modal-mask { display: flex; }
-.ghost-btn { display: inline-flex; align-items: center; justify-content: center; min-width: 24px; min-height: 34px; padding: 0 13px; border: 1px solid var(--border); border-radius: var(--radius-btn); background: var(--surface); color: var(--muted); font-size: var(--fs-12); cursor: pointer; }
-.ghost-btn:hover { background: var(--bg); color: var(--text); }
-.form-row { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; }
-.form-row label { width: 66px; flex: 0 0 auto; color: var(--muted); font-size: var(--fs-12); }
-.input, .select { flex: 1; min-width: 0; min-height: 34px; height: 34px; padding: 0 10px; border: 1px solid var(--border); border-radius: var(--radius-btn); background: var(--surface); color: var(--text); font: inherit; font-size: var(--fs-12); }
-.input::placeholder { color: var(--muted); }
-textarea.input { height: auto; min-height: 72px; padding: 9px 10px; resize: vertical; }
-.switch { position: relative; width: 40px; height: 24px; flex: 0 0 auto; border: 0; border-radius: 999px; background: var(--border-strong); cursor: pointer; }
-.switch::after { content: ''; position: absolute; top: 4px; left: 3px; width: 16px; height: 16px; border-radius: 50%; background: var(--switch-knob); box-shadow: 0 1px 3px rgba(0,0,0,.2); transition: transform var(--tr); }
-.switch.on { background: var(--primary); }
-.switch.on::after { transform: translateX(18px); }
+
+/* 分类色点：颜色是数据（日历分类色），由使用处 inline style 给，不在此处写死 */
 .dotc { display: inline-block; width: 9px; height: 9px; border-radius: 50%; margin-right: 6px; vertical-align: middle; }
-.mini-cal { padding: 12px; }
-.mc-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; font-size: var(--fs-12); font-weight: 600; }
-.mc-grid { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 2px; width: 100%; text-align: center; }
-.mc-grid .wd { padding: 3px 0; color: var(--muted); font-size: var(--fs-11); }
-.mc-grid .d { min-width: 0; box-sizing: border-box; overflow: hidden; text-align: center; padding: 5px 0; border-radius: 6px; font-size: var(--fs-11); cursor: pointer; }
-.mc-grid .d:hover { background: var(--bg); }
-.mc-grid .d.today { background: var(--primary); color: var(--on-primary); font-weight: 700; }
-.mc-grid .d.blank { visibility: hidden; }
-@media (prefers-reduced-motion: reduce) { .drawer { transition-duration: .01ms !important; } }

@@ -221,3 +221,43 @@
 2. **--muted 收窄后，列表标题迁到哪一档？** A. 新增 --text-2 = #3f4b56（8.93:1，与 Shell 现用灰一致）；B. 直接用 --text #1f2937（对比更强，页面会更"硬"）；C. 保持 --muted 不变，只靠字重区分（改动最小，改善也最小）。
 3. **页头对齐基准？** A. 按钮组与 h1 垂直居中，副标题另起一行（推荐）；B. 保持现状（按钮贴副标题底边）；C. 副标题移到按钮组下方右对齐。
 4. **卡片内状态标签怎么处理？** A. 全部换成圆点 + 12px 文字（层级最干净）；B. 保留 n-tag 但只留"需要点击筛选"的那几类；C. 不动，靠字号层级解决。
+
+---
+
+## 修复记录（2026-11-22 · 分支 `feat/ui-hierarchy-alignment`）
+
+按上文「落地顺序」三批一次做完，未提交前逐项用无头 CDP 复测（TK_HEADLESS=1 + 原生 1440，**不 resize 窗口**，避免再次触发 P0）。
+
+### 第 1 批 · P0 布局静默改写（止血）
+
+- `src/composables/useHomeLayout.ts`：新增 `RESIZE_SUPPRESS_MS = 600` 与 `suppressUntil`；`readCols()` 只在列数真变化时置静默窗；`onGridLayoutUpdated()` 首行在静默窗内直接 return。
+  根因：grid-layout-plus 在 `col-num` 变化时也 emit `layout-updated`，代码无法区分「用户拖动」与「响应式重排」，导致窗口变窄即把两列坐标写回设置。
+- 复现判据：1440 启动 → `Emulation.setDeviceMetricsOverride` 1100 → 3 秒后读库。修复前 `app_setting.home` 被改成两列；修复后不变（连跑 3 轮均为原值）。
+- 原布局已写回库（`.data/toolkit.db`）：weather(0,0,1,6) / todo(1,0,1,5) / mail(2,0,1,6) / notice(0,6,1,6) / schedule(2,6,1,5) / pomodoro(1,5,1,5) / feed(1,10,1,6) / parcel(0,12,1,5)，locked=false。
+
+### 第 2 批 · 层级与页头基线（两个外观出口）
+
+- `src/theme/naive.ts`：`common.textColor1/2/3` 定为四档层级（标题 #1f2937 / 正文 #3f4b56 / 元信息 #5f6b7a；深色 #e2e8f0 / #cbd5e1 / #94a3b8）。此前 2 与 3 同值，是「卡片正文与时间戳一个颜色」的根因。
+- `src/styles/app.css`：`.page-head` 的 `align-items: flex-end` → `flex-start`。原来按钮底边贴副标题底边，标题中心与按钮中心差 25px；现在按钮 34px 与 h1 上沿同 y=84。
+- 九个视图 `#actions` 槽控件统一 `size="medium"`（34px），卡内控件保持 small/tiny。
+- 首页 8 卡 + 卡片设置面板共 24 处 `n-tag` → `.hc-status` 圆点 + `--fs-11` 文字（`src/styles/home.css` 新增 `.hc-status/.hc-dot/`.hc-tomato-dots`）。渲染后首页 `n-tag` 计数 0。
+- `FeedCard.vue` 标题改用 `n-ellipsis`（自写 text-overflow 压不住按钮内部 span，截断处没有省略号）。
+- 结果：首页文字颜色分布由「muted 97 : text 5」变为「正文 #3f4b56 40 : 元信息 #5f6b7a 40」；全页截断元素从 4 条降到 1 条（邮件主题，带省略号）。
+
+### 第 3 批 · 日程 / 邮件 / 设置
+
+- 日程月视图按 AGENTS.md 1.1.1 走到降级第 4 级**自写 7 列月网格**（`src/views/Schedule.vue` + `src/styles/schedule.css`）：独立列标题行、本月/非本月/今日三态、今日为 22px 主色胶囊。理由已写在模板注释里：n-calendar 主题键无 other-month / current 文字色，`#default` 插槽只承载事件 chips，周名固定渲染在第一行单元格内。
+- 邮件列表行 `src/styles/mail.css` `.ml-row` 由 `auto 24px 1fr auto` 改三轨 `16px 24px minmax(0,1fr)`（第 4 轨在有「重要」标记时塌成 0，把时间推歪 44px）；「重要」标记移进主题行。
+- 设置页 `.set-footbar` 移入内容列，与卡片同宽同左沿：三条右边轨（998 / 1254 / 1412）收为两条。
+
+### 验证
+
+- `npx vue-tsc --noEmit` exit=0；`npm run build` exit=0（js 3.28MB / gzip 639.6KB，css 64.3KB）。
+- 无头渲染断言：卡片仍三列 238/635/1031（P0 未复发）；设置页 `.set-content` 与 `.set-footbar` 均为 [454,153..,800]；邮件行时间右缘 771 = 行右 777 − 6 padding；日程网格今日背景 rgb(37,99,235)、非本月 `--muted-2`。
+- 深色复核：--bg #0f172a、卡片正文 rgb(203,213,225)、元信息 rgb(148,163,184)，均正确（先前一次读到的 #3f4b56 是主题切换过渡中的中间值，稳定 2.5s 后复测为准）。
+
+### 已知遗留（未在本轮处理）
+
+- 首页字号×字重组合仍 14 种：`14/700` 来自裸 `<strong>`，而 AGENTS.md 2.2 禁止在组件 CSS 写 `font-weight`，只能走主题 `Button.fontWeightStrong`；`13/500` 来自卡片头 `n-button(text)`。
+- `src/styles/common.css` / `index.css` 里仍留有 `.drawer` / `.modal-mask` / `.dialog` / `.tk-toast` 等自绘外观类，当前渲染路径未使用，属可清理的历史残留。
+

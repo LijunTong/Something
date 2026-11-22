@@ -501,11 +501,11 @@ watch(unreadCount, (n) => store.setFeedUnread(n), { immediate: true })
   <Shell>
     <template #subtitle>{{ unreadCount }} 篇未读 · 共 {{ sources.length }} 个订阅源 · 最后抓取 {{ lastFetchText }}</template>
     <template #actions>
-      <n-button size="small" :loading="busy" @click="refreshAll">刷新全部</n-button>
-      <n-button size="small" type="primary" @click="openManagePanel">管理订阅</n-button>
-      <n-button size="small" quaternary @click="exportOpml">导出 OPML</n-button>
+      <n-button size="medium" :loading="busy" @click="refreshAll">刷新全部</n-button>
+      <n-button size="medium" type="primary" @click="openManagePanel">管理订阅</n-button>
+      <n-button size="medium" quaternary @click="exportOpml">导出 OPML</n-button>
       <n-upload :custom-request="onImportOpml" :show-file-list="false" :multiple="false">
-        <n-button size="small" quaternary>导入 OPML</n-button>
+        <n-button size="medium" quaternary>导入 OPML</n-button>
       </n-upload>
     </template>
 

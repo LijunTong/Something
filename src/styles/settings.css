@@ -68,7 +68,8 @@ p.set-muted { margin: 12px 0 0; max-width: 52em; line-height: 1.65; }
 .set-port.set-port { width: 88px; flex: 0 0 auto; }
 
 /* 页脚提示条：整页只有这一处长期提示，不再与页头副标题重复叮咛 */
-.set-footbar { display: flex; align-items: flex-start; gap: 8px; margin-top: 20px; max-width: 760px; padding: 10px 12px; }
+/* 页脚提示条：放在 .set-content 里，宽度由内容列（800px）决定，与卡片同宽同左沿 */
+.set-footbar { display: flex; align-items: flex-start; gap: 8px; padding: 10px 12px; }
 .set-footbar svg { width: 14px; height: 14px; flex: none; margin-top: 2px; }
 .set-menu-icon { width: 16px; height: 16px; }
 

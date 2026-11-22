@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed } from 'vue'
-import { NCard, NSwitch, NTag, NButton, useMessage, useDialog } from 'naive-ui'
+import { NCard, NSwitch, NButton, useMessage, useDialog } from 'naive-ui'
 import { CARD_KEYS, CARD_META, useHomeCards } from '@/composables/useHomeCards'
 import { defaultLayout, normalizeLayout } from '@/composables/useHomeLayout'
 import { useSettings } from '@/composables/useSettings'
@@ -59,9 +59,9 @@ function resetLayout() {
 <template>
   <n-card size="small" title="首页卡片">
     <template #header-extra>
-      <n-tag size="small" :type="hiddenCount ? 'warning' : 'success'">
-        {{ hiddenCount ? hiddenCount + ' 张已隐藏' : '全部显示' }}
-      </n-tag>
+      <span class="hc-status">
+        <i class="hc-dot" :class="hiddenCount ? 'is-warn' : 'is-ok'" />{{ hiddenCount ? hiddenCount + ' 张已隐藏' : '全部显示' }}
+      </span>
     </template>
 
     <div class="set-list">

@@ -1,19 +1,38 @@
-/* 日程页样式：仅布局属性，外观统一走 src/theme/naive.ts */
+/* 日程页样式：布局走本文件；颜色/圆角等外观一律取 src/App.vue palette() 注入的 --* 变量（AGENTS.md 2.3） */
 
 /* 月视图：左侧日历 + 右侧侧栏（用 areas 固定两列，避免子元素宽度反向撑破栅格） */
 .sc-month-layout { display: grid; grid-template-columns: minmax(0,1fr) 288px; grid-template-areas: 'main side'; gap: 16px; align-items: start; }
-.sc-month-main { grid-area: main; min-width: 0; max-width: 100%; overflow: hidden; padding: 12px 8px; }
+.sc-month-main { grid-area: main; min-width: 0; max-width: 100%; overflow: hidden; padding: 14px 14px 12px; }
 .sc-month-side { grid-area: side; display: flex; flex-direction: column; gap: 16px; }
 
-/* 日历格内的事件条：普通文档流排列（周视图的绝对定位块已移除） */
-.sc-month-dayev { display: flex; flex-direction: column; gap: 2px; height: 100%; overflow: hidden; }
+/* 月网格（自写，见 Schedule.vue 里 1.1.1 降级的说明）：列标题独占一行，日期格另起一行 */
+.sc-cal-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 0 2px 10px; }
+.sc-cal-title { font-size: var(--fs-13); font-weight: 600; color: var(--text); }
+.sc-cal-nav { display: flex; gap: 2px; }
+.sc-cal-week { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); padding-bottom: 6px; }
+.sc-cal-wd { padding-left: 9px; font-size: var(--fs-11); color: var(--muted); }
+.sc-cal-grid { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); grid-auto-rows: minmax(92px, auto); border: 1px solid var(--border); border-radius: 10px; overflow: hidden; background: var(--surface); }
+.sc-cal-cell { display: flex; flex-direction: column; gap: 3px; min-width: 0; padding: 6px 7px; cursor: pointer; }
+/* 网格线：左边境线跳过每行首格，上边境线跳过第一行 */
+.sc-cal-cell:not(:nth-child(7n+1)) { border-left: 1px solid var(--border); }
+.sc-cal-cell:nth-child(n+8) { border-top: 1px solid var(--border); }
+.sc-cal-cell:hover { background: var(--primary-softer); }
+.sc-cal-cell.is-out { background: var(--surface-2); }
+.sc-cal-cell.is-sel { box-shadow: inset 0 0 0 2px var(--primary); }
+.sc-cal-day { display: flex; align-items: center; justify-content: center; width: 22px; height: 22px; font-size: var(--fs-12); font-weight: 500; color: var(--text); }
+/* 非本月日期：字号不变、颜色退一档，保证「本月 / 非本月」一眼可分 */
+.sc-cal-cell.is-out .sc-cal-day { color: var(--muted-2); font-weight: 400; }
+.sc-cal-day.is-today { border-radius: 11px; background: var(--primary); color: var(--on-primary); font-weight: 600; }
+.sc-cal-evs { display: flex; flex-direction: column; gap: 2px; min-width: 0; overflow: hidden; }
+.sc-cal-more { padding-left: 2px; font-size: var(--fs-11); color: var(--muted); }
+
+/* 日历格内的事件条 */
 .sc-month-chip { display: block; padding: 1px 4px; border-radius: 4px; cursor: pointer; overflow: hidden; }
 .sc-month-chip b { display: block; font-size: var(--fs-11); font-weight: 500; line-height: 15px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-/* 月视图事件条按分类着色：取主题变量，深色与强调色切换后自动跟随 */
+/* 事件条按分类着色：取主题变量，深色与强调色切换后自动跟随 */
 .sc-month-chip.blue { background: var(--primary-softer); color: var(--primary); }
 .sc-month-chip.orange { background: var(--accent-soft); color: var(--accent); }
 .sc-month-chip.green { background: var(--ok-soft); color: var(--ok); }
-.sc-month-more { font-size: var(--fs-11); }
 
 /* 侧栏当日日程行 */
 .sc-side-row { display: flex; gap: 8px; align-items: flex-start; padding: 7px 0; cursor: pointer; }
@@ -22,30 +41,5 @@
 
 /* 日历分类勾选行 */
 .cal-check { display: flex; align-items: center; gap: 8px; min-height: 28px; font-size: var(--fs-12); cursor: pointer; }
-
-/* 日历面板宽度约束 */
-.sc-month-main .n-calendar { width: 100%; max-width: 100%; height: auto; }
-.sc-month-main .n-calendar .n-calendar-dates { grid-auto-rows: minmax(96px, auto); }
-.sc-month-main .n-calendar .n-calendar-cell { padding: 8px; }
-
-/*
-  组件固有结构：.n-calendar-date 只有 1em 高，但日期圆块是 1.8em
-  且带负 margin，会向下溢出压住插槽内容。
-  这里把日期行撑到实际可视高度，插槽内容自然落在其下方。
-*/
-.sc-month-main .n-calendar .n-calendar-date {
-  height: 1.9em;
-  padding-bottom: 2px;
-  align-items: flex-start;
-}
-.sc-month-main .n-calendar .n-calendar-date__date {
-  margin-left: 0;
-  width: 1.7em;
-  height: 1.7em;
-  line-height: 1;
-}
-
-/* 插槽内容（当日日程条）与日期行之间留出间距 */
-.sc-month-main .n-calendar .n-calendar-cell > .sc-month-dayev { margin-top: 2px; }
 
 @media (max-width: 980px) { .sc-month-layout { grid-template-columns: minmax(0,1fr); grid-template-areas: 'main' 'side'; } }

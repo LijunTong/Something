@@ -361,8 +361,8 @@ watch(focusKey, (v) => { void applyFocus(String(v || '')) })
   <Shell>
     <template #subtitle>{{ subtitle }}</template>
     <template #actions>
-      <n-button size="small" :loading="loading" @click="refreshAll">全部刷新</n-button>
-      <n-button size="small" type="primary" @click="openAdd">添加单号</n-button>
+      <n-button size="medium" :loading="loading" @click="refreshAll">全部刷新</n-button>
+      <n-button size="medium" type="primary" @click="openAdd">添加单号</n-button>
       <span class="privacy-toggle"><span>隐私模式</span><n-switch :value="privacyOn" size="small" @update:value="privacyOn = $event" /></span>
     </template>
 

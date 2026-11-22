@@ -49,7 +49,19 @@
 /* 卡片头部：标题区与右上角操作区（原有入口 + 卡片菜单） */
 .hc-head { display: flex; align-items: center; gap: 8px; min-width: 0; }
 .hc-head-actions { display: flex; align-items: center; gap: 6px; }
-.hc-muted { display: block; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+/* 元信息档（四档层级里的 Meta）：时间/来源/计数一律 12px + --muted。
+   颜色取 App.vue 注入的主题变量，深浅色与强调色切换自动跟随；
+   同时压掉 <small> 默认的 0.833em（会算出 11.67px 这种非令牌字号）。 */
+.hc-muted { display: block; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; color: var(--muted); font-size: var(--fs-11); }
+/* 卡片内状态：圆点 + 12px 文字（审计 P1）。状态色只由 6px 圆点承担，
+   文字回落到 Meta 档，避免每行一个 n-tag 把标题压成次要信息；
+   n-tag 只保留在筛选/多值语境。颜色全部取 App.vue 注入的主题变量（AGENTS 2.3）。 */
+.hc-status { display: inline-flex; align-items: center; gap: 5px; flex: none; color: var(--muted); font-size: var(--fs-11); line-height: 1.4; white-space: nowrap; }
+.hc-dot { width: 6px; height: 6px; border-radius: 50%; flex: none; background: var(--muted-2); }
+.hc-dot.is-ok { background: var(--ok); }
+.hc-dot.is-warn { background: var(--accent); }
+.hc-dot.is-info { background: var(--primary); }
+.hc-dot.is-empty { background: var(--border-strong); }
 .hc-clickable { cursor: pointer; }
 .hc-ico { width: 16px; height: 16px; flex: none; }
 
@@ -86,6 +98,7 @@
 .hc-timer-row { display: grid; grid-template-columns: minmax(0, 168px); justify-content: center; gap: 8px; margin-top: 10px; }
 .hc-tomatoes { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: 8px; row-gap: 4px; flex-wrap: wrap; }
 .hc-tomatoes > span { display: inline-flex; align-items: center; gap: 4px; flex-wrap: wrap; }
+.hc-tomato-dots { display: inline-flex; align-items: center; gap: 3px; }
 
 /* 番茄钟内容区：高度由网格给，内容再挤也不出滚动条，整块垂直居中 */
 .home-grid .vgl-item > .n-card.hc-card-pomodoro > .n-card-content {
@@ -100,10 +113,13 @@
 /* 信息流卡 */
 .hc-feed-item { padding: 6px 0; }
 .hc-feed-row { display: flex; align-items: center; gap: 8px; }
-.hc-feed-title { flex: 1; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; text-align: left; }
+/* 标题省略交给 n-ellipsis 组件，这里只负责占满剩余宽度 */
+.hc-feed-title { flex: 1; min-width: 0; }
 
 /* 邮件卡 */
-.hc-mail-row { display: grid; grid-template-columns: minmax(0, 1fr) auto 44px; align-items: center; gap: 9px; min-height: 42px; }
+/* 三轨定宽：正文吃剩余宽度，状态与时间各有固定列，时间右缘才能对齐成一条轨 */
+.hc-mail-row { display: grid; grid-template-columns: minmax(0, 1fr) 48px 44px; align-items: center; gap: 9px; min-height: 42px; }
+.hc-mail-row > .hc-status { justify-content: flex-end; }
 .hc-mail-main { display: flex; flex-direction: column; min-width: 0; }
 .hc-mail-time { text-align: right; font-variant-numeric: tabular-nums; }
 

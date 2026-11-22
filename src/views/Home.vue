@@ -191,10 +191,10 @@ onBeforeUnmount(() => {
     <template #subtitle>{{ dateText }} · 数据更新于 {{ updatedAt || timeText }}（本地缓存）</template>
     <template #actions>
       <n-tag v-if="locked" size="small" type="info">布局已锁定</n-tag>
-      <n-tag size="small" type="success">本地数据</n-tag>
-      <n-tag v-if="hiddenCount" size="small" type="warning">{{ hiddenCount }} 张卡片已隐藏</n-tag>
-      <n-button size="small" @click="showCards = true">卡片设置</n-button>
-      <n-button size="small" @click="refresh">刷新</n-button>
+      <span class="hc-status"><i class="hc-dot is-ok" />本地数据</span>
+      <span v-if="hiddenCount" class="hc-status"><i class="hc-dot is-warn" />{{ hiddenCount }} 张卡片已隐藏</span>
+      <n-button size="medium" @click="showCards = true">卡片设置</n-button>
+      <n-button size="medium" @click="refresh">刷新</n-button>
     </template>
 
     <!-- 拖动排序与缩放由 grid-layout-plus 负责：坐标写回设置，刷新后按设置的坐标还原 -->
