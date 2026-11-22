@@ -6,11 +6,7 @@ const { z } = require('zod')
 
 // 最早的启动标记：写入 boot.txt，用于区分「主进程没加载」与「加载后崩溃」。
 // 若某次启动失败但 boot.txt 没有新行，说明崩在 Chromium 初始化阶段（GPU/沙箱）。
-try {
-  const dirBoot = path.join(app.getPath('userData'), 'logs')
-  fs.mkdirSync(dirBoot, { recursive: true })
-  fs.appendFileSync(path.join(dirBoot, 'boot.txt'), new Date().toISOString() + ' main.js loaded pid=' + process.pid + '\n')
-} catch (e) {}
+// 注意：必须等数据目录解析完再写，否则未打包时也会在 %APPDATA%\<name> 下建出目录。
 const conn = require('./db/conn.cjs')
 const { pickDataDir, copyLegacyDb } = require('./db/location.cjs')
 const { seed } = require('./db/seed.cjs')
@@ -45,19 +41,28 @@ let registry = null
 // 回退到应用目录下的 .data，否则 SQLite 打开后一写就报
 // "attempt to write a readonly database"，日志也会静默丢失。
 // 仍可用 TK_DATA_DIR 显式指定（此时不做回退，路径不可写就按原样报错）。
-const defaultDataDir = app.getPath('userData')
-const dataCandidates = [
-  path.join(app.getAppPath(), '.data'),
-  path.join(path.dirname(app.getPath('exe')), 'data'),
-  path.join(app.getPath('temp'), 'something')
-]
-const dataDir = pickDataDir({
-  override: process.env.TK_DATA_DIR,
-  defaultDir: defaultDataDir,
-  // 已经回退过一次的目录里若已有库，就固定用它，避免两次启动落到不同位置
-  stickyDir: dataCandidates[0],
-  candidates: dataCandidates
-})
+// 用 appData + 应用名推导，不直接调 getPath('userData')：后者会在磁盘上把目录建出来，
+// 未打包时就会凭空多出一个空的 %APPDATA%\<name>（打包后它就是真正的数据目录）。
+const defaultDataDir = path.join(app.getPath('appData'), app.getName())
+// 开发/自测与安装版必须用两套互不相干的数据目录：两者 package.json 的 name 相同，
+// 只要都走 userData 就会落到同一个 %APPDATA%\<name>，安装包于是读到开发时的数据。
+// 因此未打包时固定用仓库内 .data（缓存、日志也一起走这里），只有打包后的应用才读写 userData。
+const IS_PACKAGED = app.isPackaged
+const DEV_DATA_DIR = path.join(app.getAppPath(), '.data')
+const PORTABLE_DATA_DIR = path.join(path.dirname(app.getPath('exe')), 'data')
+const dataDir = IS_PACKAGED
+  ? pickDataDir({
+      override: process.env.TK_DATA_DIR,
+      defaultDir: defaultDataDir,
+      // 已经回退过一次的目录里若已有库，就固定用它，避免两次启动落到不同位置
+      stickyDir: PORTABLE_DATA_DIR,
+      candidates: [PORTABLE_DATA_DIR, path.join(app.getPath('temp'), 'something')]
+    })
+  : pickDataDir({
+      override: process.env.TK_DATA_DIR,
+      defaultDir: DEV_DATA_DIR,
+      candidates: [path.join(app.getPath('temp'), 'something-dev')]
+    })
 if (path.resolve(dataDir.dir) !== path.resolve(defaultDataDir)) {
   // setPath 要求目录已存在；递归建目录失败时保持默认目录，避免启动即崩。
   try {
@@ -68,12 +73,31 @@ if (path.resolve(dataDir.dir) !== path.resolve(defaultDataDir)) {
   }
 }
 
-// 改名迁移：旧版本（efficiency-toolkit）的数据目录里若已有库，首次启动整库复制过来，
-// 避免升级后「数据不见了」。只在目标目录还没有库时执行一次，失败不影响启动。
 try {
-  const legacyDir = path.join(path.dirname(dataDir.dir), 'efficiency-toolkit')
-  const migrated = copyLegacyDb(legacyDir, dataDir.dir)
-  if (migrated) console.log('[db] 已从旧数据目录迁移: ' + migrated.from)
+  const dirBoot = path.join(app.getPath('userData'), 'logs')
+  fs.mkdirSync(dirBoot, { recursive: true })
+  fs.appendFileSync(path.join(dirBoot, 'boot.txt'), new Date().toISOString() + ' main.js loaded pid=' + process.pid + '\n')
+} catch (e) {}
+
+// 改名迁移：旧版本（efficiency-toolkit）的数据目录里若已有库，首次启动整库复制过来，
+// 避免升级后「数据不见了」。
+// 只做一次：迁移走完写标记文件。否则用户把数据删掉以后，每次启动都会被这份老库顶回来
+// （表现就是「数据全删了，重开又是之前的数据」）。标记一旦存在，本目录永久不再被老库覆盖。
+// 标记放在数据目录的**上级**（%APPDATA%）：用户把整个数据目录删掉时它仍在，
+// 否则「删掉数据目录 → 重新迁移一次」的循环会让老数据一直回来。
+// 迁移只在打包版做：开发目录里根本没有旧版数据可迁。
+const MIGRATION_MARKER = path.join(path.dirname(dataDir.dir), '.something-legacy-migrated')
+try {
+  if (IS_PACKAGED && !fs.existsSync(MIGRATION_MARKER)) {
+    fs.mkdirSync(dataDir.dir, { recursive: true })
+    const legacyDir = path.join(path.dirname(dataDir.dir), 'efficiency-toolkit')
+    const migrated = copyLegacyDb(legacyDir, dataDir.dir)
+    fs.writeFileSync(
+      MIGRATION_MARKER,
+      new Date().toISOString() + (migrated ? ' copied ' + migrated.from : ' nothing to copy') + '\n'
+    )
+    if (migrated) console.log('[db] 已从旧数据目录迁移: ' + migrated.from)
+  }
 } catch (e) {
   console.error('[db] 旧数据迁移失败: ' + e.message)
 }
