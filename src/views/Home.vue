@@ -77,6 +77,7 @@ const timeText = computed(() => {
 /**
  * 刷新走令牌：卡片就地重载，不重挂载，滚动位置与卡片高度都不受影响。
  * 一次写库会连续触发多个广播，合并到下一帧只刷新一次，避免滚动中连续重排。
+ * 注意：这是「整页刷新」，只给顶部刷新按钮用；库广播走 refreshCard，只动受影响的那张卡。
  */
 let refreshPending = false
 function refresh() {
@@ -88,6 +89,28 @@ function refresh() {
     if (document.hidden) return
     triggerHomeRefresh()
   })
+}
+
+/**
+ * 广播 → 卡片映射：一次写库只重载对应的那张卡。
+ * 之前任何非 settings 域都走 refresh()，导致「通知全部已读」把八张卡一起刷新。
+ */
+const DOMAIN_CARD: Record<string, CardKey | undefined> = {
+  todo: 'todo',
+  schedule: 'schedule',
+  pomodoro: 'pomodoro',
+  feed: 'feed',
+  parcel: 'parcel',
+  mail: 'mail',
+  notification: 'notice',
+  weather: 'weather'
+}
+
+function refreshCard(domain: string) {
+  updatedAt.value = timeText.value
+  const card = DOMAIN_CARD[domain]
+  if (!card) return
+  triggerHomeRefresh(card)
 }
 
 /* ---------- 交互：拖动结束后吞掉补发的 click ---------- */
@@ -149,11 +172,11 @@ onMounted(() => {
   // 库在挂载时量一次容器宽度；这里再触发一次 resize，保证首帧就按真实宽度定位
   window.dispatchEvent(new Event('resize'))
   if (hasBridge()) {
-    // 任一模块写库后刷新卡片；settings 域的广播只是布局/外观落库（拖动卡片就会触发），
+    // 任一模块写库后只刷新对应的那张卡；settings 域的广播只是布局/外观落库（拖动卡片就会触发），
     // 不能当成数据变化去重载卡片，否则拖完一次全部卡片都闪一遍。离开首页时解绑。
     unsubscribe = bridge().onDataChanged((p) => {
-      if (p && p.domain === 'settings') return
-      refresh()
+      if (!p || p.domain === 'settings') return
+      refreshCard(p.domain)
     })
   }
 })

@@ -162,7 +162,13 @@ function restartElectron(url) {
   }, 500)
 }
 
+// 主进程/迁移文件变更 → 整窗重启。默认关闭：重启会把窗口重新弹到前台并打断手上的事。
+// 需要热重启时显式打开：TK_WATCH_MAIN=1 npm run dev
 function watchMain(url) {
+  if (process.env.TK_WATCH_MAIN !== '1') {
+    console.log('[dev] 主进程自动重启：已关闭（默认）。改 electron/ 或 migrations/ 后请手动重启；需要恢复：TK_WATCH_MAIN=1 npm run dev')
+    return
+  }
   if (mainWatchers.length || mainPollTimer) return
   const trigger = function (rel) {
     if (stopping) return

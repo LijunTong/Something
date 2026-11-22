@@ -31,7 +31,8 @@ export const CARD_SIZE: Record<CardKey, SizeSpec> = {
   weather: { w: 1, h: 6, minH: 5 },
   schedule: { w: 2, h: 6, minH: 5 },
   todo: { w: 1, h: 6, minH: 5 },
-  pomodoro: { w: 1, h: 7, minH: 6 },
+  // 番茄钟与其余卡片统一：默认 6 行，最小 5 行（内容已压到 5 行内装得下，不会再出滚动条）
+  pomodoro: { w: 1, h: 6, minH: 5 },
   parcel: { w: 1, h: 6, minH: 5 },
   feed: { w: 1, h: 6, minH: 4 },
   mail: { w: 2, h: 6, minH: 5 },

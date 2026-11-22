@@ -63,6 +63,9 @@
 .hc-rain { display: flex; align-items: flex-end; gap: 12px; height: 30px; margin-top: 8px; }
 .hc-rain i { display: block; width: 8px; }
 
+/* 可点击行：cursor 属交互提示，不是外观（颜色/边框/字号仍走主题） */
+.hc-row-link { cursor: pointer; }
+
 /* 日程卡：时间轴交给 n-timeline，这里只管行内排布 */
 .hc-tl-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 
@@ -71,14 +74,24 @@
 .hc-todo-text { display: flex; flex-direction: column; min-width: 0; }
 
 /* 番茄钟卡 */
-.hc-dial { position: relative; display: grid; place-items: center; width: 120px; height: 120px; margin: 2px auto 10px; }
-.hc-dial-ring { width: 120px; height: 120px; flex: none; }
-.hc-dial-text { position: absolute; inset: 0; display: grid; place-items: center; align-content: center; gap: 2px; text-align: center; }
-.hc-dial-text strong { font-size: 26px; line-height: 1; font-variant-numeric: tabular-nums; }
-.hc-bound { display: flex; flex-direction: column; gap: 2px; padding: 8px 10px; }
-.hc-timer-row { display: grid; grid-template-columns: minmax(0, 1fr) 64px; gap: 8px; margin-top: 10px; }
-.hc-tomatoes { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: 10px; }
+/* 拨盘：环与文字分别占一个盒子的同一位置，文字用 flex 居中量取，避免 grid 基线下数字上下偏 */
+/* 字号写在自绘文本上：这是产品独占的卡片视觉（AGENTS 1.2），Naive 主题变量管不到自绘文本 */
+.hc-dial { position: relative; width: 84px; height: 84px; margin: 4px auto 0; }
+.hc-dial-ring { display: block; flex: none; }
+.hc-dial-text { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; text-align: center; }
+.hc-dial-text strong { font-size: 18px; line-height: 1; font-variant-numeric: tabular-nums; }
+.hc-dial-sub { font-size: 10px; line-height: 1; text-align: center; }
+/* 绑定任务与圆环之间留 10px：之前紧贴圆底，看着像压在环上 */
+.hc-bound { display: flex; flex-direction: column; align-items: center; gap: 2px; width: 100%; margin-top: 10px; padding: 0 10px; text-align: center; }
+.hc-timer-row { display: grid; grid-template-columns: minmax(0, 168px); justify-content: center; gap: 8px; margin-top: 10px; }
+.hc-tomatoes { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: 8px; row-gap: 4px; flex-wrap: wrap; }
 .hc-tomatoes > span { display: inline-flex; align-items: center; gap: 4px; flex-wrap: wrap; }
+
+/* 番茄钟内容区：高度由网格给，内容再挤也不出滚动条，整块垂直居中 */
+.home-grid .vgl-item > .n-card.hc-card-pomodoro > .n-card-content {
+  overflow: hidden;
+  justify-content: center;
+}
 
 /* 快递卡 */
 .hc-parcel-row { display: grid; grid-template-columns: 18px minmax(0, 1fr) auto; align-items: center; gap: 9px; min-height: 50px; }
@@ -100,3 +113,37 @@
 
 /* 列数断点在 src/composables/useHomeLayout.ts（1180/860），由 Home.vue 写入 --home-cols，
    保证「显示列数」与「计算缩放步长/实际宽度」只有一个来源。 */
+/* 卡片弹窗里的文章正文：只约束宽度与滚动，排版交给浏览器默认（外观仍由主题控制） */
+.hc-article { max-height: 420px; overflow: auto; }
+.hc-article img { max-width: 100%; height: auto; }
+
+/* 卡片内容区滚动条：默认隐形，鼠标悬浮到卡片上才显形。
+   破例说明（AGENTS.md 2.2 / 2.4）：滚动条没有对应主题变量，原生滚动条只能按
+   标准 scrollbar-color 与 ::-webkit-scrollbar 伪元素定制；作用范围限死在本页卡片内容区，
+   app.css:31-36 的全局滚动条外观不受影响。
+   注意：Chromium 121+ 一旦命中标准 scrollbar-color 就忽略 ::-webkit-scrollbar 系列规则，
+   而 app.css 用 `*` 给全局设了 scrollbar-color，所以本页必须用更具体的选择器把标准属性
+   一起盖掉，两条路都写才能在各内核下都生效。
+   宽度保持 8px 恒定、只切 thumb 的透明度，避免「悬停时内容宽度跳动」。 */
+.home-grid .vgl-item > .n-card > .n-card-content,
+.home-grid .hc-article { scrollbar-color: transparent transparent; }
+.home-grid .vgl-item > .n-card:hover > .n-card-content,
+.home-grid .vgl-item > .n-card > .n-card-content:hover,
+.home-grid .hc-article:hover { scrollbar-color: var(--border-strong) transparent; }
+.home-grid .vgl-item > .n-card > .n-card-content::-webkit-scrollbar,
+.home-grid .hc-article::-webkit-scrollbar { width: 8px; height: 8px; }
+.home-grid .vgl-item > .n-card > .n-card-content::-webkit-scrollbar-track,
+.home-grid .hc-article::-webkit-scrollbar-track { background: transparent; }
+.home-grid .vgl-item > .n-card > .n-card-content::-webkit-scrollbar-thumb,
+.home-grid .hc-article::-webkit-scrollbar-thumb {
+  border: 3px solid transparent;
+  border-radius: 999px;
+  background: transparent;
+  background-clip: content-box;
+}
+.home-grid .vgl-item > .n-card:hover > .n-card-content::-webkit-scrollbar-thumb,
+.home-grid .vgl-item > .n-card > .n-card-content:hover::-webkit-scrollbar-thumb,
+.home-grid .hc-article:hover::-webkit-scrollbar-thumb {
+  background: var(--border-strong);
+  background-clip: content-box;
+}

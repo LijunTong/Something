@@ -6,11 +6,12 @@ import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import {
   NBadge, NButton, NCard, NEmpty, NPopconfirm, NRadioButton, NRadioGroup,
-  NSelect, NSpin, NTag, NText, useMessage
+  NSelect, NSpin, NTag, NText, NAlert, useMessage
 } from 'naive-ui'
 import Shell from '@/components/Shell.vue'
 import { bridge, call, hasBridge } from '@/lib/ipc'
 import { log } from '@/lib/logger'
+import { useFocusQuery } from '@/composables/useFocusQuery'
 import type { NotificationItem, NotifyCounts, NotifyPage } from '@/types/api'
 import '@/styles/notice.css'
 
@@ -49,6 +50,15 @@ const onlyUnread = ref(false)
 const moduleFilter = ref('')
 const hasMore = ref(false)
 let offNotify: (() => void) | null = null
+// 深链定位：仪表盘点某条提醒 → /notice?focus=<id>，落地后把该条滚到中间并临时高亮
+const {
+  focusId: focusKey,
+  hint: hint,
+  highlight: highlightId,
+  locate: locateFocus,
+  miss: missFocus,
+  dismiss: dismissHint
+} = useFocusQuery()
 
 const subtitle = computed(() =>
   '共 ' + counts.value.total + ' 条 · 未读 ' + counts.value.unread + ' 条 · 日程 / 待办 / 番茄钟 / 快递 / 邮件 / 天气统一在这里'
@@ -183,13 +193,40 @@ function openModule(item: NotificationItem) {
 
 watch([onlyUnread, moduleFilter], () => { void load(false) })
 
-onMounted(() => {
-  void load(false)
+/** 深链定位：目标可能被「未读 / 模块」筛掉，也可能不在第一页，先回到全部再查一次。 */
+async function applyFocus(id: string): Promise<void> {
+  const key = String(id || '')
+  if (!key) return
+  onlyUnread.value = false
+  moduleFilter.value = ''
+  await load(false)
+  let target = items.value.find((i) => i.id === key)
+  if (!target) {
+    // 超过一页的历史条目：按 id 现查一次并插到列表最前，保证能看见并定位
+    const one = await call(() => bridge().notification.get(key), null as NotificationItem | null)
+    if (one) {
+      items.value = [one].concat(items.value)
+      target = one
+    }
+  }
+  if (!target) { missFocus(); return }
+  const when = new Date(target.at).toLocaleString('zh-CN', {
+    month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit'
+  })
+  await locateFocus(key, '来自仪表盘：' + target.title + ' · ' + when)
+}
+
+onMounted(async () => {
+  await load(false)
+  await applyFocus(focusKey.value)
   if (!hasBridge()) return
   offNotify = bridge().onDataChanged((p) => {
     if (p.domain === 'notification') void load(false)
   })
 })
+
+// 同一页面里再从仪表盘点另一条时重新定位
+watch(focusKey, (v) => { void applyFocus(String(v || '')) })
 
 onBeforeUnmount(() => {
   if (offNotify) { offNotify(); offNotify = null }
@@ -208,6 +245,13 @@ onBeforeUnmount(() => {
         删除所有已读通知？连同已读的提醒类条目一起清空。
       </n-popconfirm>
     </template>
+
+    <n-alert v-if="hint" :type="hint.type" closable :bordered="false" class="focus-hint" @close="dismissHint">
+      <div class="focus-hint-row">
+        <span>{{ hint.text }}</span>
+        <n-button text size="tiny" @click="dismissHint">清除定位</n-button>
+      </div>
+    </n-alert>
 
     <n-card size="small" class="nt-card">
       <div class="nt-toolbar">
@@ -231,7 +275,13 @@ onBeforeUnmount(() => {
         <template v-else>
           <div v-for="g in groups" :key="g.key" class="nt-group">
             <div class="nt-group-title">{{ g.label }}</div>
-            <div v-for="n in g.items" :key="n.id" class="nt-row">
+            <div
+              v-for="n in g.items"
+              :key="n.id"
+              class="nt-row"
+              :class="{ 'focus-flash': highlightId === n.id }"
+              :data-focus-id="n.id"
+            >
               <button type="button" class="nt-ico" :title="'打开' + labelOf(n.module)" @click="openModule(n)">
                 <n-badge dot :show="!n.read" :offset="[2, 0]">
                   <svg viewBox="0 0 24 24"><use :href="iconOf(n.module)" /></svg>

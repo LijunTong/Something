@@ -42,6 +42,8 @@ const DEFAULTS = {
     apiKeySet: false, apiKeyHint: '', jwtSet: false, jwtMeta: null, authMode: 'none'
   },
   feed: { defaultInterval: 360, keepContent: true },
+  // 邮件：autoSyncMin 是自动同步间隔（分钟，默认 15）；0 表示只在手动点「同步」时拉取
+  mail: { autoSyncMin: 15 },
   // 首页卡片显隐：只影响首页展示，模块页与数据不受影响
   modules: { dashboard: true, weather: true, schedule: true, todo: true, pomodoro: true, feed: true, parcel: true, mail: true, notice: true },
   // 首页卡片布局：x/y 为网格坐标、w/h 为网格单位（行高 40px、间距 16px、列数 3/2/1 自适应）

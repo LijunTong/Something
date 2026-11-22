@@ -148,8 +148,20 @@ function toTodoInfo(id) {
   }
 }
 
+/** 单条：仪表盘深链定位用（/parcel?focus=<id>）。查不到返回 null，由渲染层提示「已不存在」。 */
+function detail(id) {
+  try {
+    const row = get().prepare('SELECT * FROM parcel WHERE id = ?').get(id)
+    return row ? camel(row) : null
+  } catch (err) {
+    logger.error('parcel', '查询快递详情失败', err, { id: id })
+    throw err
+  }
+}
+
 module.exports = {
   list: list,
+  get: detail,
   add: add,
   refresh: refresh,
   tracks: tracks,

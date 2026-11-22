@@ -11,6 +11,8 @@
 .fd-nav svg { width: 15px; height: 15px; flex: 0 0 auto; }
 .fd-nav-label { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-align: left; }
 .fd-nav-count { margin-left: auto; }
+/* 单源刷新按钮：固定宽度不参与 flex 收缩，行内靠右 */
+.fd-refresh { flex: 0 0 auto; width: 22px; min-width: 22px; }
 /* 选中态：颜色取主题变量（App.vue 注入 --app-primary），与待办页一致 */
 .fd-nav.on { background: var(--app-primary, #0f766e); color: var(--on-primary); font-weight: 600; }
 .fd-nav.on svg { color: inherit; }

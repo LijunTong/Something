@@ -1,16 +1,20 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import {
   NButton, NCheckbox, NInput, NSelect, NTag, NText, NAvatar, NEmpty, NSpin, NScrollbar,
-  NModal, NForm, NFormItem, NInputNumber, NDrawer, NDrawerContent, NCard,
+  NModal, NForm, NFormItem, NInputNumber, NDrawer, NDrawerContent, NCard, NAlert,
   useMessage, useDialog
 } from 'naive-ui'
 import Shell from '@/components/Shell.vue'
-import MailBodyFrame from '@/components/MailBodyFrame.vue'
+import HtmlBodyFrame from '@/components/HtmlBodyFrame.vue'
 import MailAccountsPanel from '@/components/settings/MailAccountsPanel.vue'
 import { call, bridge, plain } from '@/lib/ipc'
+import type { IpcEnvelope } from '@/lib/ipc'
 import { log } from '@/lib/logger'
 import { webmailUrl } from '@/lib/webmail'
+import { useAppStore } from '@/stores/app'
+import { useSettings } from '@/composables/useSettings'
+import { useFocusQuery } from '@/composables/useFocusQuery'
 import type { MailAccount, MailApi, MailFolder, MailRow } from '@/types/api'
 import '@/styles/side-nav.css'
 import '@/styles/mail.css'
@@ -30,6 +34,8 @@ function mailApi(): MailApi { return (bridge() as unknown as { mail: MailApi }).
 
 const message = useMessage()
 const dialog = useDialog()
+const store = useAppStore()
+const settings = useSettings()
 
 const accounts = ref<MailAccount[]>([])
 const folders = ref<MailFolder[]>([])
@@ -42,6 +48,15 @@ const selectedIds = ref<string[]>([])
 const checkedAll = ref(false)
 const showRemoteImages = ref(false)
 const showHtml = ref(true)
+// 深链定位：仪表盘点某封邮件 → /mail?focus=<id>，落地后打开阅读器并把列表行滚到中间
+const {
+  focusId: focusKey,
+  hint: hint,
+  highlight: highlightId,
+  locate: locateFocus,
+  miss: missFocus,
+  dismiss: dismissHint
+} = useFocusQuery()
 
 const showRules = ref(false)
 const rules = ref<RuleRow[]>([])
@@ -75,9 +90,22 @@ const lastSync = computed(() => {
   const d = new Date(ts)
   return (d.getMonth() + 1) + '月' + d.getDate() + '日 ' + String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0')
 })
+/**
+ * 自动同步频率：读设置里的 mail.autoSyncMin，主进程按同一个值定时拉取。
+ * 0 表示关闭自动同步，只能手动点「同步」。
+ */
+const autoSyncMin = ref(15)
+const autoSyncOptions = [
+  { label: '关闭自动同步', value: 0 },
+  { label: '每 5 分钟自动同步', value: 5 },
+  { label: '每 15 分钟自动同步', value: 15 },
+  { label: '每 30 分钟自动同步', value: 30 },
+  { label: '每 60 分钟自动同步', value: 60 }
+]
+const autoSyncLabel = computed(() => (autoSyncMin.value ? '每 ' + autoSyncMin.value + ' 分钟自动同步' : '自动同步已关闭'))
 const subtitle = computed(() =>
   enabledAccounts.value.length
-    ? '未读 ' + unreadTotal.value + ' · 共 ' + enabledAccounts.value.length + ' 个账户 · 最后同步 ' + lastSync.value
+    ? '未读 ' + unreadTotal.value + ' · 共 ' + enabledAccounts.value.length + ' 个账户 · 最后同步 ' + lastSync.value + ' · ' + autoSyncLabel.value
     : '未启用邮箱账户 · 到「账户管理」开启'
 )
 
@@ -206,11 +234,37 @@ async function openMail(row: MailRow) {
     // 有 MIME HTML 就直接按 HTML 阅读；纯文本邮件自动落到纯文本分支
     showHtml.value = Boolean(detail.bodyHtml)
     await loadMails()
+    // 阅读即已读，左栏未读计数要跟着变
+    await loadFolders()
   } catch (e) {
     log.exception('mail.read', e)
     message.error('读取邮件失败')
   }
 }
+/** 深链定位：目标可能在别的文件夹或搜索词之外，回到统一收件箱再查；查不到按 id 直接打开。 */
+async function applyFocus(id: string): Promise<void> {
+  const key = String(id || '')
+  if (!key) return
+  search.value = ''
+  active.value = { kind: 'inbox', label: '统一收件箱' }
+  await loadMails()
+  const row = mails.value.find((m) => m.id === key)
+  if (row) {
+    await openMail(row)
+    const who = row.fromName || row.fromAddr || '未知发件人'
+    await locateFocus(key, '来自仪表盘：' + (row.subject || '（无主题）') + ' · ' + who)
+    return
+  }
+  // 不在当前列表（例如属于某个子文件夹）：直接读正文，至少让人看到这封信
+  const detail = await call(() => mailApi().read(plain(key)), null as MailRow | null)
+  if (!detail) { missFocus(); return }
+  selected.value = detail
+  showRemoteImages.value = false
+  showHtml.value = Boolean(detail.bodyHtml)
+  await loadFolders()
+  await locateFocus(key, '来自仪表盘：' + (detail.subject || '（无主题）') + ' · 不在当前列表，已直接打开')
+}
+
 function toggleAll(checked: boolean) {
   checkedAll.value = checked
   selectedIds.value = checked ? mails.value.map((m) => m.id) : []
@@ -219,11 +273,14 @@ function toggleRow(id: string, checked: boolean) {
   selectedIds.value = checked ? [...selectedIds.value, id] : selectedIds.value.filter((x) => x !== id)
 }
 async function markSelectedRead() {
-  if (!selectedIds.value.length) { message.warning('请先选择邮件'); return }
+  // 没勾选时退回「当前打开的这封」：阅读邮件时顺手点工具条的标记已读也算数
+  const ids = selectedIds.value.length ? selectedIds.value : selected.value ? [selected.value.id] : []
+  if (!ids.length) { message.warning('请先选择邮件'); return }
   try {
-    for (const id of selectedIds.value) await call(() => mailApi().markRead(plain(id)))
+    for (const id of ids) await call(() => mailApi().markRead(plain(id)))
     message.success('已标记为已读')
     await loadMails()
+    await loadFolders()
   } catch (e) {
     log.exception('mail.markRead', e)
     message.error('操作失败')
@@ -264,9 +321,17 @@ async function toggleStar(row: MailRow) {
 }
 async function markUnread() {
   if (!selected.value) return
-  await loadMails()
-  selected.value = null
-  message.info('已标记为未读')
+  try {
+    // 主进程 schema 是 z.object({ id })，这里必须传对象，传裸字符串会被校验拦掉
+    await call(() => mailApi().markUnread(plain({ id: selected.value!.id })), false)
+    await loadFolders()
+    await loadMails()
+    selected.value = null
+    message.info('已标记为未读')
+  } catch (e) {
+    log.exception('mail.markUnread', e)
+    message.error('操作失败')
+  }
 }
 
 const initial = computed(() => {
@@ -294,16 +359,42 @@ function openWebmail(accountId?: string | null) {
     }
   })()
 }
+/** 待办能力：与 mail 一样按需从 bridge 取，避免依赖 Api 顶层字段 */
+type TodoCreated = { id: string; title: string }
+function todoApi(): { create: (dto: Record<string, unknown>) => Promise<IpcEnvelope<TodoCreated>> } {
+  return (bridge() as unknown as { todo: { create: (dto: Record<string, unknown>) => Promise<IpcEnvelope<TodoCreated>> } }).todo
+}
+/** 今天 23:59:59.999：Todo 页「今天」只认 dueAt 落在今天的条目，不给截止时间就看不到 */
+function endOfToday(): number {
+  const d = new Date()
+  d.setHours(0, 0, 0, 0)
+  return d.getTime() + 86399000
+}
 async function toTodo() {
   const cur = selected.value
   if (!cur) return
   try {
     const info = await call(() => mailApi().toTodoInfo(plain(cur.id)), null as unknown as { title: string; from: string; subject: string; body: string } | null)
     if (!info) { message.warning('未找到邮件详情'); return }
-    message.info('待办信息：' + info.title + '（来自 ' + info.from + '）')
+    // 正文只截一段做备注，正文全文留在邮件里，避免待办库被大段 HTML 撑爆
+    const body = String(info.body || '').replace(/\s+/g, ' ').trim().slice(0, 300)
+    const note = ['来自 ' + info.from, body].filter(Boolean).join('\n')
+    const created = await call(() => todoApi().create(plain({
+      title: info.title || '(无主题)',
+      note: note,
+      dueAt: endOfToday(),
+      priority: '中',
+      status: '未开始',
+      sourceType: 'mail',
+      sourceRef: cur.id
+    })), { id: '', title: '' })
+    if (!created.id) { message.error('创建待办失败'); return }
+    // 侧栏待办计数与 Todo 页都读 store，这里刷新一次即可看到新条目
+    await store.refreshTodos()
+    message.success('已加入今天待办：' + created.title)
   } catch (e) {
-    log.exception('mail.toTodoInfo', e)
-    message.error('提取失败')
+    log.exception('mail.toTodo', e)
+    message.error('转为待办失败')
   }
 }
 
@@ -380,11 +471,37 @@ async function toggleRule(r: RuleRow) {
 const showAccounts = ref(false)
 function openAccounts() { showAccounts.value = true }
 
+/** 切换自动同步频率：写设置后由主进程的轮询按新值生效 */
+async function changeAutoSync(v: number) {
+  const next = Number(v) || 0
+  autoSyncMin.value = next
+  try {
+    await settings.save('mail', { autoSyncMin: next })
+    message.success(next ? '已改为每 ' + next + ' 分钟自动同步' : '已关闭自动同步')
+  } catch (e) {
+    log.exception('mail.autoSync', e)
+    message.error('保存自动同步频率失败')
+  }
+}
+
+/** 主进程自动同步完成后会广播 mail 变更；这里刷新账户/文件夹/列表让界面立刻反映 */
+let stopDataChanged: (() => void) | null = null
 onMounted(async () => {
   await loadAccounts()
   await loadFolders()
   await loadMails()
+  await applyFocus(focusKey.value)
+  await settings.load()
+  const cfg = settings.settings.value
+  autoSyncMin.value = Number(cfg.mail?.autoSyncMin ?? 15)
+  stopDataChanged = bridge().onDataChanged((p) => {
+    if (p.domain !== 'mail') return
+    void reloadAll()
+  })
 })
+// 同一页面里再从仪表盘点另一封时重新定位
+watch(focusKey, (v) => { void applyFocus(String(v || '')) })
+onBeforeUnmount(() => { if (stopDataChanged) stopDataChanged() })
 /** 账户抽屉里改完启用状态后走同一条链路：先刷新账户，再按启用清单重算文件夹与列表 */
 async function reloadAll() {
   await loadAccounts()
@@ -397,6 +514,13 @@ async function reloadAll() {
   <Shell>
     <template #subtitle>{{ subtitle }}</template>
     <template #actions>
+      <n-select
+        size="small"
+        class="ml-auto-sync"
+        :value="autoSyncMin"
+        :options="autoSyncOptions"
+        @update:value="changeAutoSync"
+      />
       <n-button size="small" :loading="loading" @click="syncAll">同步</n-button>
       <n-button size="small" @click="openRules">收件规则</n-button>
       <n-button size="small" @click="openAccounts">账户管理</n-button>
@@ -479,13 +603,22 @@ async function reloadAll() {
           @clear="loadMails"
         />
 
+        <n-alert v-if="hint" :type="hint.type" closable :bordered="false" class="focus-hint" @close="dismissHint">
+          <div class="focus-hint-row">
+            <span>{{ hint.text }}</span>
+            <n-button text size="tiny" @click="dismissHint">清除定位</n-button>
+          </div>
+        </n-alert>
+
         <n-spin :show="loading">
           <n-scrollbar class="ml-items">
             <div
               v-for="m in mails"
               :key="m.id"
               class="ml-row"
-              :style="selected?.id === m.id ? { background: 'var(--primary-softer)' } : undefined"
+              :class="{ 'focus-flash': highlightId === m.id }"
+              :data-focus-id="m.id"
+              :style="selected?.id === m.id && highlightId !== m.id ? { background: 'var(--primary-softer)' } : undefined"
               @click="openMail(m)"
             >
               <span @click.stop>
@@ -573,10 +706,11 @@ async function reloadAll() {
 
               <!-- 正文用沙箱 iframe 渲染：邮件自带的 style/表格不会泄漏到应用外壳，
                    沙箱不给 allow-scripts，CSP 再兜一层；远程图片未授权时不发请求 -->
-              <MailBodyFrame
+              <HtmlBodyFrame
                 v-if="showHtml && selected.bodyHtml"
                 :html="selected.bodyHtml"
                 :allow-remote-images="showRemoteImages"
+                title="邮件正文"
               />
               <div v-else class="ml-body-text">{{ selected.bodyText || selected.snippet || '（无正文）' }}</div>
 

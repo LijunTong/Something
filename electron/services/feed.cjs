@@ -120,8 +120,21 @@ function items(filter) {
   if (kind === 'unread') where.push('i.read = 0')
   else if (kind === 'starred') where.push('i.starred = 1')
   else if (kind === 'later') where.push('i.read_later = 1')
-  const sql = 'SELECT i.* FROM feed_item i LEFT JOIN feed_source s ON s.id = i.source_id WHERE ' + where.join(' AND ') + ' ORDER BY i.published_at DESC'
+  // 列表不取 content_html：正文可能上百 KB，全量列表会把渲染进程撑爆，阅读器按需调 detail()
+  const cols = 'i.id, i.source_id, i.guid, i.title, i.link, i.author, i.summary, i.content, i.published_at, i.read, i.starred, i.read_later'
+  const sql = 'SELECT ' + cols + ' FROM feed_item i LEFT JOIN feed_source s ON s.id = i.source_id WHERE ' + where.join(' AND ') + ' ORDER BY i.published_at DESC'
   return camelAll(get().prepare(sql).all(...args))
+}
+
+// 单篇详情：只读 RSS 自带内容，不再抓原网页——整页抓取会把导航、相关阅读一起带进阅读器。
+// 阅读器要的是「正文 + 段落」，所以这里补段落，并丢弃不像正文的 HTML（回退纯文本）。
+async function detail(id) {
+  const row = get().prepare('SELECT * FROM feed_item WHERE id = ?').get(id)
+  if (!row) throw new Error('FEED_ITEM_NOT_FOUND')
+  const out = camel(row)
+  out.content = plainToParagraphs(out.content)
+  if (out.contentHtml && !usableHtml(out.contentHtml)) out.contentHtml = null
+  return out
 }
 
 function markRead(id) {
@@ -154,6 +167,8 @@ function toggleLater(id) {
 const FETCH_TIMEOUT_MS = 12000
 const MAX_ITEMS_PER_FETCH = 50
 const FETCH_USER_AGENT = 'Something/1.0 (local RSS reader)'
+// 正文 HTML 上限：超过就不存 HTML（渲染侧仍回退纯文本），避免单篇把库撑大
+const MAX_HTML_CHARS = 512 * 1024
 
 // 去掉标签、还原实体，得到可直接排版的纯文本；段落用空行分隔，阅读器按空行分段。
 function stripHtml(input) {
@@ -171,6 +186,64 @@ function stripHtml(input) {
     .replace(/[ \t]+\n/g, '\n')
     .replace(/\n{3,}/g, '\n\n')
   return text.trim()
+}
+
+// 判定抓到的正文是不是真 HTML：先解一层实体（兼容 &lt;p&gt; 二次转义），再看有没有正文标签。
+const HTML_TAG_RE = /<(p|div|br|img|h[1-6]|ul|ol|li|table|thead|tbody|tr|td|th|figure|figcaption|blockquote|pre|code|span|strong|b|em|i|a)\b/i
+
+function looksLikeHtml(raw) {
+  if (raw == null) return false
+  return HTML_TAG_RE.test(decodeXml(String(raw)))
+}
+
+// 入库前的粗清：执行面已由沙箱 iframe + CSP 兜住，这里只把脚本/框架/事件属性摘掉，减少脏数据。
+function cleanHtml(raw) {
+  const out = decodeXml(String(raw))
+    .replace(/<\s*(script|iframe|object|embed)\b[\s\S]*?<\s*\/\s*\1\s*>/gi, '')
+    .replace(/<\s*(script|iframe|object|embed)\b[^>]*\/?>/gi, '')
+    .replace(/\son[a-z]+\s*=\s*("[^"]*"|'[^']*'|[^\s>]+)/gi, '')
+    .trim()
+  if (!out || out.length > MAX_HTML_CHARS) return null
+  return out
+}
+
+// 纯文本补段落：RSS 里大量正文是一整段没有换行的文字，阅读器靠空行分段。
+// 已有换行的按行分（单换行也当分段），整段无换行的按句末标点切块，每块约 160 字。
+const SENTENCE_END_RE = /[。！？!?；;]/
+
+function plainToParagraphs(text) {
+  const raw = String(text || '').replace(/\r\n?/g, '\n').trim()
+  if (!raw) return ''
+  const lines = raw.split(/\n+/).map(function (t) { return t.trim() }).filter(Boolean)
+  if (lines.length > 1) return lines.join('\n\n')
+  const out = []
+  let buf = ''
+  for (let i = 0; i < raw.length; i++) {
+    buf += raw[i]
+    if (SENTENCE_END_RE.test(raw[i]) && buf.length >= 160) {
+      out.push(buf.trim())
+      buf = ''
+    }
+  }
+  if (buf.trim()) out.push(buf.trim())
+  return out.join('\n\n')
+}
+
+// 只收「成块」的 HTML：至少两个块级标签、正文字数够、链接文字占比不高。
+// RSS 里夹带的整页转载、导航列表多半靠 <br> 拼出来，这种走纯文本更干净。
+const BLOCK_TAG_RE = /<(p|h[1-6]|ul|ol|li|blockquote|figure|pre|table)\b/gi
+
+function usableHtml(raw) {
+  if (!looksLikeHtml(raw)) return null
+  const src = decodeXml(String(raw))
+  if ((src.match(BLOCK_TAG_RE) || []).length < 2) return null
+  const text = stripHtml(src)
+  if (text.length < 80) return null
+  const links = src.match(/<a\b[\s\S]*?<\/a>/gi) || []
+  let linkChars = 0
+  for (const a of links) linkChars += stripHtml(a).length
+  if (text.length && linkChars / text.length > 0.4) return null
+  return cleanHtml(raw)
 }
 
 // 取片段里第一个命名字段的文本，兼容带属性的开放标签与 CDATA。
@@ -219,7 +292,10 @@ function parseFeedItems(xml) {
     const encoded = pickField(block, ['content:encoded'])
     const full = encoded || pickField(block, ['content'])
     const description = pickField(block, ['description', 'summary'])
-    const body = stripHtml(full || description)
+    const rawFull = full || description
+    // 纯文本给列表/搜索用，HTML 给阅读器用；不成块就留空，渲染侧按纯文本分段
+    const html = usableHtml(rawFull)
+    const body = plainToParagraphs(stripHtml(rawFull))
     // Atom 的作者在 <author><name> 里，RSS 在 <author> / <dc:creator>；只取第一行，避免带出主页地址
     const author = stripHtml(pickField(block, ['dc:creator', 'name', 'author'])).split('\n')[0].trim()
     out.push({
@@ -229,6 +305,7 @@ function parseFeedItems(xml) {
       author: author || null,
       summary: (stripHtml(description) || body).slice(0, 240) || null,
       content: body || null,
+      html: html,
       publishedAt: pickTime(block, fetchedAt)
     })
   }
@@ -264,6 +341,7 @@ async function refresh(dto) {
     : get().prepare('SELECT * FROM feed_source WHERE enabled = 1').all()
   if (!sources.length) throw new Error('SOURCE_NOT_FOUND')
 
+
   // 网络阶段：单个源失败只记账，不影响其他源
   const fetched = await Promise.all(sources.map(async function (source) {
     try {
@@ -278,8 +356,8 @@ async function refresh(dto) {
   // 落库阶段：同步事务内完成，guid 幂等 + content_hash 判断是否需要更新
   return withTx(function () {
     const find = get().prepare('SELECT id, content_hash FROM feed_item WHERE source_id = ? AND guid = ?')
-    const ins = get().prepare('INSERT INTO feed_item (id,source_id,guid,title,link,author,summary,content,published_at,read,starred,read_later,content_hash) VALUES (?,?,?,?,?,?,?,?,?,0,0,0,?)')
-    const upd = get().prepare('UPDATE feed_item SET title = ?, link = ?, author = ?, summary = ?, content = ?, published_at = ?, content_hash = ? WHERE id = ?')
+    const ins = get().prepare('INSERT INTO feed_item (id,source_id,guid,title,link,author,summary,content,content_html,published_at,read,starred,read_later,content_hash) VALUES (?,?,?,?,?,?,?,?,?,?,0,0,0,?)')
+    const upd = get().prepare('UPDATE feed_item SET title = ?, link = ?, author = ?, summary = ?, content = ?, content_html = ?, published_at = ?, content_hash = ? WHERE id = ?')
     const touch = get().prepare('UPDATE feed_source SET last_fetch_at = ?, etag = ? WHERE id = ?')
     const at = now()
     let added = 0, updated = 0, skipped = 0, failed = 0
@@ -296,13 +374,14 @@ async function refresh(dto) {
         const guid = hash(a.key)
         if (seen[guid]) return
         seen[guid] = true
-        const contentHash = hash(a.content || a.title || '')
+        // hash 掺入 HTML：源侧正文结构变了（例如补上段落）也要触发 UPDATE
+        const contentHash = hash(a.html || a.content || a.title || '')
         const hit = find.get(r.source.id, guid)
         if (!hit) {
-          ins.run(uid('item'), r.source.id, guid, a.title, a.link, a.author, a.summary, a.content, a.publishedAt, contentHash)
+          ins.run(uid('item'), r.source.id, guid, a.title, a.link, a.author, a.summary, a.content, a.html, a.publishedAt, contentHash)
           added += 1
         } else if (hit.content_hash !== contentHash) {
-          upd.run(a.title, a.link, a.author, a.summary, a.content, a.publishedAt, contentHash, hit.id)
+          upd.run(a.title, a.link, a.author, a.summary, a.content, a.html, a.publishedAt, contentHash, hit.id)
           updated += 1
         }
       })
@@ -370,7 +449,7 @@ function exportOPML() {
 
 module.exports = {
   groups: groups, addGroup: addGroup, sources: sources, addSource: addSource,
-  removeSource: removeSource, toggleSource: toggleSource, updateSource: updateSource, items: items,
+  removeSource: removeSource, toggleSource: toggleSource, updateSource: updateSource, items: items, detail: detail,
   markRead: markRead, toggleStar: toggleStar, toggleLater: toggleLater,
   refresh: refresh, importOPML: importOPML, exportOPML: exportOPML
 }

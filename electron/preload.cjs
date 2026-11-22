@@ -40,12 +40,12 @@ const api = {
     sources: call('feed:sources'), addSource: call('feed:addSource'),
     removeSource: call('feed:removeSource'), toggleSource: call('feed:toggleSource'),
     updateSource: call('feed:updateSource'),
-    items: call('feed:items'), markRead: call('feed:markRead'),
+    items: call('feed:items'), detail: call('feed:detail'), markRead: call('feed:markRead'),
     toggleStar: call('feed:toggleStar'), toggleLater: call('feed:toggleLater'),
     refresh: call('feed:refresh'), importOPML: call('feed:importOPML'), exportOPML: call('feed:exportOPML')
   },
   parcel: {
-    list: call('parcel:list'), add: call('parcel:add'), refresh: call('parcel:refresh'),
+    list: call('parcel:list'), get: call('parcel:get'), add: call('parcel:add'), refresh: call('parcel:refresh'),
     tracks: call('parcel:tracks'), archive: call('parcel:archive'),
     togglePrivacy: call('parcel:togglePrivacy'), toTodoInfo: call('parcel:toTodoInfo')
   },
@@ -55,7 +55,8 @@ const api = {
     revealSecret: call('mail:revealSecret'),
     testAccount: call('mail:testAccount'), sync: call('mail:sync'), folders: call('mail:folders'),
     list: call('mail:list'), read: call('mail:read'), send: call('mail:send'), saveDraft: call('mail:saveDraft'),
-    markRead: call('mail:markRead'), toggleStar: call('mail:toggleStar'), remove: call('mail:remove'),
+    markRead: call('mail:markRead'), markUnread: call('mail:markUnread'),
+    toggleStar: call('mail:toggleStar'), remove: call('mail:remove'),
     rules: call('mail:rules'), saveRule: call('mail:saveRule'), toTodoInfo: call('mail:toTodoInfo')
   },
   settings: {
@@ -73,6 +74,7 @@ const api = {
     markAllRead: call('notification:markAllRead'), create: call('notification:create'),
     remove: call('notification:remove'),
     counts: call('notification:counts'), list: call('notification:list'),
+    get: call('notification:get'),
     markRead: call('notification:markRead'), clearRead: call('notification:clearRead'),
     // 事件上报：主进程统一决定系统通知/应用内通知（去重、免打扰、隐私都在主进程判定）
     push: call('notification:push'), test: call('notification:test'),
@@ -98,7 +100,8 @@ const api = {
   window: {
     minimize: call('window:minimize'), toggleMaximize: call('window:toggleMaximize'),
     close: call('window:close'), isMaximized: call('window:isMaximized'),
-    isMinimized: call('window:isMinimized')
+    isMinimized: call('window:isMinimized'),
+    setFullScreen: call('window:setFullScreen'), isFullScreen: call('window:isFullScreen')
   },
   onWindowMaximized: function (cb) {
     const handler = function (_e, value) { cb(!!value) }

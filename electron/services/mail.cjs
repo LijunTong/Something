@@ -224,6 +224,21 @@ function maskUser(user) {
   return text.slice(0, 2) + '***' + text.slice(at)
 }
 
+// 旧版本把纯文本包成 "<div>…<br>…</div>" 塞进 body_html，阅读器会当成 HTML 渲染，
+// 结果既不是原邮件样式也拿不到排版。判定为假 HTML 时按无 HTML 处理，回落到纯文本正文。
+function isWrappedPlainHtml(html) {
+  const s = String(html || '').trim()
+  if (!/^<div>[\s\S]*<\/div>$/i.test(s)) return false
+  return !/<\/?[a-z]/i.test(s.replace(/<\/?div>/gi, '').replace(/<br\s*\/?>/gi, ''))
+}
+
+// 未读数存在 mail_folder.unread_count 里，只在 sync 时算一次；阅读/删除/标未读之后必须重算，
+// 否则左栏计数会停在旧值（收件箱显示 3 但列表只有 2 条就是这个问题）。
+function recountFolder(folderId) {
+  if (!folderId) return
+  get().prepare('UPDATE mail_folder SET unread_count = (SELECT COUNT(*) FROM mail WHERE folder_id = ? AND read = 0) WHERE id = ?').run(folderId, folderId)
+}
+
 // 邮件详情（含附件），供 read / send 等复用；只读，不开启事务。
 function mailDetail(id) {
   const row = get().prepare('SELECT m.*, fo.name AS folder_name, fo.kind AS folder_kind FROM mail m LEFT JOIN mail_folder fo ON fo.id = m.folder_id WHERE m.id = ?').get(id)
@@ -233,6 +248,7 @@ function mailDetail(id) {
   r.toAddrs = parseArray(r.toAddrs)
   r.ccAddrs = parseArray(r.ccAddrs)
   r.attachments = camelAll(get().prepare('SELECT * FROM mail_attachment WHERE mail_id = ? ORDER BY rowid ASC').all(id))
+  if (isWrappedPlainHtml(r.bodyHtml)) r.bodyHtml = ''
   return r
 }
 
@@ -283,7 +299,9 @@ async function sync(dto) {
     messages.forEach(function (m) {
       const snippet = String(m.bodyText || '').replace(/\s+/g, ' ').trim().slice(0, 120)
       // 有 MIME 的 text/html 就存原文，没有则留空，由阅读器回落到纯文本（不再伪造 <div>+<br> 的假 HTML）
-      const bodyHtml = m.bodyHtml ? String(m.bodyHtml) : null
+      const rawHtml = m.bodyHtml ? String(m.bodyHtml) : null
+      // 服务器给的是假 HTML（旧版本写入格式）就当没有，避免阅读器把 <div>+<br> 当成原邮件排版
+      const bodyHtml = rawHtml && !isWrappedPlainHtml(rawHtml) ? rawHtml : null
       const hit = findOne.get(accountId, m.msgId)
       if (hit) {
         upd.run(m.subject, snippet, m.bodyText || '', bodyHtml, m.read ? 1 : 0, m.starred ? 1 : 0, hit.id)
@@ -298,7 +316,7 @@ async function sync(dto) {
       )
       added += 1
     })
-    get().prepare('UPDATE mail_folder SET unread_count = (SELECT COUNT(*) FROM mail WHERE folder_id = ? AND read = 0) WHERE id = ?').run(inboxId, inboxId)
+    recountFolder(inboxId)
     get().prepare('UPDATE mail_account SET last_sync_at = ? WHERE id = ?').run(now(), accountId)
     return { ok: true, accountId: accountId, added: added, updated: updated, total: messages.length }
   })
@@ -337,9 +355,12 @@ function list(filter) {
 function read(id) {
   return withLog('读取邮件', { id: id }, function () {
     return withTx(function () {
-      const row = get().prepare('SELECT read FROM mail WHERE id = ?').get(id)
+      const row = get().prepare('SELECT read, folder_id FROM mail WHERE id = ?').get(id)
       if (!row) return null
-      if (!row.read) get().prepare('UPDATE mail SET read = 1 WHERE id = ?').run(id)
+      if (!row.read) {
+        get().prepare('UPDATE mail SET read = 1 WHERE id = ?').run(id)
+        recountFolder(row.folder_id)
+      }
       return mailDetail(id)
     })
   })
@@ -423,8 +444,24 @@ function saveDraft(dto) {
 function markRead(id) {
   return withLog('标记已读', { id: id }, function () {
     return withTx(function () {
-      const r = get().prepare('UPDATE mail SET read = 1 WHERE id = ?').run(id)
-      return r.changes > 0
+      const row = get().prepare('SELECT read, folder_id FROM mail WHERE id = ?').get(id)
+      if (!row) return false
+      if (!row.read) get().prepare('UPDATE mail SET read = 1 WHERE id = ?').run(id)
+      recountFolder(row.folder_id)
+      return true
+    })
+  })
+}
+
+// 标记未读：与 markRead 对称，计数同步重算。
+function markUnread(id) {
+  return withLog('标记未读', { id: id }, function () {
+    return withTx(function () {
+      const row = get().prepare('SELECT read, folder_id FROM mail WHERE id = ?').get(id)
+      if (!row) return false
+      if (row.read) get().prepare('UPDATE mail SET read = 0 WHERE id = ?').run(id)
+      recountFolder(row.folder_id)
+      return true
     })
   })
 }
@@ -446,7 +483,9 @@ function toggleStar(id) {
 function remove(id) {
   return withLog('删除邮件', { id: id }, function () {
     return withTx(function () {
+      const row = get().prepare('SELECT folder_id FROM mail WHERE id = ?').get(id)
       get().prepare('DELETE FROM mail WHERE id = ?').run(id)
+      recountFolder(row && row.folder_id)
       return true
     })
   })
@@ -512,10 +551,13 @@ function toTodoInfo(id) {
 /** 列出文件夹；传 accountId 时只列该账户，未传则列全部。 */
 function folders(accountId) {
   try {
+    // unread_count 直接按邮件表现算，不读 mail_folder 的缓存列：任何遗漏的重算都不会让左栏计数与列表对不上
+    const sql = 'SELECT f.id, f.account_id, f.name, f.kind,'
+      + ' (SELECT COUNT(*) FROM mail m WHERE m.folder_id = f.id AND m.read = 0) AS unread_count FROM mail_folder f'
     if (accountId) {
-      return camelAll(get().prepare('SELECT * FROM mail_folder WHERE account_id = ? ORDER BY kind, name').all(accountId))
+      return camelAll(get().prepare(sql + ' WHERE f.account_id = ? ORDER BY f.kind, f.name').all(accountId))
     }
-    return camelAll(get().prepare('SELECT * FROM mail_folder ORDER BY account_id, kind, name').all())
+    return camelAll(get().prepare(sql + ' ORDER BY f.account_id, f.kind, f.name').all())
   } catch (e) {
     logger.error('mail', 'folders_failed', e)
     return []
@@ -537,6 +579,7 @@ module.exports = {
   send: send,
   saveDraft: saveDraft,
   markRead: markRead,
+  markUnread: markUnread,
   toggleStar: toggleStar,
   remove: remove,
   rules: rules,

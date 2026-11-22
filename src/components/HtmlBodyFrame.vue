@@ -1,15 +1,27 @@
 <script setup lang="ts">
 /**
- * 邮件 HTML 阅读器。
+ * HTML 正文阅读器（邮件 / 信息流共用）。
  *
- * 为什么用 iframe：邮件正文自带 <style> 与 div/table 全局选择器，直接 v-html 会把
- * 邮件里的排版规则泄漏到整个应用（连侧栏一起变样）。沙箱 iframe 里渲染既保留原始
+ * 为什么用 iframe：正文自带 <style> 与 div/table 全局选择器，直接 v-html 会把
+ * 正文里的排版规则泄漏到整个应用（连侧栏一起变样）。沙箱 iframe 里渲染既保留原始
  * 排版，又靠 sandbox + CSP 双层禁掉脚本。Naive UI 没有 iframe 容器组件，按
  * AGENTS.md 1.2「组件库无对应组件」允许自写，此处即属该例外。
  */
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
+import { darkOverrides } from '@/theme/naive'
+import '@/styles/html-frame.css'
 
-const props = defineProps<{ html: string; allowRemoteImages: boolean }>()
+const props = defineProps<{
+  html: string
+  allowRemoteImages: boolean
+  /** 正文里的相对链接/图片按哪篇文章的地址解析（信息流用文章 link） */
+  baseHref?: string
+  /** 覆盖正文字号（阅读器 A+/A-） */
+  fontSize?: string
+  /** 阅读器本地夜间模式：取主题文件里的深色令牌，不新造色值 */
+  night?: boolean
+  title?: string
+}>()
 
 type Theme = { text: string; muted: string; border: string; primary: string; size: string; font: string }
 
@@ -32,6 +44,21 @@ function readTheme(): Theme {
 
 const theme = ref<Theme>(readTheme())
 
+/** 夜间正文字色统一从 theme/naive.ts 的 darkOverrides 取，组件里不出现新色值 */
+function nightTheme(base: Theme): Theme {
+  const common = (darkOverrides as { common?: Record<string, string> }).common || {}
+  return {
+    text: common.textColor1 || '#e2e8f0',
+    muted: common.textColor2 || '#94a3b8',
+    border: common.borderColor || '#334155',
+    primary: common.primaryColorSuppl || common.primaryColor || '#14b8a6',
+    size: base.size,
+    font: base.font
+  }
+}
+
+const effectiveTheme = computed(() => (props.night ? nightTheme(theme.value) : theme.value))
+
 /** 事件属性与可执行标签先摘掉：CSP 与 sandbox 已兜底，这里只减少脏数据 */
 function sanitize(html: string): string {
   let out = String(html || '')
@@ -41,28 +68,33 @@ function sanitize(html: string): string {
   return out
 }
 
-function buildDoc(html: string, allowRemote: boolean, t: Theme): string {
+function buildDoc(html: string, allowRemote: boolean, t: Theme, baseHref: string, fontSize: string): string {
   // 未授权远程图片时只放行内联 data: 图，正文里的 http(s) 图会被 CSP 直接拦掉，不会发出请求
   const imgSrc = allowRemote ? 'http: https: data:' : 'data:'
   const csp = "default-src 'none'; img-src " + imgSrc + "; style-src 'unsafe-inline'; font-src data:; media-src " + imgSrc + ';'
+  const size = fontSize || t.size
   const base = [
     'html,body{margin:0;padding:0;background:transparent;}',
-    'body{color:' + t.text + ';font:' + t.size + '/1.65 ' + t.font + ';overflow-wrap:anywhere;}',
+    'body{color:' + t.text + ';font:' + size + '/1.65 ' + t.font + ';overflow-wrap:anywhere;}',
     'img{max-width:100%;height:auto;}',
     'table{max-width:100%;border-collapse:collapse;}',
     'a{color:' + t.primary + ';}',
     'blockquote{margin:8px 0;padding-left:10px;border-left:3px solid ' + t.border + ';color:' + t.muted + ';}',
     'pre{white-space:pre-wrap;overflow-wrap:anywhere;}'
   ].join('')
+  // baseHref 让正文里的相对 src/href 能解析；没有就不写 href，只保留 target
+  const baseTag = baseHref
+    ? '<base href="' + baseHref.replace(/"/g, '&quot;') + '" target="_blank">'
+    : '<base target="_blank">'
   return '<!doctype html><html><head><meta charset="utf-8">'
     + '<meta http-equiv="Content-Security-Policy" content="' + csp + '">'
-    + '<base target="_blank">'
+    + baseTag
     + '<style>' + base + '</style>'
     + '</head><body>' + sanitize(html) + '</body></html>'
 }
 
 const sandbox = 'allow-same-origin allow-popups allow-popups-to-escape-sandbox'
-const srcdoc = computed(() => buildDoc(props.html, props.allowRemoteImages, theme.value))
+const srcdoc = computed(() => buildDoc(props.html, props.allowRemoteImages, effectiveTheme.value, props.baseHref || '', props.fontSize || ''))
 
 const frame = ref<HTMLIFrameElement | null>(null)
 const height = ref(240)
@@ -100,8 +132,8 @@ onBeforeUnmount(() => {
 <template>
   <iframe
     ref="frame"
-    class="mail-frame"
-    title="邮件正文"
+    class="html-frame"
+    :title="title || '正文'"
     :sandbox="sandbox"
     :srcdoc="srcdoc"
     :style="{ height: height + 'px' }"

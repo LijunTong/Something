@@ -21,6 +21,9 @@ const ICONS: Record<string, string> = {
 const list = computed(() => items.value.slice(0, 3))
 const unread = computed(() => items.value.filter((i) => !i.read).length)
 
+function onMenu(key: string) {
+  if (key === 'readAll') void markAll()
+}
 function idOf(moduleName: string): string {
   return ICONS[moduleName] || '#i-bell'
 }
@@ -72,21 +75,29 @@ watch(refreshTick, () => { void load() })
   <n-card size="small" class="hc-card hc-card-notice">
     <template #header>
       <div class="hc-head">
-        <span>今日通知</span>
+        <!-- 只有标题文字进通知页，卡片其它区域不跳转 -->
+        <n-button text size="small" @click="router.push('/notice')">今日通知</n-button>
         <n-tag size="tiny" :type="unread ? 'warning' : 'success'">{{ unread ? unread + ' 条待处理' : '全部已读' }}</n-tag>
       </div>
     </template>
     <template #header-extra>
         <div class="hc-head-actions">
-          <n-button size="tiny" quaternary @click="router.push('/notice')">查看全部</n-button>
-          <n-button size="tiny" quaternary :disabled="!unread" :loading="marking" @click="markAll">全部已读</n-button>
-          <HomeCardMenu module="notice" />
+          <!-- 操作按钮统一收进卡片菜单，右上角只留「…」 -->
+          <HomeCardMenu module="notice" :actions="[{ label: '全部已读', key: 'readAll' }]" @action="onMenu" />
         </div>
       </template>
 
     <n-spin :show="loading">
       <n-empty v-if="!list.length" size="small" description="暂无新提醒" />
-      <div v-for="n in list" :key="n.id" class="hc-notice-row">
+      <div
+        v-for="n in list"
+        :key="n.id"
+        class="hc-notice-row hc-row-link"
+        role="button"
+        tabindex="0"
+        @click="router.push({ path: '/notice', query: { focus: n.id } })"
+        @keydown.enter="router.push({ path: '/notice', query: { focus: n.id } })"
+      >
         <svg class="hc-ico" viewBox="0 0 24 24"><use :href="idOf(n.module)" /></svg>
         <span class="hc-notice-main">
           <strong>{{ n.title }}</strong>
@@ -96,7 +107,7 @@ watch(refreshTick, () => { void load() })
     </n-spin>
 
     <template #footer>
-      <span class="hc-muted">今日共 {{ items.length }} 条 · 未读 {{ unread }} 条 · 点「查看全部」统一管理</span>
+      <span class="hc-muted">今日共 {{ items.length }} 条 · 未读 {{ unread }} 条 · 点标题进通知页统一管理</span>
     </template>
   </n-card>
 </template>

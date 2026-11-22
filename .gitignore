@@ -42,3 +42,6 @@ Thumbs.db
 # 分发产物与本地探针（安装包、调试脚本不上库）
 release/
 .preview/
+
+# UI 审计本地实测产物（截图/探针数据，不入库）
+.critique/

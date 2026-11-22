@@ -13,6 +13,7 @@ const FALLBACK: AllSettings = {
   backup: { auto: true, path: '', freq: '每天', encrypted: false, passwordSet: false, lastAt: null, lastFile: null },
   weather: { source: 'qweather', host: '', geoHost: '', cacheMin: 5, refreshMin: 5, authType: 'jwt', offlineCache: true, alertPush: true, unit: 'C', apiKeySet: false, jwtSet: false, authMode: 'none' },
   feed: { defaultInterval: 360, keepContent: true },
+  mail: { autoSyncMin: 15 },
   modules: { dashboard: true, weather: true, schedule: true, todo: true, pomodoro: true, feed: true, parcel: true, mail: true, notice: true },
   home: {
     locked: false,

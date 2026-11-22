@@ -1,14 +1,16 @@
 <script setup lang="ts">
 import { useHomeCardRefresh } from '@/composables/useHomeRefresh'
-import { computed, onMounted, ref, watch } from 'vue'
+import { computed, nextTick, onMounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import HomeCardMenu from '@/components/home/HomeCardMenu.vue'
-import { NCard, NTag, NCheckbox, NEmpty, NSpin, NButton } from 'naive-ui'
+import { NCard, NTag, NCheckbox, NEmpty, NSpin, NButton, NModal, NForm, NFormItem, NInput, NSelect, NDatePicker, useMessage } from 'naive-ui'
 import { call, bridge, hasBridge } from '@/lib/ipc'
 import { log } from '@/lib/logger'
-import type { TodoRow, TodoStats } from '@/types/api'
+import { triggerHomeRefresh } from '@/composables/useHomeRefresh'
+import type { TodoRow, TodoStats, TodoListRow } from '@/types/api'
 
 const router = useRouter()
+const message = useMessage()
 const rows = ref<TodoRow[]>([])
 const stats = ref<TodoStats | null>(null)
 const loading = ref(false)
@@ -22,15 +24,20 @@ function hhmm(ts: number | null): string {
 const pending = computed(() => rows.value.filter((t) => t.status !== '已完成' && t.status !== '取消'))
 const done = computed(() => rows.value.filter((t) => t.status === '已完成'))
 
-/** 今日待办：无截止时间或截止在今天，优先按截止时间排序 */
-const list = computed(() => {
+/**
+ * 今日待办：无截止时间或截止在今天。
+ * 计数与列表用同一份 todayList —— 之前标签直接数 pending（含明天以后的），
+ * 会出现「只有 1 条却显示 2 条」。
+ */
+const todayList = computed(() => {
   const end = new Date()
   end.setHours(23, 59, 59, 999)
   return pending.value
     .filter((t) => !t.dueAt || t.dueAt <= end.getTime())
     .sort((a, b) => (a.dueAt || Number.MAX_SAFE_INTEGER) - (b.dueAt || Number.MAX_SAFE_INTEGER))
-    .slice(0, 4)
 })
+const todayPending = computed(() => todayList.value.length)
+const list = computed(() => todayList.value.slice(0, 4))
 
 function overdue(t: TodoRow): boolean {
   return !!t.dueAt && t.dueAt < Date.now()
@@ -62,6 +69,70 @@ async function toggle(t: TodoRow) {
   }
 }
 
+/** 新增待办：入口在卡片菜单里，弹窗在本页填写保存，不跳待办页 */
+const showCreate = ref(false)
+const saving = ref(false)
+const lists = ref<TodoListRow[]>([])
+const form = ref({ title: '', priority: '中', listId: null as string | null, dueAt: null as number | null, note: '' })
+
+/** 截止默认给今天 23:59：卡片上新增的多半是「今天要做的事」，改日期比补日期省事 */
+function blankForm() {
+  const end = new Date()
+  end.setHours(23, 59, 59, 999)
+  return { title: '', priority: '中', listId: null as string | null, dueAt: end.getTime() as number | null, note: '' }
+}
+async function openCreate() {
+  try {
+    form.value = blankForm()
+    showCreate.value = true
+  } catch (e) {
+    message.error('打开新增待办失败：' + ((e as Error).message || '未知错误'))
+    return
+  }
+  await nextTick()
+  titleInput.value?.focus()
+  if (!hasBridge() || lists.value.length) return
+  try {
+    lists.value = await call(() => bridge().todo.lists(), [] as TodoListRow[])
+  } catch (e) {
+    log.exception('home.todo.lists', e)
+  }
+}
+function onMenu(key: string) {
+  if (key === 'create') void openCreate()
+}
+async function submitCreate() {
+  const title = form.value.title.trim()
+  if (!title) { message.warning('先写个待办标题'); return }
+  saving.value = true
+  try {
+    await call(() => bridge().todo.create({
+      title,
+      priority: form.value.priority,
+      listId: form.value.listId,
+      dueAt: form.value.dueAt,
+      note: form.value.note
+    }))
+    message.success('已添加到待办')
+    showCreate.value = false
+    await load()
+    triggerHomeRefresh('todo')
+  } catch (e) {
+    message.error('添加失败：' + ((e as Error).message || '未知错误'))
+  } finally {
+    saving.value = false
+  }
+}
+const listOptions = computed(() => lists.value.map((l) => ({ label: l.name, value: l.id })))
+/** 弹窗一打开就把光标放进标题，避免出现「点了没反应」的错觉 */
+const titleInput = ref<{ focus: () => void } | null>(null)
+function fmtFull(ts: number | null): string {
+  if (!ts) return '未设置'
+  const d = new Date(ts)
+  const p = (v: number) => String(v).padStart(2, '0')
+  return d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate()) + ' ' + p(d.getHours()) + ':' + p(d.getMinutes())
+}
+
 onMounted(load)
 const refreshTick = useHomeCardRefresh('todo')
 watch(refreshTick, () => { void load() })
@@ -71,22 +142,29 @@ watch(refreshTick, () => { void load() })
   <n-card size="small" class="hc-card hc-card-todo">
     <template #header>
       <div class="hc-head">
-        <span>今日待办</span>
-        <n-tag size="tiny" :type="pending.length ? 'warning' : 'success'">剩余 {{ pending.length }}</n-tag>
+        <!-- 只有标题文字进待办页，卡片其它区域不跳转 -->
+        <n-button text size="small" @click="router.push('/todo')">今日待办</n-button>
+        <n-tag size="tiny" :type="todayPending ? 'warning' : 'success'">剩余 {{ todayPending }}</n-tag>
       </div>
     </template>
     <template #header-extra>
         <div class="hc-head-actions">
-          <n-button size="tiny" quaternary @click="router.push('/todo')">+ 添加</n-button>
-          <HomeCardMenu module="todo" />
+          <HomeCardMenu module="todo" :actions="[{ label: '新增待办', key: 'create' }]" @action="onMenu" />
         </div>
       </template>
 
     <n-spin :show="loading">
       <n-empty v-if="!list.length" size="small" description="今天没有待办" />
-      <label v-for="t in list" :key="t.id" class="hc-todo-item">
+      <div v-for="t in list" :key="t.id" class="hc-todo-item">
         <n-checkbox :checked="false" @update:checked="toggle(t)" />
-        <span class="hc-todo-text">
+        <!-- 点文字进待办页（点复选框仍是勾选，不抢事件） -->
+        <span
+          class="hc-todo-text hc-row-link"
+          role="button"
+          tabindex="0"
+          @click="router.push({ path: '/todo', query: { focus: t.id } })"
+          @keydown.enter="router.push({ path: '/todo', query: { focus: t.id } })"
+        >
           <strong>{{ t.title }}</strong>
           <small class="hc-muted">
             {{ t.dueAt ? (overdue(t) ? '已逾期 ' : '截止 ') + hhmm(t.dueAt) : '无截止时间' }}
@@ -96,14 +174,43 @@ watch(refreshTick, () => { void load() })
         <n-tag v-if="t.priority === '高'" size="tiny" type="warning">高</n-tag>
         <n-tag v-else-if="t.priority === '中'" size="tiny">中</n-tag>
         <n-tag v-else size="tiny" type="info">低</n-tag>
-      </label>
+      </div>
     </n-spin>
 
     <template #footer>
       <span class="hc-muted">
-        今日剩余 <strong>{{ pending.length }}</strong> 项 · 已完成 <strong>{{ done.length }}</strong> 项
+        今日剩余 <strong>{{ todayPending }}</strong> 项 · 已完成 <strong>{{ done.length }}</strong> 项
         · 逾期 <strong>{{ stats?.overdue ?? 0 }}</strong> 项
       </span>
     </template>
   </n-card>
+
+  <n-modal v-model:show="showCreate" to="body" preset="card" style="width:460px" title="新增待办">
+    <n-form label-placement="left" :label-width="60">
+      <n-form-item label="标题">
+        <n-input ref="titleInput" v-model:value="form.title" placeholder="要做什么？" @keydown.enter="submitCreate" />
+      </n-form-item>
+      <n-form-item label="清单">
+        <n-select v-model:value="form.listId" :options="listOptions" placeholder="默认清单" clearable />
+      </n-form-item>
+      <n-form-item label="优先级">
+        <n-select
+          v-model:value="form.priority"
+          :options="[{ label: '高', value: '高' }, { label: '中', value: '中' }, { label: '低', value: '低' }]"
+        />
+      </n-form-item>
+      <n-form-item label="截止">
+        <n-date-picker v-model:value="form.dueAt" type="datetime" clearable style="width:100%" />
+      </n-form-item>
+      <n-form-item label="备注">
+        <n-input v-model:value="form.note" type="textarea" :rows="2" placeholder="可选" />
+      </n-form-item>
+    </n-form>
+    <template #footer>
+      <div style="display:flex;justify-content:flex-end;gap:8px">
+        <n-button size="small" @click="showCreate = false">取消</n-button>
+        <n-button size="small" type="primary" :loading="saving" @click="submitCreate">保存</n-button>
+      </div>
+    </template>
+  </n-modal>
 </template>

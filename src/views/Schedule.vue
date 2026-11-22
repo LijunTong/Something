@@ -1,16 +1,37 @@
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
-import { useMessage, useDialog, NButton, NInput, NSelect, NModal, NForm, NFormItem, NDrawer, NDrawerContent, NSpace, NCalendar, NTag, NCheckbox, NEmpty, NDatePicker } from 'naive-ui'
+import { ref, computed, onMounted, watch } from 'vue'
+import { useMessage, useDialog, NButton, NInput, NSelect, NModal, NForm, NFormItem, NDrawer, NDrawerContent, NSpace, NCalendar, NTag, NCheckbox, NEmpty, NDatePicker, NAlert } from 'naive-ui'
 import { useAppStore } from '@/stores/app'
 import Shell from '@/components/Shell.vue'
 import { call, bridge, plain } from '@/lib/ipc'
 import { log } from '@/lib/logger'
+import { useFocusQuery } from '@/composables/useFocusQuery'
 import type { ScheduleRow, CalendarRow } from '@/types/api'
 import '@/styles/schedule.css'
 
 const store = useAppStore()
 const message = useMessage()
 const dialog = useDialog()
+
+// 深链定位：仪表盘点某条日程 → /schedule?focus=<id>&at=<startAt>，落地后切到那天、打开抽屉并高亮
+const {
+  focusId: focusKey,
+  focusAt: focusAtQuery,
+  hint: hint,
+  highlight: highlightId,
+  locate: locateFocus,
+  miss: missFocus,
+  dismiss: dismissHint
+} = useFocusQuery()
+/** 实际命中的那一次实例时间（重复日程同一个 id 有多条），优先于 query 里的 at */
+const focusedAt = ref('')
+function isFocused(e: ScheduleRow): boolean {
+  if (highlightId.value !== e.id) return false
+  const key = String(e.instanceAt ?? e.startAt)
+  if (focusedAt.value) return key === focusedAt.value
+  if (focusAtQuery.value) return key === focusAtQuery.value
+  return true
+}
 
 const events = ref<ScheduleRow[]>([])
 const mixCalendars = ref<CalendarRow[]>([])
@@ -20,6 +41,8 @@ const panelMonth = ref(new Date().getMonth() + 1)
 const selected = ref<ScheduleRow | null>(null)
 const showDrawer = ref(false)
 const showModal = ref(false)
+/** 有值表示正在编辑这条日程，为空表示新建 */
+const editingId = ref<string | null>(null)
 const showList = ref(false)
 const conflicts = ref<string[]>([])
 const form = ref({
@@ -145,13 +168,43 @@ async function toggleCal(c: CalendarRow) {
 
 function openEvent(e: ScheduleRow) { selected.value = e; showDrawer.value = true }
 
+/** 深链定位：目标可能在别的月份，先按 id 取真实开始时间，切月重载后再打开抽屉。 */
+async function applyFocus(id: string, at?: string): Promise<void> {
+  const key = String(id || '')
+  if (!key) return
+  const listed = events.value.find((e) => e.id === key)
+  const one = listed || (await call(() => bridge().schedule.get(key), null as ScheduleRow | null))
+  if (!one) { missFocus(); return }
+  const start = Number(at || 0) || Number(one.instanceAt ?? one.startAt) || Date.now()
+  const d = new Date(start)
+  calValue.value = start
+  focusedAt.value = ''
+  if (d.getFullYear() !== panelYear.value || d.getMonth() + 1 !== panelMonth.value) {
+    panelYear.value = d.getFullYear()
+    panelMonth.value = d.getMonth() + 1
+  }
+  await load()
+  let target = events.value.find((e) => e.id === key && String(e.instanceAt ?? e.startAt) === String(start))
+  if (!target) target = events.value.find((e) => e.id === key)
+  if (!target) { missFocus(); return }
+  focusedAt.value = String(target.instanceAt ?? target.startAt)
+  openEvent(target)
+  await locateFocus(key, '来自仪表盘：' + target.title + ' · ' + fmtDateFull(target), focusedAt.value)
+}
+
+/** 新建一律默认今天：开始取此刻，结束取今天 23:59。
+    之前是「按月视图里选中的那天预填」，只要先在日历里点过某天（或深链定位切过日期），
+    再点新建就落到那天去，看起来像是新建到了昨天。默认值不该受历史选择影响。 */
 function openCreate() {
-  const base = new Date(calValue.value)
-  base.setHours(9, 30, 0, 0)
+  editingId.value = null
+  const now = new Date()
+  const startAt = now.getTime()
+  const dayEnd = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 0, 0).getTime()
+  const endAt = dayEnd > startAt ? dayEnd : startAt + 3600000
   form.value = {
     title: '',
-    startAt: base.getTime(),
-    endAt: base.getTime() + 3600000,
+    startAt,
+    endAt,
     place: '',
     calendarId: calendars.value[0]?.id ?? null,
     remindMin: 10,
@@ -159,6 +212,25 @@ function openCreate() {
     note: ''
   }
   conflicts.value = []
+  showModal.value = true
+}
+
+/** 详情抽屉里的「编辑」：把当前值填进同一个弹窗，保存时走 update。 */
+function openEdit(e: ScheduleRow) {
+  editingId.value = e.id
+  const start = e.instanceAt ?? e.startAt
+  form.value = {
+    title: e.title,
+    startAt: start,
+    endAt: start + (e.endAt - e.startAt),
+    place: e.place || '',
+    calendarId: e.calendarId,
+    remindMin: e.remindMin,
+    recurRule: e.recurRule || 'none',
+    note: e.note || ''
+  }
+  conflicts.value = []
+  showDrawer.value = false
   showModal.value = true
 }
 
@@ -186,10 +258,16 @@ async function save() {
       recurRule: form.value.recurRule === 'none' ? null : form.value.recurRule,
       note: form.value.note || null
     }
-    await call(() => bridge().schedule.create(plain(payload)))
+    if (editingId.value) {
+      await call(() => bridge().schedule.update(plain({ id: editingId.value as string, ...payload })))
+      message.success('日程已更新')
+    } else {
+      await call(() => bridge().schedule.create(plain(payload)))
+      message.success('日程已创建')
+    }
     showModal.value = false
+    editingId.value = null
     await load()
-    message.success('日程已创建')
   } catch (err) { message.error((err as Error).message) }
 }
 
@@ -276,7 +354,12 @@ function recurText(r: string | null) {
 
 const dayList = computed(() => eventsOfDay(new Date(calValue.value).getFullYear(), new Date(calValue.value).getMonth() + 1, new Date(calValue.value).getDate()))
 
-onMounted(load)
+onMounted(async () => {
+  await load()
+  await applyFocus(focusKey.value, focusAtQuery.value)
+})
+// 同一页面里再从仪表盘点另一条日程时重新定位
+watch([focusKey, focusAtQuery], () => { void applyFocus(focusKey.value, focusAtQuery.value) })
 </script>
 
 <template>
@@ -287,6 +370,13 @@ onMounted(load)
       <n-button size="small" @click="exportICS">导出 ICS</n-button>
       <n-button size="small" type="primary" @click="openCreate">新建日程</n-button>
     </template>
+
+    <n-alert v-if="hint" :type="hint.type" closable :bordered="false" class="focus-hint" @close="dismissHint">
+      <div class="focus-hint-row">
+        <span>{{ hint.text }}</span>
+        <n-button text size="tiny" @click="dismissHint">清除定位</n-button>
+      </div>
+    </n-alert>
 
     <div class="sc-month-layout">
       <section class="card sc-month-main">
@@ -301,7 +391,15 @@ onMounted(load)
           </template>
           <template #default="{ year, month, date }">
             <div style="display:flex;flex-direction:column;gap:2px;height:100%;overflow:hidden" @click="calValue = new Date(year, month - 1, date).getTime()">
-              <div v-for="e in eventsOfDay(year, month, date).slice(0, 3)" :key="e.id + '-' + (e.instanceAt ?? e.startAt)" class="sc-month-chip" :class="colorOf(e)" @click.stop="openEvent(e)">
+              <div
+                v-for="e in eventsOfDay(year, month, date).slice(0, 3)"
+                :key="e.id + '-' + (e.instanceAt ?? e.startAt)"
+                class="sc-month-chip"
+                :class="[colorOf(e), { 'focus-flash': isFocused(e) }]"
+                :data-focus-id="e.id"
+                :data-focus-at="String(e.instanceAt ?? e.startAt)"
+                @click.stop="openEvent(e)"
+              >
                 <b>{{ fmtTime(e.instanceAt ?? e.startAt) }} {{ e.title }}</b>
               </div>
               <span v-if="eventsOfDay(year, month, date).length > 3" style="font-size:10px;opacity:.7">+{{ eventsOfDay(year, month, date).length - 3 }} 更多</span>
@@ -322,7 +420,15 @@ onMounted(load)
 
         <div class="card" style="padding:14px">
           <div class="card-head" style="margin-bottom:8px"><div class="card-title">当日日程</div><n-tag size="tiny">{{ dayList.length }}</n-tag></div>
-          <div v-for="e in dayList" :key="e.id" class="sc-side-row" @click="openEvent(e)">
+          <div
+            v-for="e in dayList"
+            :key="e.id"
+            class="sc-side-row"
+            :class="{ 'focus-flash': isFocused(e) }"
+            :data-focus-id="e.id"
+            :data-focus-at="String(e.instanceAt ?? e.startAt)"
+            @click="openEvent(e)"
+          >
             <span class="dotc" :style="{ background: e.calendarColor || 'var(--primary)', marginTop: '6px' }"></span>
             <div style="flex:1;min-width:0">
               <div style="font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ e.title }}</div>
@@ -350,6 +456,7 @@ onMounted(load)
         <template #footer>
           <n-space style="width:100%">
             <n-button type="primary" size="small" @click="$router.push('/pomodoro')">开始专注</n-button>
+            <n-button size="small" @click="selected && openEdit(selected)">编辑</n-button>
             <n-button size="small" @click="toTodo">转为待办</n-button>
             <n-button size="small" type="error" quaternary @click="removeEvent(selected)">删除</n-button>
           </n-space>
@@ -357,7 +464,7 @@ onMounted(load)
       </n-drawer-content>
     </n-drawer>
 
-    <n-modal v-model:show="showModal" preset="card" title="新建日程" style="width:520px">
+    <n-modal v-model:show="showModal" preset="card" :title="editingId ? '编辑日程' : '新建日程'" style="width:520px">
       <div>
         <n-form label-placement="left" label-width="56" size="small">
           <n-form-item label="标题"><n-input v-model:value="form.title" placeholder="添加标题" /></n-form-item>
@@ -377,7 +484,7 @@ onMounted(load)
       </div>
       <template #footer>
         <div style="display:flex;justify-content:flex-end;gap:8px">
-          <n-button size="small" @click="showModal = false">取消</n-button>
+          <n-button size="small" @click="showModal = false; editingId = null">取消</n-button>
           <n-button size="small" type="primary" @click="save">保存</n-button>
         </div>
       </template>

@@ -48,6 +48,9 @@ export default defineConfig({
   server: {
     port: 5173,
     strictPort: false,
+    // TK_HMR=0 时彻底关掉渲染层热更新（页面不再自动刷新，改动后手动 F5）。
+    // 默认保留 HMR：只换模块，不重启窗口、不抢焦点。
+    hmr: process.env.TK_HMR === '0' ? false : undefined,
     // 数据目录回退到 <项目>/.data 时，SQLite 会持续改写 -wal/-shm；
     // 不忽略会触发无意义的 watcher 事件。
     // TK_POLL=1 时改用 mtime 轮询：Windows 上原子写/同步盘/杀软会让 fs 事件丢失，

@@ -33,6 +33,9 @@ const searchSvc = require('./services/search.cjs')
 const DEV_URL = process.env.VITE_URL || ''
 const isDev = !!DEV_URL
 const DIST_INDEX = path.join(__dirname, '..', 'dist', 'index.html')
+// 无头自测：TK_HEADLESS=1 时窗口只创建不显示，测试脚本经由 --remote-debugging-port 走 CDP 驱动。
+// 这样跑断言不会打断用户当前桌面，也不用另装 playwright（见 AGENTS.md 第六节）。
+const HEADLESS = process.env.TK_HEADLESS === '1'
 let win = null
 let registry = null
 
@@ -175,6 +178,8 @@ function windowPrefs() {
 
 function showMainWindow() {
   if (!win) { createWindow(); return }
+  // 无头模式不接受任何「显示窗口」的请求（托盘双击、通知跳转、单实例激活都会走到这里）
+  if (HEADLESS) return
   if (win.isMinimized()) win.restore()
   win.show()
   win.focus()
@@ -300,10 +305,12 @@ function createWindow() {
       sandbox: false,
       // 开发期加载本地 Vite 服务，关闭不需要的能力，减少无谓网络探测
       webSecurity: true,
-      spellcheck: false
+      spellcheck: false,
+      // 隐藏窗口默认会被降频（定时器/rAF 变慢），自测时的计时逻辑会失真
+      backgroundThrottling: !HEADLESS
     }
   })
-  win.once('ready-to-show', function () { win.show() })
+  win.once('ready-to-show', function () { if (!HEADLESS) win.show() })
   if (isDev) {
     win.loadURL(DEV_URL)
   } else if (fs.existsSync(DIST_INDEX)) {
@@ -407,11 +414,17 @@ function registerIpc() {
       handler: feedSvc.updateSource
     },
     items: feedSvc.items, markRead: feedSvc.markRead,
+    // 单篇详情：registry 把 zod 解析后的对象交给 handler，必须在这里解包
+    detail: {
+      schema: z.object({ id: z.string().min(1) }),
+      handler: function (dto) { return feedSvc.detail(dto.id) }
+    },
     toggleStar: feedSvc.toggleStar, toggleLater: feedSvc.toggleLater,
     refresh: feedSvc.refresh, importOPML: feedSvc.importOPML, exportOPML: feedSvc.exportOPML
   })
   registry.register('parcel', {
     list: parcelSvc.list, add: parcelSvc.add, refresh: parcelSvc.refresh,
+    get: { schema: z.string().min(1), handler: parcelSvc.get },
     tracks: parcelSvc.tracks, archive: parcelSvc.archive,
     togglePrivacy: parcelSvc.togglePrivacy, toTodoInfo: parcelSvc.toTodoInfo
   })
@@ -440,7 +453,11 @@ function registerIpc() {
     revealSecret: { schema: z.object({ id: z.string().min(1) }), handler: mailSvc.revealSecret },
     testAccount: mailSvc.testAccount, sync: mailSvc.sync, folders: mailSvc.folders,
     list: mailSvc.list, read: mailSvc.read, send: mailSvc.send, saveDraft: mailSvc.saveDraft,
-    markRead: mailSvc.markRead, toggleStar: mailSvc.toggleStar, remove: mailSvc.remove,
+    markRead: mailSvc.markRead,
+    // 标记未读：与 markRead 对称，入参经 zod 校验
+    // 校验后 handler 收到的是 { id }，service 只认 id 字符串
+    markUnread: { schema: z.object({ id: z.string().min(1) }), handler: function (dto) { return mailSvc.markUnread(dto.id) } },
+    toggleStar: mailSvc.toggleStar, remove: mailSvc.remove,
     rules: mailSvc.rules, saveRule: mailSvc.saveRule, toTodoInfo: mailSvc.toTodoInfo
   })
   registry.register('window', {
@@ -460,7 +477,17 @@ function registerIpc() {
       return true
     },
     isMaximized: function () { return !!(win && win.isMaximized()) },
-    isMinimized: function () { return !!(win && win.isMinimized()) }
+    isMinimized: function () { return !!(win && win.isMinimized()) },
+    // 全屏专注：进入/退出系统级全屏（不是渲染层的覆盖层）
+    setFullScreen: {
+      schema: z.object({ on: z.boolean() }),
+      handler: function (dto) {
+        if (!win) return false
+        win.setFullScreen(!!dto.on)
+        return win.isFullScreen()
+      }
+    },
+    isFullScreen: function () { return !!(win && win.isFullScreen()) }
   })
   registry.register('settings', {
     all: settingsSvc.all,
@@ -531,6 +558,8 @@ function registerIpc() {
   registry.register('notification', {
     today: notificationSvc.today,
     unreadCount: notificationSvc.unreadCount,
+    // 单条：仪表盘卡片深链定位（/notice?focus=<id>），通知不做来源数据深链
+    get: { schema: z.string().min(1), handler: notificationSvc.get },
     counts: notificationSvc.counts,
     list: {
       schema: z.object({
@@ -685,6 +714,61 @@ process.on('unhandledRejection', function (reason) {
   logger.error('main', 'unhandledRejection', reason instanceof Error ? reason : new Error(String(reason)))
 })
 
+/* ---------- 邮件自动同步 ---------- */
+// 频率取设置里的 mail.autoSyncMin（分钟，0 = 关闭，只手动同步）。
+// 用 60s 轮询而不是 setTimeout 链：用户改完频率下一个 tick 即生效，
+// 系统休眠唤醒后也能马上补一次，不会因为定时器停摆长期不同步。
+const MAIL_TICK_MS = 60 * 1000
+let mailAutoTimer = null
+let mailAutoLastAt = 0
+let mailAutoRunning = false
+
+function mailAutoSyncMin() {
+  const cfg = settingsSvc.get('mail') || {}
+  const v = Number(cfg.autoSyncMin)
+  return Number.isFinite(v) && v > 0 ? Math.max(1, Math.round(v)) : 0
+}
+
+function broadcastMail(action) {
+  BrowserWindow.getAllWindows().forEach(function (w) {
+    if (w.isDestroyed()) return
+    registry.broadcast(w.webContents, 'mail', action)
+  })
+}
+
+async function runMailAutoSync() {
+  if (mailAutoRunning) return
+  const min = mailAutoSyncMin()
+  if (!min) return
+  if (Date.now() - mailAutoLastAt < min * 60000) return
+  mailAutoRunning = true
+  mailAutoLastAt = Date.now()
+  try {
+    const accts = mailSvc.accounts().filter(function (a) { return a.enabled })
+    let added = 0
+    let updated = 0
+    for (const a of accts) {
+      const r = await mailSvc.sync({ accountId: a.id })
+      added += Number(r && r.added) || 0
+      updated += Number(r && r.updated) || 0
+    }
+    logger.info('mail', 'auto_sync_done', { added: added, updated: updated, min: min })
+    broadcastMail('autoSync')
+  } catch (e) {
+    logger.warn('mail', 'auto_sync_failed', e instanceof Error ? e : new Error(String(e)))
+  } finally {
+    mailAutoRunning = false
+  }
+}
+
+function startMailAutoSync() {
+  if (mailAutoTimer) return
+  mailAutoLastAt = 0
+  mailAutoTimer = setInterval(function () { void runMailAutoSync() }, MAIL_TICK_MS)
+  // 启动后 5s 补一次：与「最后同步」对齐，避免开着 15 分钟也迟迟不拉
+  setTimeout(function () { void runMailAutoSync() }, 5000)
+}
+
 app.whenReady().then(function () {
   // 拼写词典：Chromium 默认去 redirector.gvt1.com 拉 en-us 词典，这条链路常被重置，
   // 控制台就会刷 ssl_client_socket_impl handshake failed / net_error -100。
@@ -738,6 +822,8 @@ app.whenReady().then(function () {
   createWindow()
   // 按官方示例：ready 阶段就创建托盘（不依赖窗口 ready-to-show）
   createTray()
+  // 邮件自动同步：频率读设置里的 mail.autoSyncMin，改动后下一个 tick 就按新值走
+  startMailAutoSync()
   // 事件通知引擎：系统通知 + 应用内通知。窗口对象每次重建都取最新的，所以传函数而不是引用
   notifySvc.start({
     getWindow: function () { return win },

@@ -1,0 +1,2 @@
+/* HTML 正文阅读器（邮件 / 信息流共用）：只写布局，外观由主题变量与 iframe 内注入的样式决定 */
+.html-frame { display: block; width: 100%; }

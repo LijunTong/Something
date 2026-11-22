@@ -78,9 +78,14 @@ export interface WindowSetting {
   /** 开机自动启动（同时写入系统登录项） */
   launchAtLogin: boolean
 }
+/** 邮件设置：autoSyncMin 是自动同步间隔（分钟，默认 15）；0 表示关闭自动同步 */
+export interface MailSetting {
+  autoSyncMin: number
+}
 export interface AllSettings {
   appearance: AppearanceSetting; notify: NotifySetting; shortcuts: ShortcutSetting; window: WindowSetting
   backup: BackupSetting; weather: WeatherSetting; feed: FeedSetting; modules: ModulesSetting
+  mail: MailSetting
   home: HomeSetting
 }
 export interface StorageSegment { key: string; label: string; color: string; bytes: number }
@@ -170,6 +175,8 @@ export interface Api {
     markAllRead(): Promise<IpcResult<number>>
     counts(): Promise<IpcResult<NotifyCounts>>
     list(dto?: NotifyListQuery): Promise<IpcResult<NotifyPage>>
+    /** 单条：仪表盘深链定位用，查不到返回 null */
+    get(id: string): Promise<IpcResult<NotificationItem | null>>
     markRead(id: string): Promise<IpcResult<boolean>>
     clearRead(): Promise<IpcResult<number>>
     create(dto: { module: string; level?: string; title: string; body?: string }): Promise<IpcResult<string>>
@@ -192,6 +199,8 @@ export interface Api {
     close(): Promise<IpcResult<boolean>>
     isMaximized(): Promise<IpcResult<boolean>>
     isMinimized(): Promise<IpcResult<boolean>>
+    setFullScreen(dto: { on: boolean }): Promise<IpcResult<boolean>>
+    isFullScreen(): Promise<IpcResult<boolean>>
   }
   system: {
     info(): Promise<IpcResult<{ version: string; userData: string; defaultUserData: string; dataSource: string; db: string }>>
@@ -307,7 +316,7 @@ export interface WeatherApi {
   relocate(dto?: { id?: string }): Promise<IpcResult<{ cities: WeatherCity[]; failed: string[] }>>
 }
 
-export interface FeedItem { id: string; sourceId: string; title: string; link: string | null; author: string | null; summary: string | null; content: string | null; publishedAt: number | null; read: boolean; starred: boolean; readLater: boolean; sourceTitle?: string; group?: string | null }
+export interface FeedItem { id: string; sourceId: string; title: string; link: string | null; author: string | null; summary: string | null; content: string | null; /** 正文 HTML：仅 detail() 返回，列表接口不带 */ contentHtml?: string | null; publishedAt: number | null; read: boolean; starred: boolean; readLater: boolean; sourceTitle?: string; group?: string | null }
 export interface FeedSource { id: string; url: string; title: string | null; groupId: string | null; intervalMin: number; enabled: boolean; lastFetchAt: number | null }
 export interface FeedApi {
   groups(): Promise<IpcResult<Array<{ id: string; name: string }>>>
@@ -318,6 +327,7 @@ export interface FeedApi {
   toggleSource(dto: { id: string; enabled: boolean }): Promise<IpcResult<FeedSource[]>>
   updateSource(dto: { id: string; url?: string; title?: string; groupId?: string | null; intervalMin?: number }): Promise<IpcResult<FeedSource>>
   items(filter?: { sourceId?: string; group?: string; kind?: 'unread' | 'starred' | 'later' | 'all' }): Promise<IpcResult<FeedItem[]>>
+  detail(dto: { id: string }): Promise<IpcResult<FeedItem>>
   markRead(id: string): Promise<IpcResult<boolean>>
   toggleStar(id: string): Promise<IpcResult<boolean>>
   toggleLater(id: string): Promise<IpcResult<boolean>>
@@ -330,6 +340,8 @@ export interface ParcelRow { id: string; company: string; trackingNo: string; al
 export interface ParcelTrack { id: string; parcelId: string; nodeTime: number; description: string; location: string | null }
 export interface ParcelApi {
   list(filter?: { status?: string; archived?: boolean }): Promise<IpcResult<ParcelRow[]>>
+  /** 单条：仪表盘深链定位用，查不到返回 null */
+  get(id: string): Promise<IpcResult<ParcelRow | null>>
   add(dto: { numbers: string[]; alias?: string; note?: string }): Promise<IpcResult<ParcelRow[]>>
   refresh(id: string): Promise<IpcResult<ParcelRow>>
   tracks(id: string): Promise<IpcResult<ParcelTrack[]>>
@@ -356,6 +368,8 @@ export interface MailApi {
   send(dto: Record<string, unknown>): Promise<IpcResult<{ ok: boolean; id: string; delivered: boolean }>>
   saveDraft(dto: Record<string, unknown>): Promise<IpcResult<boolean>>
   markRead(id: string): Promise<IpcResult<boolean>>
+  /** 主进程 schema 是 z.object({ id })，这里必须传对象 */
+  markUnread(dto: { id: string }): Promise<IpcResult<boolean>>
   toggleStar(id: string): Promise<IpcResult<boolean>>
   remove(id: string): Promise<IpcResult<boolean>>
   rules(): Promise<IpcResult<Array<Record<string, unknown>>>>

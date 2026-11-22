@@ -1,0 +1,23 @@
+/* 深链定位高亮（仪表盘卡片 → 目标数据行）。
+   破例写 background：Naive UI 没有「列表行临时高亮」组件，目标行是各页面自绘的行容器
+   （.td-row / .pc-card / .ml-mail 等），不属于组件库内部 DOM，themeOverrides 无法表达
+   「临时高亮态」，按 AGENTS.md 1.1.1 走第 4 级降级。颜色取 tokens.css 的 --primary-soft，
+   深浅色主题自动跟随，不在多处重复定义色值。 */
+/* 顶部提示条的布局：文案占满一行，右侧是「清除定位」 */
+.focus-hint {
+  margin-bottom: 10px;
+}
+.focus-hint-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.focus-hint-row > span {
+  flex: 1 1 auto;
+}
+
+.focus-flash.focus-flash {
+  background: var(--primary-soft);
+  border-radius: 8px;
+  transition: background 0.35s ease;
+}

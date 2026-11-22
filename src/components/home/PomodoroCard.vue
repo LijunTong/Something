@@ -3,7 +3,7 @@ import { useHomeCardRefresh } from '@/composables/useHomeRefresh'
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import HomeCardMenu from '@/components/home/HomeCardMenu.vue'
-import { NCard, NTag, NProgress, NButton, NEmpty, useMessage } from 'naive-ui'
+import { NCard, NTag, NProgress, NButton, NEmpty, NModal, NForm, NFormItem, NInputNumber, useMessage } from 'naive-ui'
 import { call, bridge, hasBridge } from '@/lib/ipc'
 import { log } from '@/lib/logger'
 import type { PomodoroConfig, PomodoroState, PomodoroStats, TodoRow } from '@/types/api'
@@ -103,6 +103,47 @@ function tick() {
   if (remain.value === 0) { void load() }
 }
 
+/** 时长设置：入口在卡片菜单里，弹窗内改专注/休息分钟数与每日目标，保存即写配置 */
+const showConfig = ref(false)
+const saving = ref(false)
+const cfg = ref({ focusMin: 25, shortMin: 5, longMin: 15, goal: 4 })
+
+function onMenu(key: string) {
+  if (key === 'config') openConfig()
+  // 全屏专注：不弹窗，直接带着 ?immersive=1 进番茄钟页，Shell 会因此隐藏侧栏与顶栏
+  else if (key === 'immersive') void router.push({ path: '/pomodoro', query: { immersive: '1' } })
+}
+function openConfig() {
+  const c = config.value
+  cfg.value = {
+    focusMin: c?.focusMin ?? 25,
+    shortMin: c?.shortMin ?? 5,
+    longMin: c?.longMin ?? 15,
+    goal: c?.goal ?? 4
+  }
+  showConfig.value = true
+}
+async function saveConfig() {
+  saving.value = true
+  try {
+    const next = await call(() => bridge().pomodoro.saveConfig({
+      focusMin: Math.max(1, Math.round(cfg.value.focusMin)),
+      shortMin: Math.max(1, Math.round(cfg.value.shortMin)),
+      longMin: Math.max(1, Math.round(cfg.value.longMin)),
+      goal: Math.max(1, Math.round(cfg.value.goal))
+    }), null as unknown as PomodoroConfig)
+    if (next) config.value = next
+    message.success('已保存时长设置')
+    showConfig.value = false
+    await load()
+  } catch (e) {
+    log.exception('home.pomodoro.config', e)
+    message.error('保存失败：' + ((e as Error).message || '未知错误'))
+  } finally {
+    saving.value = false
+  }
+}
+
 const refreshTick = useHomeCardRefresh('pomodoro')
 watch(refreshTick, () => { void load() })
 
@@ -117,33 +158,50 @@ onBeforeUnmount(() => { if (timer) clearInterval(timer) })
   <n-card size="small" class="hc-card hc-card-pomodoro">
     <template #header>
       <div class="hc-head">
-        <span>番茄钟</span>
+        <!-- 只有标题文字进番茄页，卡片其它区域不跳转 -->
+        <n-button text size="small" @click="router.push('/pomodoro')">番茄钟</n-button>
         <n-tag size="tiny" :type="state?.phase === 'running' ? 'success' : 'default'">{{ phaseText }}</n-tag>
       </div>
     </template>
     <template #header-extra>
         <div class="hc-head-actions">
-          <n-button size="tiny" quaternary @click="router.push('/pomodoro')">时长设置</n-button>
-          <HomeCardMenu module="pomodoro" />
+          <HomeCardMenu
+            module="pomodoro"
+            :actions="[{ label: '全屏专注', key: 'immersive' }, { label: '时长设置', key: 'config' }]"
+            @action="onMenu"
+          />
         </div>
       </template>
 
     <div class="hc-dial">
+      <!-- 与番茄钟页同样的写法（Pomodoro.vue:186）：尺寸靠内联 style 定，
+           因为 app.css 的 `.n-progress svg { width:100%; height:100% }` 只让 SVG 跟随容器，
+           而 Naive 自己给根节点写了 inline 宽高，class 改不动它 -->
       <n-progress
         type="circle"
+        status="info"
         :percentage="pct"
-        :stroke-width="8"
+        :stroke-width="5"
         :show-indicator="false"
         class="hc-dial-ring"
+        style="width: 84px; height: 84px"
       />
+      <!-- 环内两行：时间与今日进度。用 flex 居中，不受行高与基线影响，不会出现数字偏上偏左 -->
       <div class="hc-dial-text">
         <strong>{{ mmss(remain || plannedSec) }}</strong>
-        <small class="hc-muted">{{ phaseText }}</small>
+        <span class="hc-dial-sub hc-muted">{{ doneCount }}/{{ goal }}</span>
       </div>
     </div>
 
-    <div class="hc-bound">
-      <span class="hc-muted">当前绑定任务</span>
+    <!-- 绑定任务：去掉「当前绑定任务」这行提示，只留任务名并居中；含义交给 title 提示 -->
+    <div
+      class="hc-bound hc-row-link"
+      role="button"
+      tabindex="0"
+      :title="'当前绑定任务：' + (boundTask?.title || '未绑定任务')"
+      @click="router.push('/pomodoro')"
+      @keydown.enter="router.push('/pomodoro')"
+    >
       <strong>{{ boundTask?.title || '未绑定任务' }}</strong>
     </div>
 
@@ -157,7 +215,6 @@ onBeforeUnmount(() => { if (timer) clearInterval(timer) })
       >开始专注</n-button>
       <n-button v-else-if="state.phase === 'running'" size="small" block @click="pause">暂停</n-button>
       <n-button v-else size="small" type="primary" block @click="resume">继续</n-button>
-      <n-button size="small" @click="router.push('/pomodoro')">全部</n-button>
     </div>
 
     <!-- 番茄进度用 n-tag 表示完成/未完成，避免自绘圆点 -->
@@ -175,4 +232,35 @@ onBeforeUnmount(() => { if (timer) clearInterval(timer) })
       <span class="hc-muted">目标 {{ goal }} 个 · {{ stats?.minutes ?? 0 }} 分钟</span>
     </div>
   </n-card>
+
+  <n-modal v-model:show="showConfig" to="body" preset="card" style="width:420px" title="时长设置">
+    <n-form label-placement="left" :label-width="92">
+      <n-form-item label="专注时长">
+        <n-input-number v-model:value="cfg.focusMin" :min="1" :max="180" style="width:100%">
+          <template #suffix>分钟</template>
+        </n-input-number>
+      </n-form-item>
+      <n-form-item label="短休息">
+        <n-input-number v-model:value="cfg.shortMin" :min="1" :max="60" style="width:100%">
+          <template #suffix>分钟</template>
+        </n-input-number>
+      </n-form-item>
+      <n-form-item label="长休息">
+        <n-input-number v-model:value="cfg.longMin" :min="1" :max="120" style="width:100%">
+          <template #suffix>分钟</template>
+        </n-input-number>
+      </n-form-item>
+      <n-form-item label="每日目标">
+        <n-input-number v-model:value="cfg.goal" :min="1" :max="30" style="width:100%">
+          <template #suffix>个</template>
+        </n-input-number>
+      </n-form-item>
+    </n-form>
+    <template #footer>
+      <div style="display:flex;justify-content:flex-end;gap:8px">
+        <n-button size="small" @click="showConfig = false">取消</n-button>
+        <n-button size="small" type="primary" :loading="saving" @click="saveConfig">保存</n-button>
+      </div>
+    </template>
+  </n-modal>
 </template>

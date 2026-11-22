@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import { useMessage, NButton, NProgress, NSelect, NTag, NEmpty, NSpace, NModal, NInputNumber, NRadioGroup, NRadio, NForm, NFormItem } from 'naive-ui'
 import { useAppStore } from '@/stores/app'
 import Shell from '@/components/Shell.vue'
@@ -11,6 +12,8 @@ import '@/styles/pomodoro.css'
 
 const store = useAppStore()
 const message = useMessage()
+const route = useRoute()
+const router = useRouter()
 
 const st = ref<PomodoroState>({ phase: 'idle', remainSec: 1500, round: 1, taskId: null, endsAt: null, plannedSec: 1500 })
 const cfg = ref<PomodoroConfig>({ focusMin: 25, shortMin: 5, longMin: 15, longEvery: 4, goal: 4 })
@@ -18,7 +21,8 @@ const stats = ref<PomodoroStats>({ sessions: [], count: 0, minutes: 0, interrupt
 const week = ref<Array<{ date: number; minutes: number; count: number }>>([])
 const showAbandon = ref(false)
 const abandonReason = ref('接电话')
-const focusMode = ref(false)
+/** 卡片「全屏专注」直接带着 ?immersive=1 进来，初值就要是开着的 */
+const focusMode = ref(route.query.immersive === '1')
 const showFinish = ref(false)
 const showSettings = ref(false)
 const cfgDraft = ref<Partial<PomodoroConfig>>({})
@@ -79,6 +83,8 @@ async function pause() { st.value = await call(() => bridge().pomodoro.pause(), 
 async function resume() { st.value = await call(() => bridge().pomodoro.resume(), st.value); message.success('继续专注') }
 async function complete() { st.value = await call(() => bridge().pomodoro.complete(), st.value); await loadAll(); message.success('番茄完成，休息一下') }
 async function skipBreak() { st.value = await call(() => bridge().pomodoro.skipBreak(), st.value); message.info('已跳过休息') }
+/** 退出全屏：只收覆盖层与系统全屏，番茄计时继续；要中断本轮用「放弃」。 */
+function exitFocus() { focusMode.value = false }
 async function abandon() {
   const next = await call(() => bridge().pomodoro.abandon({ reason: abandonReason.value }), st.value)
   st.value = next
@@ -152,6 +158,44 @@ onMounted(() => {
 onUnmounted(() => window.removeEventListener('keydown', onShortcut))
 onUnmounted(() => { if (offData) offData() })
 onUnmounted(() => { if (timer) clearInterval(timer); if (ticker) clearInterval(ticker) })
+
+// —— 全屏专注：切系统级全屏。.pm-focus 只是渲染层覆盖层，窗口本身还得真全屏 ——
+async function setSystemFullScreen(on: boolean) {
+  await call(() => bridge().window.setFullScreen({ on }), false)
+}
+/**
+ * 焦点态写回地址栏：Shell 读 ?immersive=1 才不渲染侧栏。
+ * 同步窗口全屏 + 同步 query，两件事必须一起做，否则会出现「窗口全屏但菜单还在」。
+ */
+watch(focusMode, function (on) {
+  void setSystemFullScreen(on)
+  const has = route.query.immersive === '1'
+  if (on === has) return
+  const q = { ...route.query }
+  if (on) q.immersive = '1'
+  else delete q.immersive
+  void router.replace({ query: q })
+}, { immediate: true })
+
+// 地址栏/前进后退改了 query 时，覆盖层跟着同步
+watch(
+  () => route.query.immersive,
+  function (v) {
+    const on = v === '1'
+    if (on !== focusMode.value) focusMode.value = on
+  }
+)
+// 全屏时按 Esc 退出：退出覆盖层，watch 会把窗口也还原
+function onFocusKeydown(e: KeyboardEvent) {
+  if (!focusMode.value) return
+  if (e.key === 'Escape') { e.preventDefault(); focusMode.value = false }
+}
+onMounted(() => window.addEventListener('keydown', onFocusKeydown))
+onUnmounted(() => {
+  window.removeEventListener('keydown', onFocusKeydown)
+  // 离开页面时别把手动全屏留成孤儿状态
+  if (focusMode.value) void setSystemFullScreen(false)
+})
 </script>
 
 <template>
@@ -166,7 +210,7 @@ onUnmounted(() => { if (timer) clearInterval(timer); if (ticker) clearInterval(t
       <section class="card pm-timer">
         <n-tag :type="st.phase === 'running' ? 'success' : st.phase === 'break' ? 'info' : 'default'" size="small">{{ phaseLabel }}</n-tag>
         <div class="pm-ring-wrap">
-          <n-progress type="circle" :percentage="progress" :stroke-width="10" :show-indicator="false" style="width:232px;height:232px" />
+          <n-progress type="circle" status="info" :percentage="progress" :stroke-width="10" :show-indicator="false" style="width:232px;height:232px" />
           <div class="pm-ring-center">
             <span class="pm-time-text">{{ remainText }}</span>
             <span class="pm-cap-text muted-text">{{ capText }}</span>
@@ -294,7 +338,7 @@ onUnmounted(() => { if (timer) clearInterval(timer); if (ticker) clearInterval(t
       <div class="pm-focus-hint" style="color:var(--muted)">保持专注，勿扰模式已开启</div>
       <div class="pm-focus-btns">
         <n-button @click="st.phase === 'running' ? pause() : resume()">{{ st.phase === 'running' ? '暂停' : '继续' }}</n-button>
-        <n-button @click="focusMode = false">结束专注</n-button>
+        <n-button @click="exitFocus()">退出全屏</n-button>
       </div>
     </div>
   </Shell>

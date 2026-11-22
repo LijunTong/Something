@@ -1,8 +1,8 @@
 <script setup lang="ts">
-import { ref, computed, onBeforeUnmount, onMounted } from 'vue'
+import { ref, computed, onBeforeUnmount, onMounted, watch } from 'vue'
 import {
   useMessage, useDialog,
-  NButton, NInput, NSelect, NCheckbox, NEmpty, NSpin,
+  NButton, NInput, NSelect, NCheckbox, NEmpty, NSpin, NAlert,
   NModal, NForm, NFormItem, NTag, NDrawer, NDrawerContent, NSpace, NTooltip, NDatePicker, NText
 } from 'naive-ui'
 import { useRouter } from 'vue-router'
@@ -12,6 +12,7 @@ import type { TodoRow, ScheduleRow } from '@/types/api'
 import { call, bridge, plain } from '@/lib/ipc'
 import { isTypingTarget, matchesCombo } from '@/lib/shortcut'
 import { log } from '@/lib/logger'
+import { useFocusQuery } from '@/composables/useFocusQuery'
 import '@/styles/todo.css'
 
 const store = useAppStore()
@@ -29,6 +30,15 @@ const quickTitle = ref('')
 const showModal = ref(false)
 const showDetail = ref(false)
 const loading = ref(false)
+// 深链定位：仪表盘点某条待办 → /todo?focus=<id>，落地后打开详情并把该行滚到中间
+const {
+  focusId: focusKey,
+  hint: hint,
+  highlight: highlightId,
+  locate: locateFocus,
+  miss: missFocus,
+  dismiss: dismissHint
+} = useFocusQuery()
 
 interface Draft {
   title: string
@@ -39,7 +49,13 @@ interface Draft {
   labelsText: string
   note: string
 }
-const blankDraft = (): Draft => ({ title: '', listId: null, priority: '中', dueAt: null, remindText: '10', labelsText: '', note: '' })
+/** 新建默认今天：截止时间给到今天 23:59。这里内联算日期，不能调用 startOfToday()——
+    它声明在下面且本函数在模块初始化时就被调用，会撞上暂时性死区。 */
+const blankDraft = (): Draft => {
+  const dayEnd = new Date()
+  dayEnd.setHours(23, 59, 59, 0)
+  return { title: '', listId: null, priority: '中', dueAt: dayEnd.getTime(), remindText: '10', labelsText: '', note: '' }
+}
 const draft = ref<Draft>(blankDraft())
 /** 为空表示新建；有值表示正在编辑这条待办 */
 const editingId = ref<string | null>(null)
@@ -140,7 +156,7 @@ async function quickAdd() {
   await withLoading(async () => {
     await store.addTodo(title, {
       listId: activeListId.value,
-      dueAt: smart.value === '今天' ? startOfToday() + 86399000 : null
+      dueAt: startOfToday() + 86399000
     })
     quickTitle.value = ''
     message.success('任务已创建')
@@ -168,6 +184,21 @@ function openTask(t: TodoRow) {
   selectedId.value = t.id
   showDetail.value = true
   void loadScheduleTitle(t.scheduleId)
+}
+
+/** 深链定位：先放开展清单一层筛选，再打开详情抽屉并滚动高亮目标行。 */
+async function applyFocus(id: string): Promise<void> {
+  const key = String(id || '')
+  if (!key) return
+  const t = store.todos.find((x) => x.id === key)
+  if (!t) { missFocus(); return }
+  // 目标可能被当前智能清单/清单挡住，深链时一律回到「全部清单 + 全部筛选」
+  smart.value = null
+  activeListId.value = null
+  filter.value = '全部'
+  openTask(t)
+  const due = t.dueAt ? ' · 截止 ' + fmtDue(t.dueAt) : ''
+  await locateFocus(key, '来自仪表盘：' + t.title + due)
 }
 
 function linkedScheduleTitle(id: string | null): string | null {
@@ -353,7 +384,14 @@ function openCreate() {
   showModal.value = true
 }
 
-onMounted(() => { store.refreshTodos().catch(() => {}) })
+onMounted(async () => {
+  // 先等数据到位再定位：列表为空时找不到目标行，会误报「已不存在」
+  try { await store.refreshTodos() } catch (e) { log.exception('todo.refresh', e) }
+  await applyFocus(focusKey.value)
+})
+
+// 同一页面里再从仪表盘点另一条：组件被复用，onMounted 不会再跑
+watch(focusKey, (v) => { void applyFocus(String(v || '')) })
 </script>
 
 <template>
@@ -362,6 +400,13 @@ onMounted(() => { store.refreshTodos().catch(() => {}) })
     <template #actions>
       <n-button size="small" type="primary" @click="openCreate">新建任务</n-button>
     </template>
+
+    <n-alert v-if="hint" :type="hint.type" closable :bordered="false" class="focus-hint" @close="dismissHint">
+      <div class="focus-hint-row">
+        <span>{{ hint.text }}</span>
+        <n-button text size="tiny" @click="dismissHint">清除定位</n-button>
+      </div>
+    </n-alert>
 
     <n-spin :show="loading">
       <div class="td-layout">
@@ -398,7 +443,8 @@ onMounted(() => { store.refreshTodos().catch(() => {}) })
               v-for="t in visible"
               :key="t.id"
               class="td-row"
-              :class="{ done: t.status === '已完成', selected: t.id === selectedId }"
+              :class="{ done: t.status === '已完成', selected: t.id === selectedId, 'focus-flash': highlightId === t.id }"
+              :data-focus-id="t.id"
               @click="openTask(t)"
             >
               <div class="td-task">

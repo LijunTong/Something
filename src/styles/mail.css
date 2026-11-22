@@ -8,6 +8,8 @@
   gap: 16px;
   align-items: start;
 }
+/* 顶部工具条里的自动同步频率选择器：只给布局宽度，外观走主题 */
+.ml-auto-sync { width: 148px; }
 .ml-side { padding: 10px; min-width: 0; }
 .ml-list { padding: 10px; min-width: 0; }
 .ml-read { padding: 0; min-width: 0; overflow: hidden; }
@@ -58,9 +60,8 @@
 .ml-to { display: flex; flex-direction: column; gap: 2px; margin-top: 10px; min-width: 0; }
 .ml-tagline { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
 .ml-safe { display: flex; align-items: center; gap: 8px; margin: 14px 0; }
-/* 正文：纯文本保留换行；HTML 版由 MailBodyFrame 的沙箱 iframe 承载，高度随内容由组件同步 */
+/* 正文：纯文本保留换行；HTML 版由 HtmlBodyFrame 的沙箱 iframe 承载，高度随内容由组件同步 */
 .ml-body-text { white-space: pre-wrap; overflow-wrap: anywhere; }
-.mail-frame { display: block; width: 100%; }
 /* 规则编辑弹窗的并排字段 */
 .ml-inline { display: flex; align-items: center; gap: 8px; width: 100%; }
 .ml-modal-sm { width: 500px; max-width: 94vw; }

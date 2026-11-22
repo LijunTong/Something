@@ -37,6 +37,13 @@ const title = computed(() => (route.meta.title as string) || '几件事')
 /** 外观设置里的「始终展开 / 可折叠」：关闭后侧栏收为图标条 */
 const sidebarExpand = computed(() => store.settings?.appearance?.sidebarExpand !== false)
 
+/**
+ * 全屏专注（?immersive=1）：整个外壳退化为单栏。
+ * 不能只靠番茄钟页的 .pm-focus 覆盖层——它在 .workspace 的层叠上下文里（z-index:1），
+ * 永远压不过 .sidebar（z-index:2），左侧必然露出菜单。
+ */
+const immersive = computed(() => route.query.immersive === '1')
+
 /** 侧栏折叠开关：与设置页「外观 › 侧边栏」同一个配置项，点哪边都同步 */
 async function toggleSidebar() {
   const base: AppearanceSetting = store.settings?.appearance ?? {
@@ -138,8 +145,8 @@ function badgeOf(item: { badge?: string }): number {
   <Icons />
   <!-- 应用内通知浮层：订阅主进程 notify:event -->
   <NotifyHost />
-  <div class="app-shell" :class="{ 'shell-compact': !sidebarExpand }">
-    <aside class="sidebar" aria-label="主导航">
+  <div class="app-shell" :class="{ 'shell-compact': !sidebarExpand, 'shell-immersive': immersive }">
+    <aside v-if="!immersive" class="sidebar" aria-label="主导航">
       <div class="brand">
         <span class="brand-mark"><BrandMark /></span>
         <span class="brand-text">几件事</span>
@@ -165,7 +172,7 @@ function badgeOf(item: { badge?: string }): number {
       </div>
     </aside>
     <div class="workspace">
-      <header class="topbar">
+      <header v-if="!immersive" class="topbar">
         <!-- 折叠按钮放在顶栏里而不是侧栏里：顶栏整条是 -webkit-app-region: drag 拖拽区，
              HTML 里若是兄弟节点，溢出到顶栏的那半颗按钮会被拖拽层吃掉点击，只有作为顶栏子节点才稳定可点 -->
         <n-button

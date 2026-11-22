@@ -75,16 +75,16 @@ watch(refreshTick, () => { void load() })
 </script>
 
 <template>
-  <n-card size="small" class="hc-clickable hc-card hc-card-weather" @click="open">
+  <n-card size="small" class="hc-card hc-card-weather">
     <template #header>
       <div class="hc-head">
-        <span>天气<template v-if="data?.name"> · {{ data.name }}</template></span>
+        <!-- 只有标题文字进天气页，卡片其它区域不跳转 -->
+        <n-button text size="small" @click="open">天气<template v-if="data?.name"> · {{ data.name }}</template></n-button>
         <n-tag size="tiny">{{ data?.fromCache ? '本地缓存' : '已更新' }}</n-tag>
       </div>
     </template>
     <template #header-extra>
         <div class="hc-head-actions">
-          <n-button size="tiny" quaternary @click.stop="open">查看详情</n-button>
           <HomeCardMenu module="weather" />
         </div>
       </template>
@@ -123,7 +123,7 @@ watch(refreshTick, () => { void load() })
     </n-spin>
 
     <template #footer>
-      <span class="hc-muted">多城市切换与逐小时预报 · 点击进入天气页</span>
+      <span class="hc-muted">多城市切换与逐小时预报 · 点标题进天气页</span>
     </template>
   </n-card>
 </template>

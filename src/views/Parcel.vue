@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import {
   NAlert, NButton, NDrawer, NDrawerContent, NEmpty, NForm, NFormItem,
   NInput, NModal, NSpace, NSpin, NSwitch, NTabPane, NTabs, NTag, NTimeline,
@@ -9,6 +9,7 @@ import { useAppStore } from '@/stores/app'
 import Shell from '@/components/Shell.vue'
 import { bridge, call, plain } from '@/lib/ipc'
 import { log } from '@/lib/logger'
+import { useFocusQuery } from '@/composables/useFocusQuery'
 import type { ParcelTrack, ParcelRow } from '@/types/api'
 import '@/styles/parcel.css'
 
@@ -16,6 +17,7 @@ type ParcelApiBridge = typeof window.api & {
   parcel: {
     list(dto?: { status?: string; archived?: boolean }): Promise<{ ok: boolean; data?: ParcelRow[]; error?: { code: string; message: string } }>
     add(dto: { numbers: string[]; alias?: string; note?: string }): Promise<{ ok: boolean; data?: ParcelRow[]; error?: { code: string; message: string } }>
+    get(id: string): Promise<{ ok: boolean; data?: ParcelRow | null; error?: { code: string; message: string } }>
     refresh(id: string): Promise<{ ok: boolean; data?: ParcelRow; error?: { code: string; message: string } }>
     tracks(id: string): Promise<{ ok: boolean; data?: ParcelTrack[]; error?: { code: string; message: string } }>
     archive(id: string): Promise<{ ok: boolean; data?: boolean; error?: { code: string; message: string } }>
@@ -51,6 +53,15 @@ const adding = ref(false)
 const privacyOn = ref(false)
 const lastRefresh = ref<number | null>(null)
 const addForm = ref({ numbers: '', alias: '', note: '' })
+// 深链定位：仪表盘点某个包裹 → /parcel?focus=<id>，落地后打开轨迹抽屉并把卡片滚到中间
+const {
+  focusId: focusKey,
+  hint: hint,
+  highlight: highlightId,
+  locate: locateFocus,
+  miss: missFocus,
+  dismiss: dismissHint
+} = useFocusQuery()
 
 const counts = computed<Record<StatusTab, number>>(() => {
   const result: Record<StatusTab, number> = { 全部: 0, 在途: 0, 派送中: 0, 待取件: 0, 已签收: 0 }
@@ -211,6 +222,25 @@ async function openTrack(row: ParcelRow): Promise<void> {
   }
 }
 
+/** 深链定位：目标可能落在别的状态页签或被归档隐藏，先回到「全部」再按 id 兜底查一次。 */
+async function applyFocus(id: string): Promise<void> {
+  const key = String(id || '')
+  if (!key) return
+  activeTab.value = TAB_ALL
+  await load()
+  let row = rows.value.find((r) => r.id === key)
+  if (!row) {
+    const one = await call(() => api.parcel.get(key), null as ParcelRow | null)
+    if (one) {
+      rows.value = [one].concat(rows.value)
+      row = one
+    }
+  }
+  if (!row) { missFocus(); return }
+  await openTrack(row)
+  await locateFocus(key, '来自仪表盘：' + row.company + ' ' + displayNo(row))
+}
+
 function nextStatus(status: string): string {
   if (status === '在途') return '派送中'
   if (status === '派送中') return '待取件'
@@ -319,7 +349,12 @@ async function addParcels(): Promise<void> {
   }
 }
 
-onMounted(load)
+onMounted(async () => {
+  await load()
+  await applyFocus(focusKey.value)
+})
+// 同一页面里再从仪表盘点另一个包裹时重新定位
+watch(focusKey, (v) => { void applyFocus(String(v || '')) })
 </script>
 
 <template>
@@ -337,6 +372,13 @@ onMounted(load)
       </n-tab-pane>
     </n-tabs>
 
+    <n-alert v-if="hint" :type="hint.type" closable :bordered="false" class="focus-hint" @close="dismissHint">
+      <div class="focus-hint-row">
+        <span>{{ hint.text }}</span>
+        <n-button text size="tiny" @click="dismissHint">清除定位</n-button>
+      </div>
+    </n-alert>
+
     <n-alert v-if="staleRows.length" type="warning" class="pc-alert" :bordered="false">
       <template #default>
         <span>{{ staleRows.length }} 个包裹超过 48 小时无物流更新</span>
@@ -346,7 +388,13 @@ onMounted(load)
 
     <n-spin :show="loading">
       <div class="pc-grid">
-        <article v-for="row in visibleRows" :key="row.id" class="card pc-card" :class="{ 'pc-card-muted': row.status === '已签收' }">
+        <article
+          v-for="row in visibleRows"
+          :key="row.id"
+          class="card pc-card"
+          :class="{ 'pc-card-muted': row.status === '已签收', 'focus-flash': highlightId === row.id }"
+          :data-focus-id="row.id"
+        >
           <div class="pc-card-head">
             <span class="pc-logo">{{ companyShort(row.company) }}</span>
             <strong>{{ row.company }}</strong>

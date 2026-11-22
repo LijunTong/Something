@@ -53,8 +53,15 @@ export const lightOverrides: GlobalThemeOverrides = {
   Tag: { borderRadius: '999px' },
   // 订阅源首字头像：默认 #CCC 底 + 白字只有 1.6:1，压到 muted 灰并用小字号塞进 16px 方框
   Avatar: { color: '#5f6b7a', border: 'none', fontSize: '11px' },
-  // 圆环轨道用边框色：番茄钟空闲态是 0%，轨道必须比卡片底色可见但克制
-  Progress: { fillColor: '#0f766e', railColor: '#e5e7eb' },
+  // 圆环轨道用边框色：番茄钟空闲态是 0%，轨道必须比卡片底色可见但克制。
+  // Naive Progress 的 self 只有 fillColor / fillColorInfo / railColor，没有 circle* 键；
+  // 组件不传 status 时取色 key 会拼成 fillColordefault 取不到值、回退默认蓝，
+  // 所以环上显式传 status="info" 命中 fillColorInfo。
+  // 环身颜色不写在这里：buildOverrides() 会按运行时强调色覆盖 fillColor/fillColorInfo，
+  // 否则界面里的环不跟着「设置 → 外观 → 强调色」变。
+  Progress: {
+    railColor: '#e5e7eb'
+  },
   Tabs: { tabFontWeightActive: '600' },
   Form: { labelFontSizeTopMedium: '12px' },
   Empty: { iconSize: '36px', textColor: '#5f6b7a', iconColor: '#5f6b7a' },
@@ -94,8 +101,12 @@ export const lightOverrides: GlobalThemeOverrides = {
 /** 深色：保持同一套蓝绿语义，只换画布与文字层。 */
 export const darkOverrides: GlobalThemeOverrides = {
   ...lightOverrides,
-  // 深色下轨道用深一点的分隔色，避免白圈抢视线
-  Progress: { ...lightOverrides.Progress, railColor: '#334155' },
+  // 深色下轨道用深一点的分隔色，避免白圈抢视线；
+  // 环身同样交给 buildOverrides() 按强调色提亮派生（#0f766e 在 #1e293b 上偏暗）
+  Progress: {
+    ...lightOverrides.Progress,
+    railColor: '#334155'
+  },
   common: {
     ...lightOverrides.common,
     textColorBase: '#e2e8f0',
@@ -124,6 +135,18 @@ export const darkOverrides: GlobalThemeOverrides = {
   InternalSelection: { ...lightOverrides.InternalSelection, iconColor: '#94a3b8', iconColorDisabled: '#64748b' },
   Empty: { ...lightOverrides.Empty, iconColor: '#94a3b8' },
   Avatar: { ...lightOverrides.Avatar, color: '#526375' },
+  // 日期面板：浅色主题变量里是浅底深字，直接沿用到深色弹层上会出现「浅底深字贴在深色面板里」，
+  // 日期几乎读不出来。这里把面板底、标题、星期行与日期文字全部换成深色层级取值。
+  DatePicker: {
+    ...lightOverrides.DatePicker,
+    panelColor: '#1e293b',
+    panelTextColor: '#e2e8f0',
+    calendarTitleTextColor: '#e2e8f0',
+    calendarDaysTextColor: '#94a3b8',
+    itemTextColorCurrent: '#5eead4',
+    itemTextColorActive: '#ffffff',
+    itemTextColorDisabled: '#64748b'
+  },
   Calendar: {
     ...lightOverrides.Calendar,
     dateColorCurrent: '#134e4a',
@@ -182,6 +205,13 @@ export function buildOverrides(theme: '浅色' | '深色' | '跟随系统', font
   const tunedAccent = dark ? blendColor(accent, 0.42) : accent
   return {
     ...base,
+    // 进度条/环不读 common.primaryColor（Progress 的取色只看自己那几个键），
+    // 必须在这里显式派生一次，换强调色时环才会和按钮同步。
+    Progress: {
+      ...(base.Progress as NonNullable<GlobalThemeOverrides['Progress']>),
+      fillColor: tunedAccent,
+      fillColorInfo: tunedAccent
+    },
     common: { ...base.common, fontSize: fontSizes[font] ?? '13px', ...accentPalette(tunedAccent) }
   }
 }

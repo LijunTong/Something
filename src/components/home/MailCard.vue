@@ -3,12 +3,13 @@ import { useHomeCardRefresh } from '@/composables/useHomeRefresh'
 import { computed, onMounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import HomeCardMenu from '@/components/home/HomeCardMenu.vue'
-import { NCard, NTag, NEmpty, NSpin, NButton } from 'naive-ui'
+import { NCard, NTag, NEmpty, NSpin, NButton, useMessage } from 'naive-ui'
 import { call, bridge, hasBridge } from '@/lib/ipc'
 import { log } from '@/lib/logger'
 import type { MailAccount, MailRow } from '@/types/api'
 
 const router = useRouter()
+const message = useMessage()
 const rows = ref<MailRow[]>([])
 const accounts = ref<MailAccount[]>([])
 const loading = ref(false)
@@ -54,6 +55,39 @@ async function load() {
     loading.value = false
   }
 }
+/** 同步收件箱：入口在卡片菜单里，直接在卡片所在页拉取，不跳邮件页 */
+const syncing = ref(false)
+function onMenu(key: string) {
+  if (key === 'sync') void syncMail()
+}
+async function syncMail() {
+  if (!accounts.value.length) {
+    message.warning('还没有配置邮箱账户，先去设置里添加')
+    return
+  }
+  // 只同步启用的账户：停用的账户留在列表里供查看，但不去连服务器
+  const targets = accounts.value.filter((a) => a.enabled !== false)
+  if (!targets.length) {
+    message.warning('没有启用的邮箱账户，先去设置里启用')
+    return
+  }
+  syncing.value = true
+  try {
+    let added = 0
+    for (const a of targets) {
+      const r = await call(() => bridge().mail.sync({ accountId: a.id, limit: 30 }), { ok: true, accountId: a.id, added: 0, updated: 0, total: 0 })
+      added += r?.added ?? 0
+    }
+    message.success('同步完成，新增 ' + added + ' 封')
+    await load()
+  } catch (e) {
+    log.exception('home.mail.sync', e)
+    message.error('同步失败：' + ((e as Error).message || '未知错误'))
+  } finally {
+    syncing.value = false
+  }
+}
+
 onMounted(load)
 const refreshTick = useHomeCardRefresh('mail')
 watch(refreshTick, () => { void load() })
@@ -63,7 +97,8 @@ watch(refreshTick, () => { void load() })
   <n-card size="small" class="hc-card hc-card-mail">
     <template #header>
       <div class="hc-head">
-        <span>邮件 · 未读 {{ unread }}</span>
+        <!-- 只有标题文字进邮件页，卡片其它区域不跳转 -->
+        <n-button text size="small" @click="router.push('/mail')">邮件 · 未读 {{ unread }}</n-button>
         <n-tag size="tiny" :type="accounts.length ? 'success' : 'warning'">
           {{ accounts.length ? accounts.length + ' 个账户' : '未配置账户' }}
         </n-tag>
@@ -71,8 +106,7 @@ watch(refreshTick, () => { void load() })
     </template>
     <template #header-extra>
         <div class="hc-head-actions">
-          <n-button size="tiny" quaternary @click="router.push('/mail')">打开收件箱</n-button>
-          <HomeCardMenu module="mail" />
+          <HomeCardMenu module="mail" :actions="[{ label: '同步收件箱', key: 'sync' }]" @action="onMenu" />
         </div>
       </template>
 
@@ -85,7 +119,15 @@ watch(refreshTick, () => { void load() })
         <n-button size="tiny" @click="router.push('/settings?panel=mail')">添加邮箱账户</n-button>
       </n-empty>
       <n-empty v-else-if="!list.length" size="small" description="没有未读邮件" />
-      <div v-for="m in list" :key="m.id" class="hc-mail-row">
+      <div
+        v-for="m in list"
+        :key="m.id"
+        class="hc-mail-row hc-row-link"
+        role="button"
+        tabindex="0"
+        @click="router.push({ path: '/mail', query: { focus: m.id } })"
+        @keydown.enter="router.push({ path: '/mail', query: { focus: m.id } })"
+      >
         <span class="hc-mail-main">
           <strong>{{ m.subject || '（无主题）' }}</strong>
           <small class="hc-muted">
@@ -103,4 +145,5 @@ watch(refreshTick, () => { void load() })
       <span class="hc-muted">最近同步 {{ lastSync }} · 认证信息本地加密保存</span>
     </template>
   </n-card>
+
 </template>

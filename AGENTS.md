@@ -92,11 +92,24 @@
 - 字体：`font-size`、`font-weight`、`font-family`、`line-height`、`letter-spacing`、`text-decoration`
 - 动效：`transition`、`animation`（Naive UI 组件自带，不重复定义）
 
+### 2.2.1 允许的例外（必须在注释里写明理由）
+
+Naive UI 覆盖不到的原生能力，允许在局部 CSS 写外观属性，但注释必须写清「为什么这里没有主题变量可用」：
+
+- 原生滚动条：`scrollbar-color` 与 `::-webkit-scrollbar`（例：`src/styles/home.css` 卡片内容区，默认隐形、悬停显形）。
+- 定位高亮与一次性提示条：`src/styles/focus.css` 的目标行底色用 `var(--primary-soft)`，4 秒后自动消失。
+- 第三方渲染结果确实无法用变量覆盖时，先说明再破例，并在注释里记录尝试过什么。
+
 ### 2.3 外观必须走主题变量
 
-所有颜色、圆角、字号、阴影**只能**定义在 `src/theme/naive.ts` 的 `themeOverrides` / `darkOverrides` 里，通过 `<n-config-provider :theme-overrides>` 全局生效。
+外观有**两个**出口，按「管的是谁」分开，不要在页面里另起一套：
 
-要改外观 → **改主题变量文件**，不要改组件 CSS。
+| 管的东西 | 出口 |
+| --- | --- |
+| Naive UI 组件（按钮、卡片、输入、弹窗、进度环…） | `src/theme/naive.ts` 的 `lightOverrides` / `darkOverrides`，经 `buildOverrides()` 由 `<n-config-provider :theme-overrides>` 注入 |
+| 自写 CSS 与自写结构（布局容器、自绘图表、纯 CSS 元素） | `src/App.vue` 的 `palette()` + `BASE_TOKENS`，把强调色/深色/字号换算成 `<html>` 上的 CSS 变量（`--primary`、`--bg`、`--fs-*` 等） |
+
+要改外观 → **改上面两个出口**，不要改页面 CSS 里的字面量颜色。
 
 ### 2.4 禁止用 :deep 打补丁
 
@@ -113,7 +126,8 @@
 
 ```
 src/styles/
-  tokens.css      设计令牌（取自原型），仅作文档参考，运行时以 theme/naive.ts 为准
+  tokens.css      首帧兜底令牌（:root）：页面挂载前用，避免闪一下默认色；
+                  运行时的主题色/深色/字号由 App.vue 写入 <html>，见第五节
   index.css       全局重置 + 仅布局相关的公共类
   schedule.css    日程页独占的布局样式（周视图网格等）
   ...             其余按页面拆分，只放布局
@@ -121,7 +135,7 @@ src/styles/
 
 规则：
 - 页面级 CSS 只放该页**布局**，不放外观。
-- 公共外观统一在 `theme/naive.ts`，不在多处重复定义。
+- 公共外观只有两个出口（见 2.3）：Naive 组件进 `theme/naive.ts`，自写 CSS 用 `App.vue` 注入的 `--*` 变量，不在多处重复定义。
 - 不再从 `design/toolkit/*.css` 直接复制外观样式到 `src/`；原型 CSS 只作视觉参照与令牌取值来源。
 
 ---
@@ -162,9 +176,40 @@ const rows = await call(() => window.api.todo.list({}), [] as TodoRow[])
 ## 五、视觉基线
 
 - 视觉标准以 `design/toolkit/*.html` + `*.css` 为准，布局结构、信息密度、元素顺序必须对齐原型。
-- 令牌取值：画布 `#f5f7fa`、卡片 `#ffffff`、边框 `#e5e7eb`、主色 `#0f766e`、强调橙 `#c2410c`、卡片圆角 12px、控件圆角 8px、正文 13px。
+- **主题是运行时可变的**：`设置 → 外观` 可切 浅色 / 深色 / 跟随系统、字号 小 / 中 / 大、强调色（预设或自定义 hex）。下面写的都是「浅色 + 中档字号 + 默认强调色」下的基准值，代码里一律不得写死颜色。
+
+### 5.1 主色与强调色（唯一来源：设置里的 accent）
+
+- 强调色默认 `#0f766e`，是**用户可改**的运行时值，不是常量。
+- 链路：`src/App.vue:27` 读 `settings.appearance.accent` → `src/theme/naive.ts:192 accentPalette()` 派生 `common.primaryColor / primaryColorHover / primaryColorPressed / primaryColorSuppl / infoColor` → `src/App.vue:43 palette()` 同步成 CSS 变量 `--primary / --primary-2 / --primary-hover / --primary-soft / --primary-softer`。
+- 深色下主色统一提亮：`blendColor(accent, 0.42)`（`src/App.vue:47`、`src/theme/naive.ts:208`），提亮后主色底上的文字改用 `--on-primary`（深墨色）。
+- 组件里取色优先用变量（`--primary`、`var(--app-primary)`）或主题键（`Progress.fillColorInfo`），**不要**再把 `#0f766e` 当字面量到处写。
+
+### 5.2 两套主题的基准值
+
+| 项 | 浅色 | 深色 |
+| --- | --- | --- |
+| 画布 `--bg` | `#f5f7fa` | `#0f172a` |
+| 卡片/浮层 `--surface` | `#ffffff` | `#1e293b` |
+| 边框 `--border` | `#e5e7eb` | `#334155` |
+| 强边框 `--border-strong` | `#cbd5e1` | `#475569` |
+| 正文 `--text` | `#1f2937` | `#e2e8f0` |
+| 次要文字 `--muted` | `#5f6b7a` | `#94a3b8` |
+| 强调橙 `--accent` | `#c2410c` | `#fb923c` |
+| 危险 `--danger` | `#dc2626` | `#f87171` |
+
+### 5.3 字号、圆角、布局基准
+
+- 组件字号随档位变化：`小 13px / 中 14px / 大 15px`（`src/theme/naive.ts:160 fontSizes`，默认档是「小」）。
+- 自写样式的字号令牌由 `src/App.vue:35 BASE_TOKENS` 按 `0.93 / 1 / 1.07` 等比缩放，中档值：`--fs-11=12 / --fs-12=13 / --fs-13=14 / --fs-14=15 / --fs-title=21 / --fs-hero=46`。
+- 圆角：卡片与弹窗 12px、控件与输入 8px、小控件 6px、表格 10px、标签 999px（胶囊）。
+- 布局：侧栏 210px、顶栏 60px、卡片内边距 18px、卡片阴影 `0 1px 2px rgba(0,0,0,.03)`。
+
+### 5.4 语义色与图标
+
 - 蓝绿表示正常/本地/进行，橙色只表示提醒、待取件、异常。
-- 所有图标为线性 SVG。
+- 状态色按 WCAG AA 校准：成功 `#146c33`、警告 `#9a3412`、错误 `#b91c1c`（深色主题另有提亮值，见 `darkOverrides.common`）。
+- 所有图标为线性 SVG，统一走 `<AppIcon>` / `<svg><use href="#i-xxx"/></svg>`。
 
 ---
 
@@ -177,9 +222,71 @@ npx vue-tsc --noEmit    # 类型检查通过
 npm run build           # 构建通过
 ```
 
-涉及页面的改动，还要在设计工作台核对渲染无脚本错误、对比度达标、布局与原型一致。
+涉及页面的改动，还必须用 6.1 的无头方式跑一次真实渲染断言（脚本错误、元素是否存在、交互后的状态变化、对比度与布局）。
 
-未验证不得声称完成。
+未验证不得声称完成；没跑就说「未验证」，不要写成通过。
+
+### 6.1 自动化自测一律无头运行
+
+**这是硬性规定。** 自测不许抢占用户桌面，也不许为测试引入重型依赖。
+
+| 项 | 要求 |
+| --- | --- |
+| 启动方式 | `TK_HEADLESS=1` + `--remote-debugging-port=PORT --no-sandbox`，直接 spawn `node_modules/electron/dist/electron.exe` |
+| 开关实现 | `electron/main.cjs:38` `const HEADLESS = process.env.TK_HEADLESS === '1'`；`:182` `showMainWindow()` 早退、`:313` `ready-to-show` 不 show、`:310` `backgroundThrottling: !HEADLESS` 防隐藏时定时器降频 |
+| 驱动方式 | CDP：`http://127.0.0.1:PORT/json/list` 取页面 `webSocketDebuggerUrl`，用 Node 内置 `fetch` / `WebSocket` 手写，**禁止**引入 playwright / puppeteer / selenium / cypress |
+| 断言 | `Runtime.evaluate` + `awaitPromise: true, returnByValue: true`，表达式返回 JSON 字符串；多步操作用 `async` 立即执行函数 |
+| 截图 | `Page.captureScreenshot`；隐藏窗口在 Windows 实测可用（1440×900 约 130KB，非黑图），需要视觉复核时用它，不要为了截图去显示窗口 |
+| 数据安全 | 测试不得改动用户数据；确需临时改（如换强调色验证联动）必须在同一脚本末尾写回原值，并再读一次确认 |
+| 脚本位置 | 放系统临时目录（如 `C:\Users\<user>\AppData\Local\Temp\probe.mjs`），不提交进仓库 |
+| 反模式 | 不要用 Chromium 的 `--headless` 参数（Electron 不认，窗口照样弹）；不要靠 `win.hide()` 之后继续断言「看不见」—— 用下面的句柄检查 |
+| 结果自证 | 验证「窗口确实没弹」：`powershell -NoProfile -Command "Get-Process electron | ForEach-Object { $_.MainWindowHandle }"`，全部为 `0` 即无头成功；有非 0 值说明跑成了有窗模式 |
+
+只有断言对象本身依赖真实窗口（系统全屏、窗口 show/hide 事件、托盘交互）时才允许去掉 `TK_HEADLESS` 跑一次，并在结论里写明「该项为有窗验证」。
+
+### 6.2 最小骨架（复制即用）
+
+```js
+import { spawn } from 'node:child_process'
+
+const root = 'E:/AIAgentWorkspace/Project/Dashboard'
+const env = { ...process.env }
+for (const k of Object.keys(env)) if (k.startsWith('ELECTRON_')) delete env[k]   // ELECTRON_RUN_AS_NODE 会让窗口起不来
+const child = spawn(root + '/node_modules/electron/dist/electron.exe',
+  ['.', '--remote-debugging-port=9333', '--no-sandbox'],
+  { cwd: root, env: { ...env, TK_HEADLESS: '1' }, stdio: 'ignore' })
+
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
+let page = null
+for (let i = 0; i < 40 && !page; i++) {
+  try {
+    const list = await (await fetch('http://127.0.0.1:9333/json/list')).json()
+    page = list.find((t) => t.type === 'page' && /index\.html/.test(t.url || '')) || null
+  } catch (e) { /* 还没起来 */ }
+  if (!page) await sleep(500)
+}
+if (!page) throw new Error('没拿到页面 target')
+await sleep(2000)                                   // 等首页数据加载与首帧
+
+const ws = new WebSocket(page.webSocketDebuggerUrl)
+let seq = 0
+const waiting = new Map()
+ws.addEventListener('message', (e) => {
+  const m = JSON.parse(e.data)
+  if (m.id && waiting.has(m.id)) { waiting.get(m.id)(m); waiting.delete(m.id) }
+})
+await new Promise((r) => ws.addEventListener('open', r))
+const send = (method, params) => new Promise((res) => { const id = ++seq; waiting.set(id, res); ws.send(JSON.stringify({ id, method, params })) })
+
+await send('Runtime.enable', {})
+const out = await send('Runtime.evaluate', {
+  expression: "JSON.stringify({ hash: location.hash, cards: document.querySelectorAll('.home-grid .vgl-item').length })",
+  awaitPromise: true, returnByValue: true
+})
+console.log(out.result.result.value)
+ws.close()
+child.kill()
+```
 
 ---
 
@@ -189,7 +296,8 @@ npm run build           # 构建通过
 2. ❌ 用自写 `.drawer` 做抽屉 —— 应用 `n-drawer`。
 3. ❌ 用原生 `<select>` 做下拉 —— 应用 `n-select`。
 4. ❌ 绕开原型 CSS 另写一套布局，导致结构与原型不一致 —— 必须复用原型布局结构。
-5. ❌ 在组件 CSS 里写 `color` / `background` / `border-radius` —— 必须走主题变量。
+5. ❌ 在组件 CSS 里写 `color` / `background` / `border-radius` —— 必须走主题变量（2.2.1 白名单里的原生滚动条、定位高亮除外，且要写注释）。
 6. ❌ 用 `:deep(.n-xxx)` 覆盖组件内部样式。
 7. ❌ 单次写入超大文件导致内容被截断 —— 超过约 8KB 的内容分段追加写入，写完核对行数与末尾闭合标签。
 8. ❌ 未经类型检查与构建就声称功能完成。
+9. ❌ 跑自测时弹窗抢桌面、或为测试引入 playwright / puppeteer —— 一律走 6.1 的 `TK_HEADLESS=1` + CDP。

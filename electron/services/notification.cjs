@@ -227,7 +227,15 @@ function clearRead() {
   })
 }
 
+/** 单条：仪表盘深链定位用（/notice?focus=<id>）。落库行与派生提醒都在 unified() 里，查不到返回 null。 */
+function detail(id) {
+  const key = String(id || '')
+  if (!key) return null
+  return unified().find(function (i) { return i.id === key }) || null
+}
+
 module.exports = {
+  get: detail,
   today: today, unreadCount: unreadCount, markAllRead: markAllRead, create: create, remove: remove,
   list: list, counts: counts, markRead: markRead, clearRead: clearRead
 }
