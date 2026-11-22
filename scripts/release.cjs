@@ -178,6 +178,16 @@ if (!fs.existsSync(nativeAbs)) {
   log('native', 'restored ' + nativeRel)
 }
 
+// A tool in the chain occasionally leaves a stray file named "CON" (a reserved
+// Windows device name) in the repo root, which shows up as untracked and blocks the
+// clean-tree guard on the next run. Remove it if it exists as a real file.
+try {
+  const stray = path.join(root, 'CON')
+  if (fs.lstatSync(stray).isFile()) fs.unlinkSync(stray)
+} catch (e) {
+  /* absent, or the console device — nothing to clean */
+}
+
 log('preflight', 'repo=' + root)
 log('preflight', 'branch=' + branch + ' version=' + version + ' tag=' + tag + ' head=' + headSha.slice(0, 7))
 
