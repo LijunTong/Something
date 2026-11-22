@@ -4,7 +4,7 @@ import { useRouter } from 'vue-router'
 import {
   NButton, NButtonGroup, NInput, NTag, NSpin, NSkeleton, NAlert, NCard,
   NDrawer, NDrawerContent, NEmpty, NScrollbar, NSelect, NModal,
-  NDescriptions, NDescriptionsItem, useMessage
+  NDescriptions, NDescriptionsItem, NConfigProvider, useMessage
 } from 'naive-ui'
 import Shell from '@/components/Shell.vue'
 import WeatherSourcePanel from '@/components/settings/WeatherSourcePanel.vue'
@@ -88,6 +88,18 @@ const popLegend = computed(() => weather.value?.hourly.slice(0, 3).map((h) => h.
  * 具体色值在 src/theme/sky.ts 统一维护（对白字对比度均 ≥ 4.5:1）。
  */
 const heroGradient = computed(() => heroGradientOf(String(weather.value?.now?.cond || '')))
+
+/**
+ * Hero 骨架的占位色：Hero 底色是随天气变化的深蓝渐变，主题里 Skeleton 的浅灰（#f0f0f0 / #ddd）
+ * 压在上面会像一块贴纸。这里用局部 n-config-provider 覆盖 Naive UI 的 Skeleton 主题变量
+ * （color / colorEnd 两个官方主题键），改成半透明白，随渐变自然融合；不影响其它页面的骨架色。
+ */
+const heroSkeletonTheme = {
+  Skeleton: {
+    color: 'rgba(255, 255, 255, 0.26)',
+    colorEnd: 'rgba(255, 255, 255, 0.10)'
+  }
+}
 
 /** 每 refreshMin 分钟静默刷新一次；页面关闭或频率变化时重建定时器 */
 function scheduleRefresh() {
@@ -396,13 +408,31 @@ onBeforeUnmount(() => { if (refreshTimer) { clearInterval(refreshTimer); refresh
       <!-- Hero：外壳用 n-card，与其余卡片同一边框/圆角/阴影；内部渐变随天气现象变化 -->
       <n-card class="wx-hero-card" size="small" :content-style="'padding:0'">
         <div class="wx-hero" aria-label="当前天气" :style="{ background: heroGradient, color: 'var(--on-hero)' }">
-        <div v-if="loading && !weather" class="wx-hero-skeleton" aria-label="加载中">
-          <n-skeleton text style="width: 120px; height: 48px" />
-          <n-skeleton text style="width: 90px; height: 16px" />
-          <div class="wx-hero-metrics">
-            <n-skeleton v-for="n in 4" :key="n" text style="width: 78px; height: 34px" />
+        <!-- 骨架按真实 Hero 的版式排（图标 62px + 温度/现象/体感 + 4 项指标 + footer），
+             加载完成时高度与元素位置不跳动 -->
+        <n-config-provider v-if="loading && !weather" :theme-overrides="heroSkeletonTheme">
+          <div class="wx-hero-skeleton" role="status" aria-label="加载中">
+            <div class="wx-hero-top">
+              <div class="wx-hero-left">
+                <n-skeleton circle :width="62" :height="62" />
+                <div class="wx-skel-main">
+                  <n-skeleton text :width="120" :height="46" />
+                  <n-skeleton text :width="88" :height="16" />
+                  <n-skeleton text :width="76" :height="14" />
+                </div>
+              </div>
+              <div class="wx-hero-metrics">
+                <div v-for="n in 4" :key="n" class="wx-hero-metric wx-skel-metric">
+                  <n-skeleton text :width="28" :height="12" />
+                  <n-skeleton text :width="56" :height="18" />
+                </div>
+              </div>
+            </div>
+            <div class="wx-hero-foot">
+              <n-skeleton v-for="n in 4" :key="n" text :width="88" :height="14" />
+            </div>
           </div>
-        </div>
+        </n-config-provider>
         <template v-else-if="wxNow">
           <div class="wx-hero-top">
             <div class="wx-hero-left">

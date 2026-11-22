@@ -281,7 +281,9 @@ async function sync(dto) {
     port: acct.imap_port || 993,
     user: imapUser,
     pass: secret,
-    limit: Math.min(Math.max(Number(d.limit) || 20, 1), 50)
+    limit: Math.min(Math.max(Number(d.limit) || 20, 1), 50),
+    // 额外补齐服务器上的未读邮件，否则「只同步最近 N 封」会让更早的未读永远统计不到
+    unseenLimit: Math.min(Math.max(Number(d.unseenLimit == null ? 100 : d.unseenLimit) || 0, 0), 300)
   })
 
   return withTx(function () {
@@ -293,7 +295,9 @@ async function sync(dto) {
 
     const findOne = get().prepare('SELECT id FROM mail WHERE account_id = ? AND msg_id = ?')
     const ins = get().prepare('INSERT INTO mail (id,account_id,folder_id,uid,msg_id,from_name,from_addr,to_addrs,cc_addrs,subject,snippet,body_html,body_text,has_attach,sent_at,read,starred,important,labels) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)')
-    const upd = get().prepare('UPDATE mail SET subject = ?, snippet = ?, body_text = ?, body_html = ?, read = ?, starred = ? WHERE id = ?')
+    // 已读/未读一律以本地库为准：同步只刷新内容与星标，绝不动 read。
+    // 否则本地读过的邮件会被服务器 FLAGS 覆盖回未读，左栏计数就永远对不上。
+    const upd = get().prepare('UPDATE mail SET subject = ?, snippet = ?, body_text = ?, body_html = ?, starred = ? WHERE id = ?')
     let added = 0
     let updated = 0
     messages.forEach(function (m) {
@@ -304,7 +308,7 @@ async function sync(dto) {
       const bodyHtml = rawHtml && !isWrappedPlainHtml(rawHtml) ? rawHtml : null
       const hit = findOne.get(accountId, m.msgId)
       if (hit) {
-        upd.run(m.subject, snippet, m.bodyText || '', bodyHtml, m.read ? 1 : 0, m.starred ? 1 : 0, hit.id)
+        upd.run(m.subject, snippet, m.bodyText || '', bodyHtml, m.starred ? 1 : 0, hit.id)
         updated += 1
         return
       }
@@ -354,6 +358,7 @@ function list(filter) {
 // 读取邮件：先标记已读，再返回含附件的完整详情。
 function read(id) {
   return withLog('读取邮件', { id: id }, function () {
+    // 打开即已读：只改本地库，界面与计数立刻生效，不碰服务器的 \Seen
     return withTx(function () {
       const row = get().prepare('SELECT read, folder_id FROM mail WHERE id = ?').get(id)
       if (!row) return null
@@ -440,7 +445,8 @@ function saveDraft(dto) {
   })
 }
 
-// 标记已读。
+
+// 标记已读：只改本地库，左栏与首页卡片的未读数立刻减少；不碰服务器的 \Seen。
 function markRead(id) {
   return withLog('标记已读', { id: id }, function () {
     return withTx(function () {
@@ -453,7 +459,7 @@ function markRead(id) {
   })
 }
 
-// 标记未读：与 markRead 对称，计数同步重算。
+// 标记未读：与 markRead 对称，同样只落本地库。
 function markUnread(id) {
   return withLog('标记未读', { id: id }, function () {
     return withTx(function () {

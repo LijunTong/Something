@@ -33,6 +33,8 @@ const list = computed(() => {
   const sorted = [...rows.value].sort((a, b) => Number(b.important) - Number(a.important) || (b.sentAt || 0) - (a.sentAt || 0))
   return sorted.slice(0, 3)
 })
+// 未读口径与邮件页左栏完全一致：只数收件箱（kind = 'inbox'）里本机库里 read = 0 的邮件，
+// 既不放草稿箱/垃圾箱的未读，也不看服务器的 FLAGS —— 本地读过的就在这里少一封。
 const unread = computed(() => rows.value.length)
 const lastSync = computed(() => {
   const t = accounts.value.reduce((s, a) => Math.max(s, a.lastSyncAt || 0), 0)
@@ -44,7 +46,7 @@ async function load() {
   loading.value = true
   try {
     const [list_, accts] = await Promise.all([
-      call(() => bridge().mail.list({ unread: true }), [] as MailRow[]),
+      call(() => bridge().mail.list({ unread: true, kind: 'inbox' }), [] as MailRow[]),
       call(() => bridge().mail.accounts(), [] as MailAccount[])
     ])
     rows.value = list_
@@ -98,7 +100,7 @@ watch(refreshTick, () => { void load() })
     <template #header>
       <div class="hc-head">
         <!-- 只有标题文字进邮件页，卡片其它区域不跳转 -->
-        <n-button text size="small" @click="router.push('/mail')">邮件 · 未读 {{ unread }}</n-button>
+        <n-button text size="small" @click="router.push('/mail')">邮件 · 本地未读 {{ unread }}</n-button>
         <span class="hc-status">
           <i class="hc-dot" :class="accounts.length ? 'is-ok' : 'is-warn'" />{{ accounts.length ? accounts.length + ' 个账户' : '未配置账户' }}
         </span>

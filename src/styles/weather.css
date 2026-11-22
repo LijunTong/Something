@@ -86,7 +86,11 @@
    .wx-hero-temp / .wx-hero-deg / .wx-aqi-num 的字号属于「天气 Hero 大数字」这一产品独占视觉（AGENTS.md 1.2），
    字体家族与颜色仍由主题提供。 */
 .wx-city-select { width: 132px; }
-.wx-hero-skeleton { display: flex; flex-direction: column; gap: 10px; }
+/* Hero 骨架：结构对齐真实 Hero（62px 图标 + 温度/现象/体感 + 4 项指标 + footer），
+   高度与真实态一致，加载完成不跳动；占位色由 Weather.vue 的局部 Skeleton 主题覆盖 */
+.wx-hero-skeleton { display: flex; flex-direction: column; gap: 16px; }
+.wx-skel-main { display: flex; flex-direction: column; gap: 6px; }
+.wx-skel-metric { gap: 6px; }
 .wx-hero-temp { font-size: 46px; line-height: 1; font-weight: 650; letter-spacing: -0.04em; }
 .wx-hero-deg { font-size: var(--fs-title); vertical-align: top; }
 .wx-hero-cond, .wx-hero-feel { font-size: var(--fs-13); }

@@ -361,7 +361,7 @@ export interface MailApi {
   /** 明文回显授权码：默认掩码，点「显示」时按需取 */
   revealSecret(dto: { id: string }): Promise<IpcResult<{ id: string; value: string }>>
   testAccount(dto: Record<string, unknown>): Promise<IpcResult<{ ok: boolean; code?: string; message?: string; imap?: { ok: boolean; message?: string } | null; smtp?: { ok: boolean; message?: string } | null }>>
-  sync(dto: { accountId: string; limit?: number }): Promise<IpcResult<{ ok: boolean; accountId: string; added: number; updated: number; total: number }>>
+  sync(dto: { accountId: string; limit?: number; unseenLimit?: number }): Promise<IpcResult<{ ok: boolean; accountId: string; added: number; updated: number; total: number }>>
   folders(accountId?: string): Promise<IpcResult<MailFolder[]>>
   list(filter?: { accountId?: string; folderId?: string; kind?: string; search?: string; unread?: boolean; starred?: boolean }): Promise<IpcResult<MailRow[]>>
   read(id: string): Promise<IpcResult<MailRow>>

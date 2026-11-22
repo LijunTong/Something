@@ -345,6 +345,20 @@ async function openImap(cfg) {
   }
 }
 
+// UID SEARCH 的响应：'* SEARCH 12 13 14'，多个响应行合并成一个数字数组。
+function parseSearch(lines) {
+  const out = []
+  for (let i = 0; i < lines.length; i++) {
+    const m = /^\*\s+SEARCH\b(.*)$/i.exec(lines[i].line)
+    if (!m) continue
+    String(m[1]).trim().split(/\s+/).forEach(function (part) {
+      const n = Number(part)
+      if (Number.isFinite(n) && n > 0) out.push(n)
+    })
+  }
+  return out
+}
+
 function parseFetch(lines) {
   const out = { uid: null, flags: '', header: null, body: null }
   for (let i = 0; i < lines.length; i++) {
@@ -424,11 +438,32 @@ async function fetchInbox(cfg) {
     const limit = Math.min(Math.max(Number(cfg.limit) || 20, 1), 50)
     const start = Math.max(1, exists - limit + 1)
     const out = []
+    const fetchedUids = new Set()
     for (let seq = start; seq <= exists; seq++) {
       const lines = await session.cmd('FETCH ' + seq + ' (UID FLAGS BODY.PEEK[HEADER] BODY.PEEK[TEXT])')
       const fetched = parseFetch(lines)
       if (!fetched.header) continue
+      if (fetched.uid != null) fetchedUids.add(Number(fetched.uid))
       out.push(toMessage(fetched))
+    }
+    // 只拉最近 N 封会让更早的未读邮件永远进不来，界面的「未读」就永远偏小。
+    // 这里再按 UID SEARCH UNSEEN 补齐服务器上全部未读（上限 unseenLimit，取最新的一批）。
+    const unseenLimit = Math.min(Math.max(Number(cfg.unseenLimit == null ? 100 : cfg.unseenLimit) || 0, 0), 300)
+    if (unseenLimit > 0) {
+      let unreadUids = []
+      try {
+        unreadUids = parseSearch(await session.cmd('UID SEARCH UNSEEN'))
+      } catch (e) {
+        // 服务器不支持 UNSEEN 检索时退回只拉最近 limit 封，不影响本次同步
+        unreadUids = []
+      }
+      const targets = unreadUids.filter(function (uidValue) { return !fetchedUids.has(uidValue) }).slice(-unseenLimit)
+      for (let i = 0; i < targets.length; i++) {
+        const lines = await session.cmd('UID FETCH ' + targets[i] + ' (UID FLAGS BODY.PEEK[HEADER] BODY.PEEK[TEXT])')
+        const fetched = parseFetch(lines)
+        if (!fetched.header) continue
+        out.push(toMessage(fetched))
+      }
     }
     try { await session.cmd('LOGOUT') } catch (e) {}
     return out

@@ -105,7 +105,7 @@ const autoSyncOptions = [
 const autoSyncLabel = computed(() => (autoSyncMin.value ? '每 ' + autoSyncMin.value + ' 分钟自动同步' : '自动同步已关闭'))
 const subtitle = computed(() =>
   enabledAccounts.value.length
-    ? '未读 ' + unreadTotal.value + ' · 共 ' + enabledAccounts.value.length + ' 个账户 · 最后同步 ' + lastSync.value + ' · ' + autoSyncLabel.value
+    ? '收件箱未读 ' + unreadTotal.value + ' 封（本地统计）· 共 ' + enabledAccounts.value.length + ' 个账户 · 最后同步 ' + lastSync.value + ' · ' + autoSyncLabel.value
     : '未启用邮箱账户 · 到「账户管理」开启'
 )
 
@@ -211,7 +211,8 @@ async function syncAll() {
   let updated = 0
   try {
     for (const a of accounts.value.filter((x) => x.enabled)) {
-      const r = await call(() => mailApi().sync(plain({ accountId: a.id })), { ok: false, accountId: a.id, added: 0, updated: 0, total: 0 })
+      // limit: 最近 30 封；unseenLimit: 再补齐服务器上最多 100 封未读，保证左栏未读数不是「只算最近几封」
+      const r = await call(() => mailApi().sync(plain({ accountId: a.id, limit: 30, unseenLimit: 100 })), { ok: false, accountId: a.id, added: 0, updated: 0, total: 0 })
       added += Number(r?.added || 0)
       updated += Number(r?.updated || 0)
     }
@@ -540,7 +541,7 @@ async function reloadAll() {
         >
           <svg class="mi" aria-hidden="true"><use href="#i-inbox" /></svg>
           <span class="side-nav-label">统一收件箱</span>
-          <span v-if="unreadTotal" class="side-nav-count">{{ unreadTotal }}</span>
+          <span v-if="unreadTotal" class="side-nav-count" :title="'全部账户收件箱共 ' + unreadTotal + ' 封未读（本地统计，以本机数据为准）'">{{ unreadTotal }}</span>
         </a>
 
         <template v-for="a in enabledAccounts" :key="a.id">
@@ -556,7 +557,7 @@ async function reloadAll() {
           >
             <svg class="mi" aria-hidden="true"><use href="#i-inbox" /></svg>
             <span class="side-nav-label">收件箱</span>
-            <span v-if="unreadOf(a.id)" class="side-nav-count">{{ unreadOf(a.id) }}</span>
+            <span v-if="unreadOf(a.id)" class="side-nav-count" :title="a.alias + ' 收件箱有 ' + unreadOf(a.id) + ' 封未读（本地统计）'">{{ unreadOf(a.id) }}</span>
           </a>
           <a
             v-for="f in foldersOf(a.id).filter((x) => x.kind !== 'inbox')"
