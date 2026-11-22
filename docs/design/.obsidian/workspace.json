@@ -27,7 +27,7 @@
             "state": {
               "type": "markdown",
               "state": {
-                "file": "file:E:/AIAgentWorkspace/Project/Dashboard/docs/feature-design.md",
+                "file": "file:E:/AIAgentWorkspace/Project/Something/docs/feature-design.md",
                 "mode": "source",
                 "source": false
               },
@@ -41,7 +41,7 @@
             "state": {
               "type": "markdown",
               "state": {
-                "file": "file:E:/AIAgentWorkspace/Project/Dashboard/AGENTS.md",
+                "file": "file:E:/AIAgentWorkspace/Project/Something/AGENTS.md",
                 "mode": "source",
                 "source": false
               },
@@ -142,7 +142,7 @@
             "state": {
               "type": "backlink",
               "state": {
-                "file": "file:E:/AIAgentWorkspace/Project/Dashboard/AGENTS.md",
+                "file": "file:E:/AIAgentWorkspace/Project/Something/AGENTS.md",
                 "collapseAll": false,
                 "extraContext": false,
                 "sortOrder": "alphabetical",
@@ -161,7 +161,7 @@
             "state": {
               "type": "outgoing-link",
               "state": {
-                "file": "file:E:/AIAgentWorkspace/Project/Dashboard/AGENTS.md",
+                "file": "file:E:/AIAgentWorkspace/Project/Something/AGENTS.md",
                 "linksCollapsed": false,
                 "unlinkedCollapsed": true
               },
@@ -204,7 +204,7 @@
             "state": {
               "type": "outline",
               "state": {
-                "file": "file:E:/AIAgentWorkspace/Project/Dashboard/AGENTS.md",
+                "file": "file:E:/AIAgentWorkspace/Project/Something/AGENTS.md",
                 "followCursor": false,
                 "showSearch": false,
                 "searchQuery": ""
@@ -233,8 +233,8 @@
   },
   "active": "af78d6ad1b8952fc",
   "lastOpenFiles": [
-    "file:E:/AIAgentWorkspace/Project/Dashboard/PRODUCT.md",
-    "file:E:/AIAgentWorkspace/Project/Dashboard/docs/feature-design.md",
+    "file:E:/AIAgentWorkspace/Project/Something/PRODUCT.md",
+    "file:E:/AIAgentWorkspace/Project/Something/docs/feature-design.md",
     "日程.md",
     "前缀.md",
     "待办.md",
