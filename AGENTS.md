@@ -249,7 +249,7 @@ npm run build           # 构建通过
 ```js
 import { spawn } from 'node:child_process'
 
-const root = 'E:/AIAgentWorkspace/Project/Dashboard'
+const root = 'E:/AIAgentWorkspace/Project/Something'
 const env = { ...process.env }
 for (const k of Object.keys(env)) if (k.startsWith('ELECTRON_')) delete env[k]   // ELECTRON_RUN_AS_NODE 会让窗口起不来
 const child = spawn(root + '/node_modules/electron/dist/electron.exe',
