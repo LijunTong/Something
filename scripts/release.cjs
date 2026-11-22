@@ -160,23 +160,16 @@ if (!OPT.skipBuild) {
 
 /* ---------------- 3. package (NSIS installer) ---------------- */
 
-// electron-builder rebuilds native modules first. When another process holds
-// better_sqlite3.node the rebuild dies with EPERM; the installed binary already
-// matches the bundled Electron, so the retry simply skips the rebuild.
+// electron-builder normally rebuilds native modules before packaging. That rebuild
+// needs Visual Studio (absent here) and exclusive access to better_sqlite3.node
+// (EPERM when the app is running), while the installed binary already targets the
+// bundled Electron. So the rebuild is disabled; run `npm run rebuild` after
+// bumping the Electron version.
 function packageInstaller() {
-  const base = ['electron-builder', '--win', 'nsis', '--publish', 'never']
+  const base = ['electron-builder', '--win', 'nsis', '--publish', 'never', '--config.npmRebuild=false']
   const npx = process.platform === 'win32' ? 'npx.cmd' : 'npx'
-  log('package', 'electron-builder --win nsis')
-  const first = run(npx, base, { allowFail: true })
-  if (first.ok) return
-  const out = first.out || ''
-  if (/EPERM|operation not permitted/i.test(out)) {
-    log('package', 'native rebuild hit EPERM; retrying with --config.npmRebuild=false')
-    run(npx, base.concat(['--config.npmRebuild=false']))
-    return
-  }
-  console.error(out)
-  fail('electron-builder failed')
+  log('package', 'electron-builder --win nsis (npmRebuild=false)')
+  run(npx, base)
 }
 
 if (!OPT.skipBuild) {
