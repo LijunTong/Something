@@ -6,7 +6,7 @@
 
 仪表盘：8 张卡片同屏，可拖动换位、拖右下角缩放，布局存在本机。
 
-![仪表盘](docs/screenshots/01-dashboard.png)
+![仪表盘](docs/screenshots/01-home.png)
 
 | | |
 | --- | --- |

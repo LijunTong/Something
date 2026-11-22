@@ -242,7 +242,7 @@ function buildTrayMenu() {
   return Menu.buildFromTemplate([
     { label: '开机启动', type: 'checkbox', checked: loginAtStartup(), click: function (item) { toggleLoginAtStartup(item.checked); updateTrayMenu() } },
     { type: 'separator' },
-    { label: '仪表盘', icon: menuIcon('dashboard'), click: function () { showMainWindow(); win && win.webContents.send('app:navigate', '/') } },
+    { label: '仪表盘', icon: menuIcon('home'), click: function () { showMainWindow(); win && win.webContents.send('app:navigate', '/') } },
     { label: '待办', icon: menuIcon('todo'), click: function () { showMainWindow(); win && win.webContents.send('app:navigate', '/todo') } },
     { label: '天气', icon: menuIcon('weather'), click: function () { showMainWindow(); win && win.webContents.send('app:navigate', '/weather') } },
     { label: '设置', icon: menuIcon('settings'), click: function () { showMainWindow(); win && win.webContents.send('app:navigate', '/settings') } },
