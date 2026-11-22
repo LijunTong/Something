@@ -79,28 +79,11 @@ try {
   fs.appendFileSync(path.join(dirBoot, 'boot.txt'), new Date().toISOString() + ' main.js loaded pid=' + process.pid + '\n')
 } catch (e) {}
 
-// 改名迁移：旧版本（efficiency-toolkit）的数据目录里若已有库，首次启动整库复制过来，
-// 避免升级后「数据不见了」。
-// 只做一次：迁移走完写标记文件。否则用户把数据删掉以后，每次启动都会被这份老库顶回来
-// （表现就是「数据全删了，重开又是之前的数据」）。标记一旦存在，本目录永久不再被老库覆盖。
-// 标记放在数据目录的**上级**（%APPDATA%）：用户把整个数据目录删掉时它仍在，
-// 否则「删掉数据目录 → 重新迁移一次」的循环会让老数据一直回来。
-// 迁移只在打包版做：开发目录里根本没有旧版数据可迁。
-const MIGRATION_MARKER = path.join(path.dirname(dataDir.dir), '.something-legacy-migrated')
-try {
-  if (IS_PACKAGED && !fs.existsSync(MIGRATION_MARKER)) {
-    fs.mkdirSync(dataDir.dir, { recursive: true })
-    const legacyDir = path.join(path.dirname(dataDir.dir), 'efficiency-toolkit')
-    const migrated = copyLegacyDb(legacyDir, dataDir.dir)
-    fs.writeFileSync(
-      MIGRATION_MARKER,
-      new Date().toISOString() + (migrated ? ' copied ' + migrated.from : ' nothing to copy') + '\n'
-    )
-    if (migrated) console.log('[db] 已从旧数据目录迁移: ' + migrated.from)
-  }
-} catch (e) {
-  console.error('[db] 旧数据迁移失败: ' + e.message)
-}
+// 不做「旧版本目录（efficiency-toolkit）整库迁移」：
+// 那个目录里只有早期开发/测试留下的数据，把它复制进安装版既没有价值，又会在用户
+// 主动删库后被反复搬回来（表现为「数据删了，重开又是之前的数据」）。
+// 安装版永远从空库开始，只写 seed 的结构性默认值（收件箱、默认日历、番茄状态）。
+// 需要旧数据就自己导出/导入，不靠启动时静默复制。
 
 // 部分机器的 GPU 进程无法启动（日志表现为 "GPU process launch failed: error_code=18"
 // 连续出现后 "FATAL: GPU process isn't usable"，进程随之退出）。
