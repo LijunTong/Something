@@ -55,6 +55,8 @@ async function toggleSidebar() {
     log.exception('shell.sidebar', e)
   }
 }
+/** 侧栏底部的版本号：取主进程 app.getVersion()，浏览器预览没有 runtime 时显示未连接 */
+const versionText = computed(() => (store.runtime && store.runtime.version ? 'v' + store.runtime.version : '未连接'))
 /** 全局搜索弹窗：顶栏图标或 Ctrl/Cmd+K 唤起 */
 const showSearch = ref(false)
 function goNotice() {
@@ -168,27 +170,27 @@ function badgeOf(item: { badge?: string }): number {
       </nav>
       <div class="sidebar-footer">
         <div class="local-status" :title="'本地存储正常'"><span class="status-dot"></span><span class="local-status-text">本地存储正常</span></div>
-        <div class="sidebar-footnote">{{ store.runtime ? "SQLite · " + store.runtime.db.split(/[\\/]/).pop() : "正在连接本地库" }}</div>
+        <div class="sidebar-footnote sidebar-meta">
+          <span class="sidebar-version" :title="store.runtime ? '版本 v' + store.runtime.version : '正在连接本地库'">{{ versionText }}</span>
+          <n-button
+            class="sidebar-toggle"
+            size="tiny"
+            quaternary
+            circle
+            :title="sidebarExpand ? '折叠侧边栏' : '展开侧边栏'"
+            :aria-label="sidebarExpand ? '折叠侧边栏' : '展开侧边栏'"
+            :aria-expanded="sidebarExpand"
+            @click="toggleSidebar"
+          >
+            <template #icon>
+              <svg viewBox="0 0 24 24"><use :href="sidebarExpand ? '#i-chev-l' : '#i-chev-r'" /></svg>
+            </template>
+          </n-button>
+        </div>
       </div>
     </aside>
     <div class="workspace">
       <header v-if="!immersive" class="topbar">
-        <!-- 折叠按钮放在顶栏里而不是侧栏里：顶栏整条是 -webkit-app-region: drag 拖拽区，
-             HTML 里若是兄弟节点，溢出到顶栏的那半颗按钮会被拖拽层吃掉点击，只有作为顶栏子节点才稳定可点 -->
-        <n-button
-          class="sidebar-toggle"
-          size="tiny"
-          tertiary
-          circle
-          :title="sidebarExpand ? '折叠侧边栏' : '展开侧边栏'"
-          :aria-label="sidebarExpand ? '折叠侧边栏' : '展开侧边栏'"
-          :aria-expanded="sidebarExpand"
-          @click="toggleSidebar"
-        >
-          <template #icon>
-            <svg viewBox="0 0 24 24"><use :href="sidebarExpand ? '#i-chev-l' : '#i-chev-r'" /></svg>
-          </template>
-        </n-button>
         <div class="top-actions">
           <n-button class="win-btn" size="tiny" quaternary aria-label="搜索" title="搜索（Ctrl K）" @click="showSearch = true">
             <template #icon><svg viewBox="0 0 24 24"><use href="#i-search" /></svg></template>

@@ -9,6 +9,7 @@ const logger = require('../log/logger.cjs')
 const settingsSvc = require('./settings.cjs')
 const notificationSvc = require('./notification.cjs')
 const notifyText = require('./notifyText.cjs')
+const weatherDigest = require('./weatherDigest.cjs')
 
 const MODULE_LABEL = {
   weather: '天气', schedule: '日程', todo: '待办',
@@ -275,8 +276,41 @@ function scanWeatherAlerts() {
   })
 }
 
+/** 主城的最近一次天气缓存：now/daily/hourly/aqi/indices，缺 now 视为没有可用数据 */
+function homeWeather() {
+  const city = get().prepare('SELECT id, name FROM weather_city WHERE is_home = 1 LIMIT 1').get()
+  if (!city) return null
+  const rows = get().prepare(
+    "SELECT kind, payload FROM weather_cache WHERE city_id = ? AND kind IN ('now','daily','hourly','aqi','indices')"
+  ).all(city.id)
+  const map = {}
+  rows.forEach(function (r) {
+    try { map[r.kind] = JSON.parse(r.payload) } catch (e) { /* 单块坏数据不影响其它块 */ }
+  })
+  if (!map.now) return null
+  return {
+    city: city,
+    now: map.now,
+    daily: Array.isArray(map.daily) ? map.daily : [],
+    hourly: Array.isArray(map.hourly) ? map.hourly : [],
+    aqi: map.aqi || null,
+    indices: Array.isArray(map.indices) ? map.indices : []
+  }
+}
+
+/** 每天 09 / 12 / 17 / 20 点的天气播报：强提醒，但模块开关、总开关与免打扰照常生效 */
+function scanWeatherDigest() {
+  const t = now()
+  const hour = weatherDigest.dueHour(t)
+  if (hour == null) return
+  const snap = homeWeather()
+  if (!snap) return
+  const copy = notifyText.weatherDigest(snap, hour, t)
+  push({ id: weatherDigest.eventId(t, hour), module: 'weather', level: copy.level, title: copy.title, body: copy.body })
+}
+
 function safeScan() {
-  const steps = [scanSchedules, scanTodos, scanParcels, scanMails, scanWeatherAlerts]
+  const steps = [scanSchedules, scanTodos, scanParcels, scanMails, scanWeatherAlerts, scanWeatherDigest]
   steps.forEach(function (fn) {
     try { fn() } catch (e) { logger.warn('notify', 'scan_failed', { step: fn.name, message: e && e.message }) }
   })

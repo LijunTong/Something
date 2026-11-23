@@ -161,10 +161,100 @@ function pomodoroBreakOver() {
   return { level: 'normal', title: '休息结束', body: '回到桌前，开始下一轮' }
 }
 
+/**
+ * 天气播报：每天 09 / 12 / 17 / 20 点各一条，只读本地缓存里的 now/daily/aqi。
+ * 标题固定「时段 · 天气」，正文只放当天真正有用的事实；字段缺失就跳过，不写 undefined。
+ */
+function num(v) {
+  const n = Number(v)
+  return Number.isFinite(n) ? n : null
+}
+
+function tempText(v) {
+  const n = num(v)
+  return n == null ? '' : Math.round(n) + '℃'
+}
+
+function rangeText(lo, hi) {
+  const a = num(lo)
+  const b = num(hi)
+  return a == null || b == null ? '' : Math.round(a) + '~' + Math.round(b) + '℃'
+}
+
+function bitsText(bits) {
+  return bits.filter(Boolean).join(' · ')
+}
+
+function headline(label, bits) {
+  const rest = bits.filter(Boolean).join(' ')
+  return rest ? label + ' · ' + rest : label
+}
+
+function weatherDigest(snap, hour, t) {
+  const s = snap || {}
+  const cur = s.now || {}
+  const daily = Array.isArray(s.daily) ? s.daily : []
+  const today = daily[0] || {}
+  const tomorrow = daily[1] || {}
+  const aqi = s.aqi || {}
+  const temp = tempText(cur.temp)
+  const cond = String(cur.cond || today.textDay || '').trim()
+  const pop = num(today.pop)
+  const wind = [
+    today.windDirDay,
+    num(today.windScaleDay) == null ? '' : Math.round(num(today.windScaleDay)) + ' 级'
+  ].filter(Boolean).join(' ')
+  const h = Number(hour)
+
+  if (h === 12) {
+    const bits = [
+      today.textDay ? '午后' + today.textDay : '',
+      pop == null ? '' : '降水概率 ' + Math.round(pop) + '%',
+      num(cur.feel) == null ? '' : '体感 ' + tempText(cur.feel),
+      pop != null && pop >= 40 ? '记得带伞' : ''
+    ]
+    return { level: 'strong', title: headline('午间', [temp, cond]), body: bitsText(bits) || null }
+  }
+
+  if (h === 17) {
+    const bits = [
+      wind,
+      aqi.level ? '空气质量' + String(aqi.level) : '',
+      today.sunset ? '日落 ' + today.sunset : ''
+    ]
+    return { level: 'strong', title: headline('下午好', [temp, cond]), body: bitsText(bits) || null }
+  }
+
+  if (h === 20) {
+    const tomorrowRange = rangeText(tomorrow.lo, tomorrow.hi)
+    const bits = [
+      tomorrow.textDay ? '明天' + tomorrow.textDay + (tomorrowRange ? ' ' + tomorrowRange : '') : '',
+      tomorrow.textDay ? '' : (today.textNight ? '夜间' + today.textNight : ''),
+      '早点休息'
+    ]
+    return { level: 'strong', title: headline('晚间', [today.textNight || cond, tempText(today.lo)]), body: bitsText(bits) || null }
+  }
+
+  // 09:00（以及自定义档位）按早安口径：今天白天 + 降水 + 风 + 紫外线
+  const uv = num(today.uvIndex)
+  const bits = [
+    today.textDay ? '白天' + today.textDay : '',
+    pop == null ? '' : '降水概率 ' + Math.round(pop) + '%',
+    wind,
+    pop != null && pop >= 40 ? '出门带伞' : '',
+    uv != null && uv >= 7 ? '紫外线强' : ''
+  ]
+  return {
+    level: 'strong',
+    title: headline('早安', [cond, rangeText(today.lo, today.hi) || temp]),
+    body: bitsText(bits) || null
+  }
+}
+
 module.exports = {
   clock: clock, dayText: dayText, gapText: gapText,
   scheduleReminder: scheduleReminder, scheduleToday: scheduleToday,
   todoRemind: todoRemind, todoDue: todoDue,
-  parcel: parcel, mailDigest: mailDigest, weatherAlert: weatherAlert,
+  parcel: parcel, mailDigest: mailDigest, weatherAlert: weatherAlert, weatherDigest: weatherDigest,
   pomodoroDone: pomodoroDone, pomodoroBreakOver: pomodoroBreakOver
 }

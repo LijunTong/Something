@@ -12,7 +12,7 @@ const { settings, save } = useSettings()
 const message = useMessage()
 
 const MODULES: Array<{ key: NotifySoundModule; label: string; hint: string }> = [
-  { key: 'weather', label: '天气预警', hint: '暴雨、高温、大风等预警' },
+  { key: 'weather', label: '天气', hint: '预警推送，以及每天 9 / 12 / 17 / 20 点的天气播报' },
   { key: 'schedule', label: '日程提醒', hint: '按每条日程的提前分钟数提醒' },
   { key: 'todo', label: '待办到期', hint: '提醒时间到点、到期与逾期' },
   { key: 'pomodoro', label: '番茄结束', hint: '专注结束与休息结束' },
@@ -116,7 +116,7 @@ function patchSound(key: NotifySoundModule, value: string) {
         </div>
       </div>
     </div>
-    <p class="set-note">日程按每条记录的提前量提醒；待办在提醒时间与到期时各提醒一次；天气与快递取自最近一次本地缓存，不额外联网。</p>
+    <p class="set-note">日程按每条记录的提前量提醒；待办在提醒时间与到期时各提醒一次；天气播报每天 9 / 12 / 17 / 20 点各一次，与快递一样取自最近一次本地缓存，不额外联网。</p>
 
     <SectionTitle title="免打扰时段" />
     <div class="set-field">
