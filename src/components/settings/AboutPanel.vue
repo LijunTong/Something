@@ -55,13 +55,19 @@ onMounted(async () => {
   } catch (e) {
     log.exception('settings.about', e)
   }
-  // 先订阅再读快照：下载完成的那一瞬间也不会漏掉 ready 事件
-  offProgress = bridge().onUpdateProgress(applyProgress)
-  try {
-    const st: UpdateProgressEvent | null = await call(() => bridge().system.updateStatus(), null)
-    if (st && st.state !== 'idle') applyProgress(st)
-  } catch (e) {
-    log.exception('settings.about.updateStatus', e)
+  // 先订阅再读快照：下载完成的那一瞬间也不会漏掉 ready 事件。
+  // preload 只在窗口创建时加载，开发态热更新可能还是旧版；缺方法时跳过，不拖垮整个面板。
+  const api = bridge()
+  if (typeof api.onUpdateProgress === 'function') {
+    offProgress = api.onUpdateProgress(applyProgress)
+  }
+  if (typeof api.system.updateStatus === 'function') {
+    try {
+      const st: UpdateProgressEvent | null = await call(() => api.system.updateStatus(), null)
+      if (st && st.state !== 'idle') applyProgress(st)
+    } catch (e) {
+      log.exception('settings.about.updateStatus', e)
+    }
   }
 })
 
@@ -72,6 +78,7 @@ onUnmounted(() => {
 // 下载结束直接装机：安装程序由主进程分离启动，随后应用退出
 async function installNow() {
   if (!hasBridge()) return
+  if (typeof bridge().system.installUpdate !== 'function') return
   try {
     await call(() => bridge().system.installUpdate(), false)
   } catch (e) {
@@ -132,6 +139,11 @@ async function checkUpdate() {
       }
       return
     }
+    if (typeof bridge().system.downloadUpdate !== 'function') {
+      phase.value = 'idle'
+      message.warning('当前窗口还是旧版预加载脚本，请重启应用后再自动更新')
+      return
+    }
     updateVersion.value = res.latest || ''
     updateError.value = ''
     percent.value = 0
@@ -178,22 +190,22 @@ async function checkUpdate() {
       <span class="brand-mark set-about-mark"><BrandMark /></span>
       <div>
         <h2 class="set-about-title">几件事</h2>
-        <span class="set-muted">Something · 版本 {{ versionText }}（本地构建）</span>
+        <span class="set-muted">Something</span>
       </div>
     </div>
 
     <p class="set-muted">几件事（Something）是一套纯本地的个人效率工具，无账户体系、无云同步、不含智能功能。</p>
 
     <n-alert type="info" :bordered="false">
-      本应用不提供账户注册与登录；天气、快递、信息流与邮件需要联网，联网结果只做本地缓存。
+      本应用不提供账户注册与登录；天气、信息流与邮件需要联网，联网结果只做本地缓存。
     </n-alert>
 
     <SectionTitle title="运行信息" />
     <n-descriptions :column="1" label-placement="left" size="small">
+      <n-descriptions-item label="作者">Joont</n-descriptions-item>
       <n-descriptions-item label="版本号">{{ versionText }}</n-descriptions-item>
       <n-descriptions-item label="数据目录">{{ info?.userData || '未在 Electron 中运行' }}</n-descriptions-item>
       <n-descriptions-item label="数据库文件">{{ info?.db || '—' }}</n-descriptions-item>
-      <n-descriptions-item label="作者">Joont</n-descriptions-item>
       <n-descriptions-item label="技术栈">Electron + Vue 3 + Naive UI + SQLite（better-sqlite3）</n-descriptions-item>
     </n-descriptions>
 
