@@ -4,6 +4,7 @@ import { useRouter } from 'vue-router'
 import { NModal, NInput, NEmpty, NSpin, NTag } from 'naive-ui'
 import { call, bridge, hasBridge } from '@/lib/ipc'
 import { log } from '@/lib/logger'
+import { PARCEL_ENABLED } from '@/lib/features'
 import type { SearchGroup, SearchItem } from '@/types/api'
 import '@/styles/search.css'
 
@@ -110,7 +111,7 @@ function onKeydown(e: KeyboardEvent) {
         v-model:value="keyword"
         size="large"
         clearable
-        placeholder="搜索任务、日程、邮件、文章、包裹、城市…"
+        :placeholder="'搜索任务、日程、邮件、文章、' + (PARCEL_ENABLED ? '包裹、' : '') + '城市…'"
         @keydown="onKeydown"
       />
       <n-tag v-if="total" size="small">{{ total }} 条结果</n-tag>
@@ -118,7 +119,7 @@ function onKeydown(e: KeyboardEvent) {
 
     <n-spin :show="loading">
       <div v-if="!keyword.trim()" class="sr-hint">
-        输入关键词开始搜索：标题、地点、发件人、单号、城市名都可以。<br />
+        输入关键词开始搜索：标题、地点、发件人{{ PARCEL_ENABLED ? '、单号' : '' }}、城市名都可以。<br />
         用 ↑ ↓ 选择结果，Enter 打开，Esc 关闭。
       </div>
       <n-empty v-else-if="!loading && !flat.length" description="没有匹配结果" />

@@ -316,10 +316,10 @@ function backup(dto) {
     if (useEnc && !o.password) throw new Error('BACKUP_PASSWORD_REQUIRED')
     const body = useEnc ? JSON.stringify(encryptText(plain, o.password)) : plain
     // 同一秒内可能连续备份（例如恢复前自动快照），补毫秒与冲突序号避免互相覆盖
-    let target = path.join(dir, 'efficiency-backup-' + stamp() + '-' + String(Date.now() % 1000).padStart(3, '0') + (useEnc ? '.enc.json' : '.json'))
+    let target = path.join(dir, 'something-backup-' + stamp() + '-' + String(Date.now() % 1000).padStart(3, '0') + (useEnc ? '.enc.json' : '.json'))
     let seq = 1
     while (fs.existsSync(target)) {
-      target = path.join(dir, 'efficiency-backup-' + stamp() + '-' + String(Date.now() % 1000).padStart(3, '0') + '-' + seq + (useEnc ? '.enc.json' : '.json'))
+      target = path.join(dir, 'something-backup-' + stamp() + '-' + String(Date.now() % 1000).padStart(3, '0') + '-' + seq + (useEnc ? '.enc.json' : '.json'))
       seq += 1
     }
     const name = path.basename(target)
@@ -413,7 +413,7 @@ function exportData(dto) {
     let name = ''
     let body = ''
     if (kind === 'json') {
-      name = 'efficiency-data-' + stamp() + '.json'
+      name = 'something-data-' + stamp() + '.json'
       body = JSON.stringify(dump())
     } else if (kind === 'ics') {
       name = 'schedule-' + stamp() + '.ics'

@@ -6,6 +6,7 @@ import {
 } from 'naive-ui'
 import { call, bridge, hasBridge } from '@/lib/ipc'
 import { log } from '@/lib/logger'
+import { PARCEL_ENABLED } from '@/lib/features'
 import { useAppStore } from '@/stores/app'
 import { useSettings } from '@/composables/useSettings'
 import SectionTitle from '@/components/settings/SectionTitle.vue'
@@ -181,7 +182,7 @@ async function confirmRestore() {
 function askReset() {
   dialog.error({
     title: '重置全部数据',
-    content: '这会清空本机保存的全部日程、待办、邮件缓存、订阅文章与包裹记录，且不可恢复。建议先执行一次备份。',
+    content: '这会清空本机保存的全部日程、待办、邮件缓存、订阅文章' + (PARCEL_ENABLED ? '与包裹记录' : '') + '，且不可恢复。建议先执行一次备份。',
     positiveText: '确认重置',
     negativeText: '取消',
     onPositiveClick: async () => {
@@ -212,7 +213,7 @@ async function clearCache() {
 async function clearTrash() {
   try {
     const r = await call(() => bridge().settings.clearTrash(), { todos: 0, parcels: 0 })
-    message.success('回收站已清空：待办 ' + r.todos + ' 项 · 归档包裹 ' + r.parcels + ' 个')
+    message.success('回收站已清空：待办 ' + r.todos + ' 项' + (PARCEL_ENABLED ? ' · 归档包裹 ' + r.parcels + ' 个' : ''))
     await loadStorage()
   } catch (e) {
     log.exception('settings.clearTrash', e)
@@ -348,7 +349,7 @@ onMounted(loadStorage)
           </n-popconfirm>
           <n-popconfirm @positive-click="clearTrash">
             <template #trigger><n-button size="small">清空回收站</n-button></template>
-            永久删除已删除待办与已归档包裹？
+            永久删除已删除待办{{ PARCEL_ENABLED ? '与已归档包裹' : '' }}？
           </n-popconfirm>
           <n-button size="small" type="error" @click="askReset">重置全部数据</n-button>
         </div>

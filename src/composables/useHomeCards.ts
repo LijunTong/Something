@@ -18,7 +18,7 @@ export const CARD_META: Record<CardKey, { label: string; hint: string }> = {
   feed: { label: '信息流', hint: '未读文章与稍后读' },
   parcel: { label: '快递', hint: '在途、待取件与取件码' },
   mail: { label: '邮件', hint: '未读、重要标记与同步时间' },
-  notice: { label: '今日通知', hint: '日程/待办/快递/邮件的规则汇总' }
+  notice: { label: '今日通知', hint: '日程/待办/' + (PARCEL_ENABLED ? '快递/' : '') + '邮件的规则汇总' }
 }
 
 export function useHomeCards() {
