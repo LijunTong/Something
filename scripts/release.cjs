@@ -3,17 +3,23 @@
 // Guards: must run on master, clean working tree, tag name = v + package.json version.
 //
 // Usage:
-//   node scripts/release.cjs                # full release
-//   node scripts/release.cjs --skip-upload  # package + tag + push, no GitHub Release
-//   node scripts/release.cjs --skip-push    # package + local tag only
-//   node scripts/release.cjs --skip-build   # reuse existing dist/ and installer
-//   node scripts/release.cjs --yes          # no confirmation prompts
+//   node scripts/release.cjs                        # full release, asks before pushing the tag
+//   node scripts/release.cjs --skip-upload          # package + tag + push, no GitHub Release
+//   node scripts/release.cjs --skip-push            # package + local tag only
+//   node scripts/release.cjs --skip-build           # reuse existing dist/ and installer
+//   node scripts/release.cjs --yes                  # no confirmation prompts
+//   node scripts/release.cjs --notes-file notes.md  # use your own tag message
+//
+// The annotated tag message lists what changed since the previous tag (generated
+// from git log, grouped into 新增 / 修复 / 优化 / 改动). The tag is always created
+// locally first; pushing it to origin is asked separately and defaults to "no".
 //
 // Auth: GITHUB_TOKEN / GH_TOKEN, else the token stored by git credential helper
 // (Git for Windows "wincred"/manager). The token is never printed or written anywhere.
 const { spawnSync } = require('node:child_process')
 const fs = require('node:fs')
 const path = require('node:path')
+const notesLib = require('./release-notes.cjs')
 
 const root = path.resolve(__dirname, '..')
 const API = 'https://api.github.com'
@@ -23,11 +29,16 @@ const REQUIRED_BRANCH = 'master'
 
 const argv = process.argv.slice(2)
 const flag = (name) => argv.includes('--' + name)
+const value = (name) => {
+  const i = argv.indexOf('--' + name)
+  return i >= 0 && argv[i + 1] && !argv[i + 1].startsWith('--') ? argv[i + 1] : ''
+}
 const OPT = {
   skipUpload: flag('skip-upload'),
   skipPush: flag('skip-push'),
   skipBuild: flag('skip-build'),
-  yes: flag('yes')
+  yes: flag('yes'),
+  notesFile: value('notes-file')
 }
 
 function log(step, msg) {
@@ -42,13 +53,15 @@ function fail(msg) {
 // Run a command in the repo root and return trimmed stdout; throws on non-zero exit.
 function run(cmd, args, opts) {
   const o = opts || {}
-  const stdio = o.capture === false ? 'inherit' : ['ignore', 'pipe', 'pipe']
+  const stdio = o.capture === false ? 'inherit' : (o.input != null ? ['pipe', 'pipe', 'pipe'] : ['ignore', 'pipe', 'pipe'])
   const env = { ...process.env, ...(o.env || {}) }
+  const spawnOpts = { cwd: root, encoding: 'utf8', stdio, env }
+  if (o.input != null) spawnOpts.input = o.input
   // Windows ships npx/npm as .cmd shims; spawnSync cannot exec those directly
   // (EINVAL), so route them through cmd.exe.
   const res = process.platform === 'win32' && /\.cmd$/i.test(cmd)
-    ? spawnSync(process.env.ComSpec || 'cmd.exe', ['/d', '/s', '/c', [cmd].concat(args).join(' ')], { cwd: root, encoding: 'utf8', stdio, env })
-    : spawnSync(cmd, args, { cwd: root, encoding: 'utf8', stdio, env })
+    ? spawnSync(process.env.ComSpec || 'cmd.exe', ['/d', '/s', '/c', [cmd].concat(args).join(' ')], spawnOpts)
+    : spawnSync(cmd, args, spawnOpts)
   const out = (res.stdout || '') + (res.stderr || '')
   if (res.error) fail(cmd + ' -> ' + res.error.message)
   if (res.status !== 0) {
@@ -140,7 +153,7 @@ if (tagRef.ok) {
   } else {
     moveTag = true
     log('preflight', 'tag ' + tag + ' points at ' + tagRef.out.slice(0, 7) + ', HEAD is ' + headSha.slice(0, 7))
-    if (!ask('Move tag ' + tag + ' to HEAD and force-push it?')) fail('aborted: existing tag ' + tag + ' was not moved')
+    if (!ask('Move tag ' + tag + ' to HEAD?')) fail('aborted: existing tag ' + tag + ' was not moved')
   }
 }
 
@@ -235,24 +248,73 @@ log('package', installer + ' (' + sizeMb + ' MB)')
 
 /* ---------------- 4. tag ---------------- */
 
+// The tag message is the release note: commits since the previous tag, grouped by
+// type. It is written into the annotated tag (and reused for the GitHub Release), so
+// "git tag -n" / "git show v1.0.3" answer "what changed here?" without a browser.
+let notes = ''
+try {
+  notes = notesLib.build({ root: root, version: version, tag: tag, notesFile: OPT.notesFile })
+} catch (e) {
+  fail(e && e.message ? e.message : String(e))
+}
+
+log('tag', 'message:')
+console.log(notes.split('\n').map((line) => '  ' + line).join('\n'))
+
+// Message goes through stdin (-F -) so blank lines and long lines survive intact;
+// -m would squeeze it into one paragraph.
+const tagArgs = (moveTag ? ['-f'] : []).concat(['-a', tag, '-F', '-'])
 if (moveTag) {
-  git(['tag', '-f', '-a', tag, '-m', 'v' + version])
+  git(tagArgs, { input: notes })
   log('tag', tag + ' moved to ' + headSha.slice(0, 7))
 } else if (!tagRef.ok) {
-  git(['tag', '-a', tag, '-m', 'v' + version])
+  git(tagArgs, { input: notes })
   log('tag', tag + ' created at ' + headSha.slice(0, 7))
 }
 log('tag', git(['describe', '--tags', '--always']).out)
 
 /* ---------------- 5. push ---------------- */
 
+// The tag exists locally at this point. Pushing it is a separate decision: a wrong
+// message or a premature version can still be fixed with "git tag -d" locally.
+//
+// Reads where the tag points on origin (empty when absent or unreachable, e.g. no
+// network or no stored credential). Annotated tags are peeled to their commit.
+function remoteTagSha() {
+  const res = git(['ls-remote', '--tags', 'origin', 'refs/tags/' + tag], { allowFail: true })
+  if (!res.ok) return ''
+  const peeled = /^([0-9a-f]{40})\s+refs\/tags\/[^\s]+\^\{\}$/m.exec(res.out)
+  if (peeled) return peeled[1]
+  const plain = /^([0-9a-f]{40})\s+refs\/tags\/[^\s]+$/m.exec(res.out)
+  return plain ? plain[1] : ''
+}
+
+let tagPushed = false
+
 if (OPT.skipPush) {
-  log('push', 'skipped (--skip-push)')
+  tagPushed = remoteTagSha() === headSha
+  log('push', 'skipped (--skip-push); tag ' + tag + (tagPushed ? ' already on origin' : ' stays local'))
 } else {
   log('push', 'git push origin ' + branch)
   pushGit(['push', 'origin', branch])
-  log('push', 'git push ' + (moveTag ? '-f ' : '') + 'origin ' + tag)
-  pushGit(moveTag ? ['push', '-f', 'origin', tag] : ['push', 'origin', tag])
+
+  const remoteSha = remoteTagSha()
+  if (remoteSha === headSha) {
+    log('push', tag + ' already on origin at ' + remoteSha.slice(0, 7))
+    tagPushed = true
+  } else {
+    if (remoteSha) {
+      log('push', 'tag on origin points at ' + remoteSha.slice(0, 7) + ', HEAD is ' + headSha.slice(0, 7))
+    }
+    const force = moveTag || Boolean(remoteSha)
+    if (ask('Push tag ' + tag + (force ? ' (force)' : '') + ' to origin? (already created locally)')) {
+      log('push', 'git push ' + (force ? '-f ' : '') + 'origin ' + tag)
+      pushGit(force ? ['push', '-f', 'origin', tag] : ['push', 'origin', tag])
+      tagPushed = true
+    } else {
+      log('push', 'tag kept local. Push it later with: git push origin ' + tag)
+    }
+  }
 }
 
 /* ---------------- 6. GitHub Release ---------------- */
@@ -297,10 +359,10 @@ async function publishRelease() {
   }
 
   const body = [
-    'Something v' + version,
+    notes,
     '',
-    '- Installer: Something-Setup-' + version + '.exe',
-    '- Source: ' + headSha,
+    '- 安装包：Something-Setup-' + version + '.exe',
+    '- 源码：' + headSha,
     '- Electron ' + (pkg.devDependencies && pkg.devDependencies.electron ? pkg.devDependencies.electron : '') + ' / Windows x64'
   ].join('\n')
 
@@ -366,6 +428,8 @@ async function publishRelease() {
 
 if (OPT.skipUpload) {
   log('release', 'skipped (--skip-upload)')
+} else if (!tagPushed) {
+  log('release', 'skipped: tag ' + tag + ' is local only; push it (git push origin ' + tag + ') then re-run: node scripts/release.cjs --skip-build --skip-push')
 } else {
   publishRelease().then(function (url) {
     log('done', 'released ' + tag + ' -> ' + url)
