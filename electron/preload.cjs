@@ -113,6 +113,9 @@ const api = {
     info: call('system:info'), ping: call('system:ping'), openPath: call('system:openPath'),
     openExternal: call('system:openExternal'), chooseDir: call('system:chooseDir'),
     checkUpdate: call('system:checkUpdate'),
+    updateStatus: call('system:updateStatus'),
+    downloadUpdate: call('system:downloadUpdate'),
+    installUpdate: call('system:installUpdate'),
     setLaunchAtLogin: call('system:setLaunchAtLogin'), loginItemEnabled: call('system:loginItemEnabled'),
     trayInfo: call('system:trayInfo'), trayHint: call('system:trayHint')
   },
@@ -136,6 +139,12 @@ const api = {
     const handler = function (_e, payload) { cb(payload) }
     ipcRenderer.on('data:changed', handler)
     return function () { ipcRenderer.removeListener('data:changed', handler) }
+  },
+  // 自动更新进度：主进程下载/安装时逐段推送，设置页显示在按钮下方
+  onUpdateProgress: function (cb) {
+    const handler = function (_e, payload) { cb(payload) }
+    ipcRenderer.on('update:progress', handler)
+    return function () { ipcRenderer.removeListener('update:progress', handler) }
   }
 }
 

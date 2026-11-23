@@ -1,11 +1,11 @@
 <script setup lang="ts">
 import SectionTitle from '@/components/settings/SectionTitle.vue'
 import BrandMark from '@/components/BrandMark.vue'
-import { computed, onMounted, ref } from 'vue'
-import { NCard, NButton, NTag, NModal, NDescriptions, NDescriptionsItem, NAlert, NList, NListItem, useMessage } from 'naive-ui'
+import { computed, onMounted, onUnmounted, ref } from 'vue'
+import { NCard, NButton, NTag, NModal, NDescriptions, NDescriptionsItem, NAlert, NList, NListItem, NProgress, useMessage } from 'naive-ui'
 import { call, bridge, hasBridge } from '@/lib/ipc'
 import { log } from '@/lib/logger'
-import type { UpdateCheckResult } from '@/types/api'
+import type { UpdateCheckResult, UpdateProgressEvent } from '@/types/api'
 
 const message = useMessage()
 const info = ref<{ version: string; userData: string; db: string } | null>(null)
@@ -25,6 +25,29 @@ const LICENSES = [
   { name: 'Electron', license: 'MIT' }
 ]
 
+// 自动更新状态：下载进度由主进程 update:progress 推送，本组件只负责显示
+type Phase = 'idle' | 'downloading' | 'ready' | 'installing' | 'error'
+const phase = ref<Phase>('idle')
+const percent = ref(0)
+const updateVersion = ref('')
+const updateError = ref('')
+
+const busy = computed(() => phase.value === 'downloading' || phase.value === 'installing')
+const progressStatus = computed<'default' | 'success' | 'error'>(() => {
+  if (phase.value === 'error') return 'error'
+  if (phase.value === 'installing') return 'success'
+  return 'default'
+})
+const progressText = computed(() => {
+  if (phase.value === 'downloading') return '正在下载 v' + updateVersion.value + ' · ' + percent.value + '%'
+  if (phase.value === 'ready') return '下载完成，正在启动安装 v' + updateVersion.value
+  if (phase.value === 'installing') return '正在安装 v' + updateVersion.value + '，应用会自动重启'
+  if (phase.value === 'error') return '更新失败：' + updateError.value
+  return ''
+})
+
+let offProgress: (() => void) | null = null
+
 onMounted(async () => {
   if (!hasBridge()) return
   try {
@@ -32,16 +55,67 @@ onMounted(async () => {
   } catch (e) {
     log.exception('settings.about', e)
   }
+  // 先订阅再读快照：下载完成的那一瞬间也不会漏掉 ready 事件
+  offProgress = bridge().onUpdateProgress(applyProgress)
+  try {
+    const st: UpdateProgressEvent | null = await call(() => bridge().system.updateStatus(), null)
+    if (st && st.state !== 'idle') applyProgress(st)
+  } catch (e) {
+    log.exception('settings.about.updateStatus', e)
+  }
 })
 
-// 检查更新：主进程读 GitHub 最新正式发布并与当前版本比对；
-// 有新版直接打开该版本的发布页，没有就提示已是最新。
+onUnmounted(() => {
+  if (offProgress) offProgress()
+})
+
+// 下载结束直接装机：安装程序由主进程分离启动，随后应用退出
+async function installNow() {
+  if (!hasBridge()) return
+  try {
+    await call(() => bridge().system.installUpdate(), false)
+  } catch (e) {
+    phase.value = 'error'
+    updateError.value = (e as Error).message || '安装程序启动失败'
+    log.exception('settings.about.install', e)
+  }
+}
+
+function applyProgress(p: UpdateProgressEvent) {
+  if (!p) return
+  if (p.version) updateVersion.value = p.version
+  if (p.state === 'downloading') {
+    phase.value = 'downloading'
+    percent.value = Math.max(0, Math.min(100, Number(p.percent) || 0))
+    return
+  }
+  if (p.state === 'ready') {
+    phase.value = 'ready'
+    percent.value = 100
+    void installNow()
+    return
+  }
+  if (p.state === 'installing') {
+    phase.value = 'installing'
+    percent.value = 100
+    return
+  }
+  if (p.state === 'error') {
+    phase.value = 'error'
+    updateError.value = p.message || '下载失败'
+    return
+  }
+  phase.value = 'idle'
+}
+
+// 检查更新：有新版本立即下载（进度显示在按钮下方），下载完自动安装；
+// 没有安装包或开发态无法自动安装时，回落到打开发布页手动下载。
 async function checkUpdate() {
   if (!hasBridge()) {
     message.warning('检查更新需要在桌面应用内运行')
     return
   }
-  if (checking.value) return
+  if (checking.value || busy.value) return
   checking.value = true
   try {
     const res: UpdateCheckResult | null = await call(() => bridge().system.checkUpdate(), null)
@@ -49,18 +123,45 @@ async function checkUpdate() {
       message.warning('未取到版本信息')
       return
     }
-    if (res.hasUpdate) {
-      message.success('发现新版本 v' + res.latest + '，正在打开 GitHub 发布页')
-      await call(() => bridge().system.openExternal({ url: res.url }), false)
-    } else if (res.noRelease) {
-      message.info('当前版本 ' + versionText.value + '，仓库还没有发布版本')
-      await call(() => bridge().system.openExternal({ url: res.url }), false)
-    } else {
-      message.success('已是最新版本 ' + versionText.value)
+    if (!res.hasUpdate) {
+      if (res.noRelease) {
+        message.info('当前版本 ' + versionText.value + '，仓库还没有发布版本')
+        await call(() => bridge().system.openExternal({ url: res.url }), false)
+      } else {
+        message.success('已是最新版本 ' + versionText.value)
+      }
+      return
+    }
+    updateVersion.value = res.latest || ''
+    updateError.value = ''
+    percent.value = 0
+    phase.value = 'downloading'
+    const started = await call(() => bridge().system.downloadUpdate(), { started: false, hasUpdate: false, version: null })
+    if (!started.started) {
+      phase.value = 'idle'
+      if (started.noAsset) {
+        message.warning('v' + res.latest + ' 没有附带安装包，正在打开发布页')
+        await call(() => bridge().system.openExternal({ url: res.url }), false)
+      } else {
+        message.success('已是最新版本')
+      }
     }
   } catch (e) {
     log.exception('settings.about.update', e)
-    message.error('检查更新失败：网络不可达或 GitHub 接口异常，请稍后再试')
+    const code = (e as Error & { code?: string }).code
+    if (code === 'NOT_PACKAGED') {
+      phase.value = 'idle'
+      message.info('开发模式不自动安装，正在打开发布页')
+      try {
+        await call(() => bridge().system.openExternal({ url: 'https://github.com/LijunTong/Something/releases' }), false)
+      } catch (err) {
+        log.exception('settings.about.openRelease', err)
+      }
+    } else {
+      phase.value = 'error'
+      updateError.value = (e as Error).message || '网络不可达或 GitHub 接口异常'
+      message.error('自动更新失败：' + updateError.value)
+    }
   } finally {
     checking.value = false
   }
@@ -97,8 +198,21 @@ async function checkUpdate() {
     </n-descriptions>
 
     <div class="set-actions">
-      <n-button size="small" :loading="checking" @click="checkUpdate">检查更新</n-button>
+      <n-button size="small" :loading="checking || phase === 'downloading'" :disabled="phase === 'installing'" @click="checkUpdate">
+        {{ phase === 'downloading' ? '正在下载…' : '检查更新' }}
+      </n-button>
       <n-button size="small" @click="showLicense = true">查看开源许可</n-button>
+    </div>
+
+    <div v-if="phase !== 'idle'" class="set-update">
+      <n-progress
+        type="line"
+        :percentage="percent"
+        :status="progressStatus"
+        :height="6"
+        :show-indicator="phase === 'downloading' || phase === 'error'"
+      />
+      <span class="set-muted">{{ progressText }}</span>
     </div>
 
     <n-modal v-model:show="showLicense" preset="card" title="开源许可" class="set-modal" :bordered="false">

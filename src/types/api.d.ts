@@ -14,9 +14,23 @@ export interface UpdateCheckResult {
   name: string | null
   publishedAt: string | null
   notes: string
+  /** 该版本对应的 Windows 安装包；没有可下载资源时为 null */
+  asset: { name: string; url: string; size: number } | null
   /** 仓库还没有任何正式发布 */
   noRelease: boolean
   checkedAt: number
+}
+
+/** 自动更新进度：主进程下载/安装安装包时推送，state 变化或下载百分比前进 */
+export interface UpdateProgressEvent {
+  state: 'idle' | 'downloading' | 'ready' | 'installing' | 'error'
+  version: string | null
+  /** 0-100；未知总大小时为 0 */
+  percent: number
+  received: number
+  total: number
+  /** 出错时的可读原因 */
+  message?: string
 }
 
 export interface TodoListRow { id: string; name: string; color: string | null; sort: number; isDefault?: boolean; deletedAt?: number | null }
@@ -266,6 +280,12 @@ export interface Api {
     info(): Promise<IpcResult<{ version: string; userData: string; defaultUserData: string; dataSource: string; db: string }>>
     /** 检查更新：读 GitHub 最新正式发布并与当前版本比对 */
     checkUpdate(): Promise<IpcResult<UpdateCheckResult>>
+    /** 自动更新：返回当前下载/安装进度快照，面板重挂载时恢复显示 */
+    updateStatus(): Promise<IpcResult<UpdateProgressEvent>>
+    /** 自动更新：开始下载最新版安装包；进度通过 onUpdateProgress 推送 */
+    downloadUpdate(): Promise<IpcResult<{ started: boolean; hasUpdate: boolean; version: string | null; noAsset?: boolean }>>
+    /** 自动更新：启动安装程序并退出应用 */
+    installUpdate(): Promise<IpcResult<boolean>>
     chooseDir(dto?: { title?: string; defaultPath?: string }): Promise<IpcResult<{ path: string | null }>>
     ping(): Promise<IpcResult<string>>
     openPath(p: string): Promise<IpcResult<boolean>>
@@ -276,6 +296,7 @@ export interface Api {
     trayInfo(): Promise<IpcResult<{ created: boolean; alive: boolean; iconPath: string; iconEmpty: boolean; iconSize: { width: number; height: number } | null; bounds: { x: number; y: number; width: number; height: number } | null }>>
   }
   onDataChanged(cb: (payload: { domain: string; action: string; at: number }) => void): () => void
+  onUpdateProgress(cb: (payload: UpdateProgressEvent) => void): () => void
   onWindowMaximized(cb: (maximized: boolean) => void): () => void
   onNavigate(cb: (to: string) => void): () => void
 }

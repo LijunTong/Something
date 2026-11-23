@@ -23,6 +23,8 @@
 .set-inline-end { justify-content: flex-end; }
 .set-inline-between { justify-content: space-between; width: 100%; }
 .set-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin-top: 16px; }
+/* 自动更新进度：紧跟按钮下方，进度条与说明纵向排列 */
+.set-update { display: grid; gap: 6px; max-width: 460px; margin-top: 10px; }
 
 
 

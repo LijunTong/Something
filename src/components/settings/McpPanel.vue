@@ -2,7 +2,7 @@
 // Agent 接入：本机 MCP 服务的开关、端口、访问令牌与客户端配置片段。
 // 服务只监听 127.0.0.1，写入的令牌由主进程生成，这里按需回显，不进入设置对象。
 import { computed, onMounted, ref } from 'vue'
-import { NAlert, NButton, NCard, NInput, NInputNumber, NSwitch, NTag, NText, useDialog, useMessage } from 'naive-ui'
+import { NAlert, NButton, NCard, NInput, NInputNumber, NSwitch, NTabPane, NTabs, NTag, NText, useDialog, useMessage } from 'naive-ui'
 import SectionTitle from '@/components/settings/SectionTitle.vue'
 import { call, bridge, hasBridge } from '@/lib/ipc'
 import { log } from '@/lib/logger'
@@ -203,27 +203,31 @@ onMounted(() => { void refresh() })
       <n-input :value="token" type="text" readonly size="small" />
     </div>
 
-    <SectionTitle title="通用 MCP 客户端" />
-    <p class="set-muted">把下面的片段加到支持 Streamable HTTP 的 MCP 客户端配置里；先点「显示令牌」替换占位符。</p>
-    <div class="mcp-block">
-      <n-input :value="configText" type="textarea" readonly :autosize="{ minRows: 6, maxRows: 12 }" />
-      <div class="mcp-row">
-        <n-button size="small" @click="copy(configText)">复制配置</n-button>
-        <n-text depth="3">工具：project_plan_write / project_plan_read / project_plan_item_update / project_plan_list</n-text>
-      </div>
-    </div>
-
-    <SectionTitle title="DeepSeek Harness" />
-    <p class="set-muted">
-      DeepSeek Harness 通过 cordis 插件接入：把下面的条目追加到 <code>%USERPROFILE%\.dsh\profiles\&lt;profile&gt;\cordis.patch.yml</code>，重启 Harness 生效。
-      已有同 id 条目时改 id 或直接改现有条目。
-    </p>
-    <div class="mcp-block">
-      <n-input :value="dshConfigText" type="textarea" readonly :autosize="{ minRows: 9, maxRows: 14 }" />
-      <div class="mcp-row">
-        <n-button size="small" @click="copy(dshConfigText)">复制配置</n-button>
-        <n-text depth="3">transport 为 streamable-http；令牌放在 headers.Authorization</n-text>
-      </div>
-    </div>
+    <SectionTitle title="客户端配置" />
+    <n-tabs type="line" animated>
+      <n-tab-pane name="generic" tab="通用 MCP 客户端">
+        <p class="set-muted">把下面的片段加到支持 Streamable HTTP 的 MCP 客户端配置里；先点「显示令牌」替换占位符。</p>
+        <div class="mcp-block">
+          <n-input :value="configText" type="textarea" readonly :autosize="{ minRows: 6, maxRows: 12 }" />
+          <div class="mcp-row">
+            <n-button size="small" @click="copy(configText)">复制配置</n-button>
+            <n-text depth="3">工具：project_plan_write / project_plan_read / project_plan_item_update / project_plan_list</n-text>
+          </div>
+        </div>
+      </n-tab-pane>
+      <n-tab-pane name="dsh" tab="DeepSeek Harness">
+        <p class="set-muted">
+          DeepSeek Harness 通过 cordis 插件接入：把下面的条目追加到 <code>%USERPROFILE%\.dsh\profiles\&lt;profile&gt;\cordis.patch.yml</code>，重启 Harness 生效。
+          已有同 id 条目时改 id 或直接改现有条目。
+        </p>
+        <div class="mcp-block">
+          <n-input :value="dshConfigText" type="textarea" readonly :autosize="{ minRows: 9, maxRows: 14 }" />
+          <div class="mcp-row">
+            <n-button size="small" @click="copy(dshConfigText)">复制配置</n-button>
+            <n-text depth="3">transport 为 streamable-http；令牌放在 headers.Authorization</n-text>
+          </div>
+        </div>
+      </n-tab-pane>
+    </n-tabs>
   </n-card>
 </template>

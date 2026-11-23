@@ -825,6 +825,12 @@ function registerIpc() {
     path: function () { return { file: logger.currentPath(), dir: logger.directory() } },
     files: function () { return logger.listFiles() }
   })
+  // 自动更新进度：下载/安装状态推给所有窗口，设置页据此在按钮下方显示进度
+  const emitUpdate = function (payload) {
+    BrowserWindow.getAllWindows().forEach(function (w) {
+      if (!w.isDestroyed()) w.webContents.send('update:progress', payload)
+    })
+  }
   registry.register('system', {
     // 数据目录与回退原因一起暴露，排查「写不进去」时不用再猜路径
     info: function () {
@@ -912,7 +918,27 @@ function registerIpc() {
       }
     },
     // 检查更新：读 GitHub 最新发布与当前版本比对，只回数据；是否跳转由渲染层决定
-    checkUpdate: function () { return updateSvc.check() }
+    checkUpdate: function () { return updateSvc.check() },
+    // 自动更新：当前下载/安装状态，设置页重新挂载时恢复进度显示
+    updateStatus: function () { return updateSvc.status() },
+    // 自动更新：只对 GitHub 上的正式安装包动手；开发态直接拒绝，避免装到源码目录
+    downloadUpdate: async function () {
+      if (!app.isPackaged) {
+        const e = new Error('开发模式不执行自动更新，请到发布页手动下载')
+        e.code = 'NOT_PACKAGED'
+        throw e
+      }
+      const info = await updateSvc.check()
+      if (!info.hasUpdate) return { started: false, hasUpdate: false, version: info.latest }
+      if (!info.asset) return { started: false, hasUpdate: true, version: info.latest, noAsset: true }
+      updateSvc.start(info, emitUpdate)
+      return { started: true, hasUpdate: true, version: info.latest }
+    },
+    // 自动更新：启动已下载的安装包（静默安装）并退出应用
+    installUpdate: function () {
+      updateSvc.install(emitUpdate)
+      return true
+    }
   })
 }
 
