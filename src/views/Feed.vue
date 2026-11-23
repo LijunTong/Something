@@ -2,7 +2,7 @@
 import { nextTick, ref, computed, onMounted, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import {
-  NButton, NInput, NTag, NText,
+  NButton, NCheckbox, NInput, NTag, NText,
   NBlockquote, NEmpty, NSpin, NUpload, NScrollbar, NAlert,
   NModal, NDrawer, NDrawerContent, useMessage, useDialog
 } from 'naive-ui'
@@ -35,6 +35,10 @@ const sources = ref<FeedSource[]>([])
 const allItems = ref<FeedItem[]>([])
 const kind = ref<FeedKind | ''>('unread')
 const groupId = ref('')
+/** 订阅筛选：点分类下的订阅行进入，再点一次取消；与分类筛选可叠加 */
+const sourceId = ref('')
+/** 列表多选：工具栏全选 / 批量已读 / 批量删除 */
+const selectedIds = ref<string[]>([])
 const selectedId = ref('')
 /** 阅读器默认不显示：点开文章才从右侧滑出，列表因此能占满整行宽度 */
 const showReader = ref(false)
@@ -81,13 +85,24 @@ const lastFetchText = computed(() => {
 })
 /** 默认分类：可改名、不可删除；删别的分类时它承接订阅 */
 const defaultCat = computed(() => groups.value.find((g) => g.isDefault) ?? null)
-/** 订阅归哪个分类：分类已经被删的源视为未分类，不计入任何一行 */
+/** 订阅归哪个分类：没有分类的旧数据落到默认分类，避免侧栏看不到它的订阅 */
 function groupOfSource(id: string): string | null {
-  return sources.value.find((s) => s.id === id)?.groupId ?? null
+  const s = sources.value.find((x) => x.id === id)
+  return s ? (s.groupId ?? defaultCat.value?.id ?? null) : null
 }
 /** 分类右侧数字：跟随上方选中的智能分类统计（选「未读」时显示该分类下的未读数） */
 function groupCount(id: string): number {
   return allItems.value.filter((i) => groupOfSource(i.sourceId) === id && matchesKind(i, kind.value)).length
+}
+/** 分类下的订阅：按名称排序，侧栏在分类行下方逐个列出 */
+function sourcesOf(gid: string): FeedSource[] {
+  return sources.value
+    .filter((s) => groupOfSource(s.id) === gid)
+    .sort((a, b) => String(a.title || a.url).localeCompare(String(b.title || b.url), 'zh-Hans-CN'))
+}
+/** 订阅右侧数字：口径与分类计数一致（跟随上方智能分类） */
+function sourceCount(s: FeedSource): number {
+  return allItems.value.filter((i) => i.sourceId === s.id && matchesKind(i, kind.value)).length
 }
 /** 分类口径：未读 / 收藏 / 稍后读；空值表示不过滤 */
 function matchesKind(it: FeedItem, k: FeedKind | ''): boolean {
@@ -96,13 +111,11 @@ function matchesKind(it: FeedItem, k: FeedKind | ''): boolean {
   if (k === 'later') return it.readLater
   return true
 }
-/** 列表筛选：智能分类（kind）与我的分类（groupId）同时命中才显示 */
+/** 列表筛选：智能分类（kind）+ 我的分类（groupId）+ 订阅（sourceId）同时命中才显示 */
 const visibleItems = computed(() => allItems.value
   .filter((it) => {
-    if (groupId.value) {
-      const s = sources.value.find((x) => x.id === it.sourceId)
-      if (!s || s.groupId !== groupId.value) return false
-    }
+    if (groupId.value && groupOfSource(it.sourceId) !== groupId.value) return false
+    if (sourceId.value && it.sourceId !== sourceId.value) return false
     if (!matchesKind(it, kind.value)) return false
     return true
   })
@@ -147,10 +160,11 @@ function onListScroll(e: Event): void {
   if (el.scrollTop + el.clientHeight >= el.scrollHeight - 80) loadMore()
 }
 watch(keyword, () => { page.value = 1 })
-/** 切换分类：页码回到第一页并收起阅读器，避免还停在上一个分类的文章 */
-watch([groupId, kind], () => {
+/** 切换分类 / 订阅：页码回到第一页、收起阅读器、清空多选，避免停在上一个视图的文章上 */
+watch([groupId, sourceId, kind], () => {
   page.value = 1
   showReader.value = false
+  selectedIds.value = []
 })
 /** 抽屉关闭后清掉选中项，下次点开别的文章不会先闪一下上一篇 */
 watch(showReader, (v) => { if (!v) selectedId.value = '' })
@@ -211,9 +225,14 @@ function toggleSmart(k: FeedKind): void {
 function setGroup(g: FeedGroupRow): void {
   groupId.value = g.id
 }
-/** 再次点击已选中的分类即取消分类筛选 */
+/** 再次点击已选中的分类即取消分类筛选；换分类时清掉订阅筛选（旧订阅不属于新分类） */
 function toggleGroup(g: FeedGroupRow): void {
   groupId.value = groupId.value === g.id ? '' : g.id
+  sourceId.value = ''
+}
+/** 点订阅行：在分类基础上再按订阅筛选，再点一次取消 */
+function toggleSource(s: FeedSource): void {
+  sourceId.value = sourceId.value === s.id ? '' : s.id
 }
 
 /** 统一加载：全部数据经 IPC，调用失败由 call 的 fallback 兜底，异常统一记录 */
@@ -231,6 +250,14 @@ async function loadAll(): Promise<void> {
     // 进入页面 / 刷新后不自动展开文章：阅读器只在用户点击列表项后才出现。
     // 仅在当前选中的文章已不存在（比如被删源清理）时清空，避免右侧停在脏数据上。
     if (selectedId.value && !all.some((i) => i.id === selectedId.value)) selectedId.value = ''
+    // 分组/订阅被删后，残留的筛选条件退回「全部」，否则列表会空且侧栏无选中项
+    if (groupId.value && !g.some((x) => x.id === groupId.value)) groupId.value = ''
+    if (sourceId.value && !s.some((x) => x.id === sourceId.value)) sourceId.value = ''
+    // 多选只保留仍存在的文章
+    if (selectedIds.value.length) {
+      const aliveSel = new Set(all.map((i) => i.id))
+      selectedIds.value = selectedIds.value.filter((id) => aliveSel.has(id))
+    }
     // 详情缓存只留仍存在的文章，避免删源后还挂着几十 KB 的孤儿 HTML
     const alive = new Set(all.map((i) => i.id))
     const keptIds = Object.keys(detailCache.value).filter((id) => alive.has(id))
@@ -332,6 +359,65 @@ async function refreshAll(): Promise<void> {
   } finally {
     busy.value = false
   }
+}
+
+// —— 列表工具栏：全选 / 批量已读 / 批量删除（与邮件列表一致） ——
+/** 全选范围 = 当前已渲染的列表项（置顶项 + 已加载分页），不是全库 */
+const selectableIds = computed(() => [pinnedItem.value?.id, ...pagedItems.value.map((i) => i.id)].filter((x): x is string => !!x))
+const checkedAll = computed(() => selectableIds.value.length > 0 && selectableIds.value.every((id) => selectedIds.value.includes(id)))
+const checkedSome = computed(() => !checkedAll.value && selectableIds.value.some((id) => selectedIds.value.includes(id)))
+function toggleRow(id: string, v: boolean): void {
+  selectedIds.value = v ? [...new Set([...selectedIds.value, id])] : selectedIds.value.filter((x) => x !== id)
+}
+function toggleAll(v: boolean): void {
+  selectedIds.value = v ? [...selectableIds.value] : []
+}
+/** 批量标记已读：先乐观更新，失败回滚 */
+async function markSelectedRead(): Promise<void> {
+  const ids = selectedIds.value.slice()
+  if (!ids.length) return
+  const hit = allItems.value.filter((i) => ids.includes(i.id) && !i.read)
+  if (!hit.length) { message.info('选中的文章都已是已读'); return }
+  hit.forEach((i) => { i.read = true })
+  try {
+    await call(() => feedBridge().markReadMany(plain({ ids })), ids.length)
+    message.success('已标记 ' + hit.length + ' 篇为已读')
+    selectedIds.value = []
+  } catch (e) {
+    hit.forEach((i) => { i.read = false })
+    log.exception('feed.markReadMany', e)
+    message.error('标记已读失败')
+  }
+}
+/** 批量删除：二次确认后删文章本身，不影响订阅源；正在读的文章被删则关掉阅读器 */
+function removeSelected(): void {
+  const ids = selectedIds.value.slice()
+  if (!ids.length) return
+  dialog.warning({
+    title: '删除文章',
+    content: '确定删除选中的 ' + ids.length + ' 篇文章？删除后不可恢复。',
+    positiveText: '删除',
+    negativeText: '取消',
+    onPositiveClick: async () => {
+      try {
+        const n = await call(() => feedBridge().removeItems(plain({ ids })), ids.length)
+        const gone = new Set(ids)
+        allItems.value = allItems.value.filter((i) => !gone.has(i.id))
+        selectedIds.value = []
+        if (gone.has(selectedId.value)) {
+          selectedId.value = ''
+          showReader.value = false
+        }
+        const next: typeof detailCache.value = {}
+        for (const id of Object.keys(detailCache.value)) if (!gone.has(id)) next[id] = detailCache.value[id]
+        detailCache.value = next
+        message.success('已删除 ' + n + ' 篇文章')
+      } catch (e) {
+        log.exception('feed.removeItems', e)
+        message.error('删除失败')
+      }
+    }
+  })
 }
 
 // —— 分类管理：默认分类可改名不可删；删其它分类时订阅迁到默认分类 ——
@@ -561,23 +647,43 @@ watch(unreadCount, (n) => store.setFeedUnread(n), { immediate: true })
             <svg><use :href="'#' + nav.icon" /></svg><span class="fd-nav-label">{{ nav.label }}</span><span class="fd-nav-count">{{ smartCount(nav.kind) }}</span>
           </a>
 
-          <!-- 我的分类：与待办页「我的清单」同构，管理入口在标题右侧 -->
+          <!-- 我的分类：与待办页「我的清单」同构，管理入口在标题右侧；每个分类下挂该分类的订阅 -->
           <div class="fd-group fd-group-head">
             <span>我的分类</span>
             <n-button text size="tiny" @click="openCatManage">分类管理</n-button>
           </div>
-          <a v-for="g in groups" :key="g.id" class="fd-nav" :class="{ on: groupId === g.id }" href="#" @click.prevent="toggleGroup(g)">
-            <span class="dotc" :style="{ background: g.color || 'var(--muted-2)' }"></span><span class="fd-nav-label">{{ g.name }}</span><span class="fd-nav-count">{{ groupCount(g.id) }}</span>
-          </a>
-          <div v-if="!groups.length" class="fd-group">还没有分类，点「分类管理」新增</div>
+          <n-scrollbar v-if="groups.length" class="fd-cats">
+            <template v-for="g in groups" :key="g.id">
+              <a class="fd-nav" :class="{ on: groupId === g.id }" href="#" @click.prevent="toggleGroup(g)">
+                <span class="dotc" :style="{ background: g.color || 'var(--muted-2)' }"></span><span class="fd-nav-label">{{ g.name }}</span><span class="fd-nav-count">{{ groupCount(g.id) }}</span>
+              </a>
+              <a v-for="s in sourcesOf(g.id)" :key="s.id" class="fd-nav fd-nav-sub" :class="{ on: sourceId === s.id }" href="#" @click.prevent="toggleSource(s)">
+                <span class="fd-nav-label">{{ s.title || s.url }}</span><span class="fd-nav-count">{{ sourceCount(s) }}</span>
+              </a>
+            </template>
+          </n-scrollbar>
+          <div v-else class="fd-group">还没有分类，点「分类管理」新增</div>
         </aside>
 
         <section class="card fd-list">
+          <!-- 列表工具栏：与邮件列表一致（全选 + 刷新 + 右对齐 标记已读 / 删除） -->
+          <div class="fd-list-tools">
+            <n-checkbox :checked="checkedAll" :indeterminate="checkedSome" @update:checked="toggleAll" />
+            <n-button size="tiny" quaternary title="刷新" :loading="busy" :disabled="busy" @click="refreshAll">
+              <template #icon><svg class="fd-ico" aria-hidden="true"><use href="#i-refresh" /></svg></template>
+            </n-button>
+            <span class="fd-tools-spacer"></span>
+            <n-button size="tiny" quaternary title="标记已读" :disabled="!selectedIds.length" @click="markSelectedRead">
+              <template #icon><svg class="fd-ico" aria-hidden="true"><use href="#i-ok" /></svg></template>
+            </n-button>
+            <n-button size="tiny" quaternary title="删除" :disabled="!selectedIds.length" @click="removeSelected">
+              <template #icon><svg class="fd-ico" aria-hidden="true"><use href="#i-trash" /></svg></template>
+            </n-button>
+          </div>
           <div class="fd-search">
             <n-input v-model:value="keyword" size="small" clearable placeholder="搜索标题…">
               <template #prefix><svg class="fd-search-ico"><use href="#i-search" /></svg></template>
             </n-input>
-            <n-button size="small" :loading="busy" :disabled="busy" title="抓取全部订阅" @click="refreshAll">刷新</n-button>
           </div>
           <n-scrollbar class="fd-items" @scroll="onListScroll">
             <n-list v-if="pagedItems.length || pinnedItem" hoverable clickable>
@@ -590,34 +696,44 @@ watch(unreadCount, (n) => store.setFeedUnread(n), { immediate: true })
                 :style="selectedId === pinnedItem.id && highlightId !== pinnedItem.id ? { background: 'var(--primary-softer)' } : undefined"
                 @click="openArticle(pinnedItem)"
               >
-                <div class="fd-item">
-                  <div class="fd-item-meta">
-                    <n-tag size="tiny" round>来自仪表盘</n-tag>
-                    <n-tag v-if="!pinnedItem.read" size="tiny" type="primary" round>未读</n-tag>
-                    <span class="fd-item-source">{{ sourceName(pinnedItem) }}</span>
-                    <span class="fd-item-time">{{ fmtAgo(pinnedItem.publishedAt) }}</span>
+                <div class="fd-row">
+                  <span @click.stop>
+                    <n-checkbox :checked="selectedIds.includes(pinnedItem?.id ?? '')" @update:checked="(v: boolean) => toggleRow(pinnedItem?.id ?? '', v)" />
+                  </span>
+                  <div class="fd-item">
+                    <div class="fd-item-meta">
+                      <n-tag size="tiny" round>来自仪表盘</n-tag>
+                      <n-tag v-if="!pinnedItem.read" size="tiny" type="primary" round>未读</n-tag>
+                      <span class="fd-item-source">{{ sourceName(pinnedItem) }}</span>
+                      <span class="fd-item-time">{{ fmtAgo(pinnedItem.publishedAt) }}</span>
+                    </div>
+                    <n-text strong class="fd-item-title">{{ pinnedItem.title }}</n-text>
+                    <n-text depth="3" class="fd-item-sum">{{ pinnedItem.summary }}</n-text>
                   </div>
-                  <n-text strong class="fd-item-title">{{ pinnedItem.title }}</n-text>
-                  <n-text depth="3" class="fd-item-sum">{{ pinnedItem.summary }}</n-text>
                 </div>
               </n-list-item>
               <n-list-item
-            v-for="item in pagedItems"
-            :key="item.id"
-            :class="{ 'fd-row-active': selectedId === item.id, 'focus-flash': highlightId === item.id }"
-            :data-focus-id="item.id"
-            :style="selectedId === item.id && highlightId !== item.id ? { background: 'var(--primary-softer)' } : undefined"
-            :aria-selected="selectedId === item.id"
-            @click="openArticle(item)"
-          >
-                <div class="fd-item" :data-item-id="item.id">
-                  <div class="fd-item-meta">
-                    <n-tag v-if="!item.read" size="tiny" type="primary" round>未读</n-tag>
-                    <span class="fd-item-source">{{ sourceName(item) }}</span>
-                    <span class="fd-item-time">{{ fmtAgo(item.publishedAt) }}</span>
+                v-for="item in pagedItems"
+                :key="item.id"
+                :class="{ 'fd-row-active': selectedId === item.id, 'focus-flash': highlightId === item.id }"
+                :data-focus-id="item.id"
+                :style="selectedId === item.id && highlightId !== item.id ? { background: 'var(--primary-softer)' } : undefined"
+                :aria-selected="selectedId === item.id"
+                @click="openArticle(item)"
+              >
+                <div class="fd-row">
+                  <span @click.stop>
+                    <n-checkbox :checked="selectedIds.includes(item.id)" @update:checked="(v: boolean) => toggleRow(item.id, v)" />
+                  </span>
+                  <div class="fd-item" :data-item-id="item.id">
+                    <div class="fd-item-meta">
+                      <n-tag v-if="!item.read" size="tiny" type="primary" round>未读</n-tag>
+                      <span class="fd-item-source">{{ sourceName(item) }}</span>
+                      <span class="fd-item-time">{{ fmtAgo(item.publishedAt) }}</span>
+                    </div>
+                    <n-text strong class="fd-item-title">{{ item.title }}</n-text>
+                    <n-text depth="3" class="fd-item-sum">{{ item.summary }}</n-text>
                   </div>
-                  <n-text strong class="fd-item-title">{{ item.title }}</n-text>
-                  <n-text depth="3" class="fd-item-sum">{{ item.summary }}</n-text>
                 </div>
               </n-list-item>
             </n-list>

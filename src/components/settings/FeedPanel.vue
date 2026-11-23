@@ -9,7 +9,7 @@ import type { DataTableColumns } from 'naive-ui'
 import { call, bridge, hasBridge, plain } from '@/lib/ipc'
 import { log } from '@/lib/logger'
 import { useSettings } from '@/composables/useSettings'
-import type { FeedSetting, FeedSource, ExportResult } from '@/types/api'
+import type { FeedSetting, FeedGroupRow, FeedSource, ExportResult } from '@/types/api'
 
 const props = defineProps<{ embedded?: boolean }>()
 /** 嵌入到信息流页时通知父级重新加载订阅源与文章 */
@@ -18,7 +18,7 @@ const { settings, save } = useSettings()
 const message = useMessage()
 
 const sources = ref<FeedSource[]>([])
-const groups = ref<Array<{ id: string; name: string }>>([])
+const groups = ref<FeedGroupRow[]>([])
 const loading = ref(false)
 const busy = ref('')
 const newTitle = ref('')
@@ -39,6 +39,14 @@ const intervalOptions = [
 ]
 
 const groupOptions = computed(() => groups.value.map((g) => ({ label: g.name, value: g.id })))
+/** 默认分类：新增订阅不选分组时落这里，服务端也会再兜一层 */
+const defaultGroupId = computed(() => groups.value.find((g) => g.isDefault)?.id ?? groups.value[0]?.id ?? null)
+
+/** 展开新增区时把分组预选成默认分类；收起不清空，避免误丢已输入内容 */
+function toggleAdd(): void {
+  showAdd.value = !showAdd.value
+  if (showAdd.value) newGroup.value = defaultGroupId.value
+}
 const sourceIntervalOptions = [{ label: '跟随默认', value: 0 }, ...intervalOptions]
 
 function groupName(id: string | null): string {
@@ -94,10 +102,12 @@ async function load() {
   try {
     const [s, g] = await Promise.all([
       call(() => bridge().feed.sources(), [] as FeedSource[]),
-      call(() => bridge().feed.groups(), [] as Array<{ id: string; name: string }>)
+      call(() => bridge().feed.groups(), [] as FeedGroupRow[])
     ])
     sources.value = s
     groups.value = g
+    // 分组被删/改名后，新增区里残留的旧值重置回默认分类
+    if (!newGroup.value || !groups.value.some((x) => x.id === newGroup.value)) newGroup.value = defaultGroupId.value
   } catch (e) {
     log.exception('settings.feed', e)
     message.error('读取订阅源失败：' + ((e as Error).message || '未知错误'))
@@ -120,14 +130,15 @@ async function saveFeed(patch: Partial<FeedSetting>) {
  */
 async function resolveGroupId(): Promise<string | null> {
   const raw = newGroup.value
-  if (!raw) return null
+  // 没选也没输入就落默认分类：与「新增时默认选中默认分组」一致
+  if (!raw) return defaultGroupId.value
   const text = String(raw).trim()
-  if (!text) return null
+  if (!text) return defaultGroupId.value
   const byId = groups.value.find((g) => g.id === text)
   if (byId) return byId.id
   const byName = groups.value.find((g) => g.name === text)
   if (byName) return byName.id
-  const rows = await call(() => bridge().feed.addGroup(plain({ name: text })), [] as Array<{ id: string; name: string }>)
+  const rows = await call(() => bridge().feed.addGroup(plain({ name: text })), [] as FeedGroupRow[])
   groups.value = rows
   const created = rows.find((g) => g.name === text)
   return created ? created.id : null
@@ -146,7 +157,8 @@ async function addSource() {
     )
     newUrl.value = ''
     newTitle.value = ''
-    newGroup.value = null
+    // 连续添加时仍默认落默认分类
+    newGroup.value = defaultGroupId.value
     await load()
     emit('changed')
     message.success('订阅源已添加')
@@ -299,7 +311,7 @@ onMounted(load)
     <!-- 订阅源数量与「添加订阅」入口：NCard 在无标题时不渲染 header-extra，所以放进内容区 -->
     <div class="set-actions">
       <n-tag size="small">{{ sources.length }} 个来源</n-tag>
-      <n-button size="small" type="primary" @click="showAdd = !showAdd">{{ showAdd ? '收起' : '+ 添加订阅' }}</n-button>
+      <n-button size="small" type="primary" @click="toggleAdd">{{ showAdd ? '收起' : '+ 添加订阅' }}</n-button>
     </div>
 
     <SectionTitle title="已订阅" />

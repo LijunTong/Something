@@ -433,6 +433,15 @@ function registerIpc() {
       handler: feedSvc.updateSource
     },
     items: feedSvc.items, markRead: feedSvc.markRead,
+    // 列表工具栏的批量操作：ids 至少 1 条，非法入参由 zod 拦下
+    markReadMany: {
+      schema: z.object({ ids: z.array(z.string().min(1)).min(1) }),
+      handler: function (dto) { return feedSvc.markReadMany(dto.ids) }
+    },
+    removeItems: {
+      schema: z.object({ ids: z.array(z.string().min(1)).min(1) }),
+      handler: function (dto) { return feedSvc.removeItems(dto.ids) }
+    },
     // 单篇详情：registry 把 zod 解析后的对象交给 handler，必须在这里解包
     detail: {
       schema: z.object({ id: z.string().min(1) }),

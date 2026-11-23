@@ -4,7 +4,8 @@
 /* 三栏布局：账户与文件夹 / 邮件列表 / 阅读窗格 */
 .mail-layout {
   display: grid;
-  grid-template-columns: 200px 340px minmax(0, 1fr);
+  /* 两栏：账户与文件夹 / 邮件列表；阅读器改为点开后的右侧抽屉 */
+  grid-template-columns: 200px minmax(0, 1fr);
   gap: 16px;
   align-items: start;
 }
@@ -12,7 +13,7 @@
 .ml-auto-sync { width: 148px; }
 .ml-side { padding: 10px; min-width: 0; }
 .ml-list { padding: 10px; min-width: 0; }
-.ml-read { padding: 0; min-width: 0; overflow: hidden; }
+
 
 /* 左栏导航行与分组标题统一走 side-nav.css（与待办页同形），这里只留侧栏自身布局 */
 .ml-side-foot { margin-top: 10px; padding: 0 4px; }
@@ -54,8 +55,9 @@
 .ml-empty { display: grid; place-items: center; min-height: calc(100vh - 360px); padding: 20px 0; }
 
 /* 阅读窗格 */
-.ml-read-empty { display: grid; place-items: center; min-height: 240px; padding: 20px; }
-.ml-content { max-height: calc(100vh - 220px); }
+/* 抽屉内阅读区：工具条固定、正文自己滚动，高度与信息流阅读器同构 */
+.ml-reader-body { display: flex; flex-direction: column; height: calc(100vh - 130px); min-height: 0; }
+.ml-content { flex: 1; min-height: 0; }
 .ml-inner { padding: 18px 22px; }
 .ml-content h2 { margin: 0 0 14px; }
 .ml-from { display: flex; align-items: center; gap: 9px; }
@@ -94,5 +96,4 @@
 
 @media (max-width: 1180px) {
   .mail-layout { grid-template-columns: 180px minmax(0, 1fr); }
-  .ml-read { display: none; }
 }

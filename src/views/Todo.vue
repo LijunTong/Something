@@ -79,6 +79,7 @@ function onShortcut(e: KeyboardEvent) {
   if (matchesCombo(e, map?.newTodo || 'N')) {
     e.preventDefault()
     draft.value = blankDraft()
+    draft.value.listId = pickListId()
     showModal.value = true
     return
   }
@@ -155,7 +156,7 @@ async function quickAdd() {
   if (!title) return
   await withLoading(async () => {
     await store.addTodo(title, {
-      listId: activeListId.value,
+      listId: pickListId(),
       dueAt: startOfToday() + 86399000
     })
     quickTitle.value = ''
@@ -279,6 +280,17 @@ const listDraftName = ref('')
 
 /** 默认清单：改名可以，删除会被拦下；删除其它清单时它的待办迁到这里 */
 const defaultList = computed(() => store.todoLists.find((l) => l.isDefault) || null)
+
+/** 新建时的清单：优先默认清单；清单列表还没加载时返回 null，交给服务层兜底 */
+function defaultListId(): string | null {
+  return defaultList.value?.id ?? store.todoLists[0]?.id ?? null
+}
+
+/** 当前筛选的清单已被删除时退回默认清单，避免新建落到不存在的 listId */
+function pickListId(): string | null {
+  const cur = activeListId.value
+  return cur && store.todoLists.some((l) => l.id === cur) ? cur : defaultListId()
+}
 
 function startEditList(l: TodoListRow) {
   editingListId.value = l.id
@@ -471,7 +483,7 @@ function pickList(id: string) {
 function openCreate() {
   editingId.value = null
   draft.value = blankDraft()
-  draft.value.listId = activeListId.value
+  draft.value.listId = pickListId()
   showModal.value = true
 }
 

@@ -41,6 +41,11 @@ const accounts = ref<MailAccount[]>([])
 const folders = ref<MailFolder[]>([])
 const mails = ref<MailRow[]>([])
 const selected = ref<MailRow | null>(null)
+/** 阅读器默认不显示：点邮件才从右侧抽屉展开，两栏列表因此能占满整行宽度 */
+const showReader = ref(false)
+// 关闭抽屉清掉选中，避免列表里残留高亮；选中被清空（删除 / 标记未读）时同步关抽屉
+watch(showReader, (v) => { if (!v && selected.value) selected.value = null })
+watch(selected, (v) => { if (!v) showReader.value = false })
 const active = ref<FolderPick>({ label: '统一收件箱', kind: 'inbox' })
 const search = ref('')
 const loading = ref(false)
@@ -231,6 +236,7 @@ async function openMail(row: MailRow) {
   try {
     const detail = await call(() => mailApi().read(plain(row.id)), { ...row })
     selected.value = detail
+    showReader.value = true
     showRemoteImages.value = false
     // 有 MIME HTML 就直接按 HTML 阅读；纯文本邮件自动落到纯文本分支
     showHtml.value = Boolean(detail.bodyHtml)
@@ -260,6 +266,7 @@ async function applyFocus(id: string): Promise<void> {
   const detail = await call(() => mailApi().read(plain(key)), null as MailRow | null)
   if (!detail) { missFocus(); return }
   selected.value = detail
+  showReader.value = true
   showRemoteImages.value = false
   showHtml.value = Boolean(detail.bodyHtml)
   await loadFolders()
@@ -655,9 +662,13 @@ async function reloadAll() {
         </n-spin>
       </section>
 
-      <!-- 右栏：阅读窗格 -->
-      <section class="card ml-read">
-        <template v-if="selected">
+    </div>
+
+    <!-- 阅读器：默认不显示，点邮件后从右侧滑出；两栏列表因此能占满整行宽度 -->
+    <n-drawer v-model:show="showReader" :width="680" placement="right">
+      <n-drawer-content :native-scrollbar="false" closable>
+        <template #header>{{ selected ? (selected.subject || '（无主题）') : '阅读' }}</template>
+        <div v-if="selected" class="ml-reader-body">
           <div class="ml-tools">
             <n-button size="tiny" quaternary title="在网页邮箱中打开" @click="openWebmail(selected.accountId)">
               <template #icon><svg class="mi" aria-hidden="true"><use href="#i-mail" /></svg></template>
@@ -724,10 +735,9 @@ async function reloadAll() {
               </div>
             </div>
           </n-scrollbar>
-        </template>
-        <div v-else class="ml-read-empty"><n-empty description="选择左侧邮件开始阅读" /></div>
-      </section>
-    </div>
+        </div>
+      </n-drawer-content>
+    </n-drawer>
 
     <!-- 邮箱账户抽屉：新增/编辑/测试/删除都在这里，不再跳设置页 -->
     <n-drawer v-model:show="showAccounts" :width="760" placement="right">

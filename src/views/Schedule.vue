@@ -315,7 +315,7 @@ function openCreate() {
     startAt,
     endAt,
     place: '',
-    calendarId: calendars.value[0]?.id ?? null,
+    calendarId: defaultCalendar.value?.id ?? calendars.value[0]?.id ?? null,
     remindMin: 10,
     recurRule: 'none',
     note: ''

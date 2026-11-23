@@ -364,6 +364,10 @@ export interface FeedApi {
   items(filter?: { sourceId?: string; group?: string; kind?: 'unread' | 'starred' | 'later' | 'all' }): Promise<IpcResult<FeedItem[]>>
   detail(dto: { id: string }): Promise<IpcResult<FeedItem>>
   markRead(id: string): Promise<IpcResult<boolean>>
+  /** 批量标记已读：工具栏多选，返回实际更新条数 */
+  markReadMany(dto: { ids: string[] }): Promise<IpcResult<number>>
+  /** 批量删除文章：只删文章，不动订阅源，返回实际删除条数 */
+  removeItems(dto: { ids: string[] }): Promise<IpcResult<number>>
   toggleStar(id: string): Promise<IpcResult<boolean>>
   toggleLater(id: string): Promise<IpcResult<boolean>>
   refresh(dto?: { sourceId?: string }): Promise<IpcResult<{ added: number; updated: number; skipped: number; failed: number }>>

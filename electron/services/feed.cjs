@@ -211,6 +211,26 @@ function toggleLater(id) {
   })
 }
 
+/** 批量标记已读：工具栏多选后一次更新，返回实际更新条数 */
+function markReadMany(ids) {
+  const list = (ids || []).map(String).filter(Boolean)
+  if (!list.length) return 0
+  return withTx(function () {
+    const marks = list.map(function () { return '?' }).join(',')
+    return get().prepare('UPDATE feed_item SET read = 1 WHERE id IN (' + marks + ')').run(...list).changes
+  })
+}
+
+/** 批量删除文章：只删 feed_item，不动订阅源；删除后不可恢复 */
+function removeItems(ids) {
+  const list = (ids || []).map(String).filter(Boolean)
+  if (!list.length) return 0
+  return withTx(function () {
+    const marks = list.map(function () { return '?' }).join(',')
+    return get().prepare('DELETE FROM feed_item WHERE id IN (' + marks + ')').run(...list).changes
+  })
+}
+
 // —— 刷新：真实抓取 RSS / Atom ——
 // 说明：网络请求必须放在 better-sqlite3 的同步事务之外，这里先并发抓取，再一次性写库。
 const FETCH_TIMEOUT_MS = 12000
@@ -499,7 +519,8 @@ function exportOPML() {
 module.exports = {
   groups: groups, addGroup: addGroup, updateGroup: updateGroup, removeGroup: removeGroup, sources: sources, addSource: addSource,
   removeSource: removeSource, toggleSource: toggleSource, updateSource: updateSource, items: items, detail: detail,
-  markRead: markRead, toggleStar: toggleStar, toggleLater: toggleLater,
+  markRead: markRead, markReadMany: markReadMany, removeItems: removeItems,
+  toggleStar: toggleStar, toggleLater: toggleLater,
   refresh: refresh, importOPML: importOPML, exportOPML: exportOPML
 }
 

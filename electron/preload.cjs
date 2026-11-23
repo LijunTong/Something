@@ -45,6 +45,7 @@ const api = {
     removeSource: call('feed:removeSource'), toggleSource: call('feed:toggleSource'),
     updateSource: call('feed:updateSource'),
     items: call('feed:items'), detail: call('feed:detail'), markRead: call('feed:markRead'),
+    markReadMany: call('feed:markReadMany'), removeItems: call('feed:removeItems'),
     toggleStar: call('feed:toggleStar'), toggleLater: call('feed:toggleLater'),
     refresh: call('feed:refresh'), importOPML: call('feed:importOPML'), exportOPML: call('feed:exportOPML')
   },

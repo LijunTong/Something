@@ -123,8 +123,12 @@ function create(dto) {
   return withTx(function () {
     const t = now()
     const id = uid('todo')
+    // 没指定清单就落到默认清单：快速添加、信息流/日程/快递「转为待办」都不传 listId，
+    // 兜底后不会留下「无清单」的待办（侧栏任何清单下都看不到它）。
+    const fallbackList = dto.listId ? null : defaultList()
+    const listId = dto.listId || (fallbackList ? fallbackList.id : null)
     get().prepare('INSERT INTO todo (id,title,note,list_id,priority,due_at,remind_at,status,recur_rule,source_type,source_ref,labels,schedule_id,sort,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)')
-      .run(id, dto.title, dto.note || null, dto.listId || null, dto.priority || '中', dto.dueAt || null, dto.remindAt || null, dto.status || '未开始', dto.recurRule || null, dto.sourceType || null, dto.sourceRef || null, serializeLabels(dto.labels), dto.scheduleId || null, dto.sort || 0, t, t)
+      .run(id, dto.title, dto.note || null, listId, dto.priority || '中', dto.dueAt || null, dto.remindAt || null, dto.status || '未开始', dto.recurRule || null, dto.sourceType || null, dto.sourceRef || null, serializeLabels(dto.labels), dto.scheduleId || null, dto.sort || 0, t, t)
     if (dto.subtasks && dto.subtasks.length) {
       const ins = get().prepare('INSERT INTO todo_subtask (id,todo_id,title,done,sort) VALUES (?,?,?,?,?)')
       dto.subtasks.forEach(function (s, i) { ins.run(uid('sub'), id, s.title, bool(s.done), i) })

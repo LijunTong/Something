@@ -113,8 +113,11 @@ function create(dto) {
   return withTx(function () {
     const t = now()
     const id = uid('sch')
+    // 没指定分组就落到默认分组：表单预选之外再兜一层，避免出现不属于任何分组的日程
+    const fallbackCal = dto.calendarId ? null : defaultCalendar()
+    const calendarId = dto.calendarId || (fallbackCal ? fallbackCal.id : null)
     get().prepare('INSERT INTO schedule (id,title,start_at,end_at,all_day,place,calendar_id,remind_min,recur_rule,note,status,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)')
-      .run(id, dto.title, dto.startAt, dto.endAt, bool(dto.allDay), dto.place || null, dto.calendarId || null, dto.remindMin == null ? 10 : dto.remindMin, dto.recurRule || null, dto.note || null, dto.status || '确认', t, t)
+      .run(id, dto.title, dto.startAt, dto.endAt, bool(dto.allDay), dto.place || null, calendarId, dto.remindMin == null ? 10 : dto.remindMin, dto.recurRule || null, dto.note || null, dto.status || '确认', t, t)
     return getOne(id)
   })
 }

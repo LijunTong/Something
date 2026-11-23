@@ -17,7 +17,16 @@
 /* 悬停反馈：仅减弱不透明度，不改色值 */
 .fd-nav:hover { opacity: .85; }
 .fd-list { min-width: 0; padding: 12px; }
-/* 列表顶部：搜索框占满，刷新按钮固定在右侧 */
+/* 分类下的订阅行：缩进表示从属；订阅多时侧栏内部滚动，不撑破卡片 */
+.fd-nav-sub { padding-left: 26px; }
+.fd-cats { max-height: calc(100vh - 300px); }
+/* 列表工具栏：与邮件 .ml-tools 同构（勾选 + 刷新 + 右对齐操作） */
+.fd-list-tools { display: flex; align-items: center; gap: 4px; padding: 2px 2px 8px; min-height: 32px; }
+.fd-ico { width: 15px; height: 15px; }
+/* 行内勾选与内容并排：勾选列定宽，内容占满剩余宽度 */
+.fd-row { display: flex; align-items: flex-start; gap: 8px; width: 100%; min-width: 0; }
+.fd-row > .fd-item { flex: 1; min-width: 0; }
+/* 列表顶部：搜索框占满整行（刷新已移到工具栏） */
 .fd-search { display: flex; align-items: center; gap: 8px; padding-bottom: 8px; }
 .fd-search > :first-child { flex: 1; min-width: 0; }
 .fd-search-ico { width: 14px; height: 14px; }
