@@ -116,13 +116,19 @@ h1 { margin: 0; font-size: var(--fs-title); line-height: 1.3; font-weight: 650; 
 /* 侧栏折叠（设置 › 外观）：只调布局与可见性，外观由主题变量提供 */
 /* 全屏专注：侧栏与顶栏已 v-if 移除，栅格退回单列，工作区占满窗口 */
 .app-shell.shell-immersive { grid-template-columns: minmax(0, 1fr); }
-.app-shell.shell-compact { grid-template-columns: 40px minmax(0, 1fr); }
-/* 折叠后侧栏只留底部的展开按钮：品牌、导航、存储状态与版本号全部收起 */
-.app-shell.shell-compact .brand,
-.app-shell.shell-compact .nav,
-.app-shell.shell-compact .local-status,
+.app-shell.shell-compact { grid-template-columns: 64px minmax(0, 1fr); }
+/* 折叠后保留品牌与导航图标：只收起文字、分区标题、状态文案与版本号，底部只留展开按钮 */
+.app-shell.shell-compact .brand { justify-content: center; height: var(--topbar-h); gap: 0; margin-bottom: 10px; padding: 0; }
+.app-shell.shell-compact .brand-mark { width: 26px; height: 26px; }
+.app-shell.shell-compact .brand-text,
+.app-shell.shell-compact .nav-item > span:first-of-type,
+.app-shell.shell-compact .nav-section,
+.app-shell.shell-compact .local-status-text,
 .app-shell.shell-compact .sidebar-version { display: none; }
-.app-shell.shell-compact .sidebar-footer { display: grid; place-items: center; padding: 10px 4px 14px; }
-.app-shell.shell-compact .sidebar-meta { margin-top: 0; gap: 0; }
+.app-shell.shell-compact .nav { padding: 0 6px; }
+.app-shell.shell-compact .nav-item { justify-content: center; gap: 4px; min-height: 40px; padding: 0; }
+.app-shell.shell-compact .sidebar-footer { display: grid; justify-items: center; padding: 10px 6px 14px; }
+.app-shell.shell-compact .local-status { justify-content: center; gap: 0; }
+.app-shell.shell-compact .sidebar-meta { margin-top: 6px; gap: 0; }
 
 @media (prefers-reduced-motion: reduce) { *, *::before, *::after { transition-duration: .01ms !important; } }
