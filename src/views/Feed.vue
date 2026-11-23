@@ -741,7 +741,17 @@ watch(unreadCount, (n) => store.setFeedUnread(n), { immediate: true })
                 </div>
               </n-list-item>
             </n-list>
-            <n-empty v-else class="fd-list-empty" size="small" :description="keyword ? '没有匹配的文章' : '这里还没有文章'" />
+            <n-empty v-else class="fd-list-empty" size="small" :description="keyword ? '没有匹配的文章' : '这里还没有文章'">
+              <template #extra>
+                <div class="fd-empty-actions">
+                  <n-button v-if="keyword" size="small" @click="keyword = ''">清除搜索</n-button>
+                  <template v-else>
+                    <n-button size="small" :loading="busy" :disabled="busy" @click="refreshAll">刷新</n-button>
+                    <n-button size="small" type="primary" @click="openManagePanel">管理订阅</n-button>
+                  </template>
+                </div>
+              </template>
+            </n-empty>
             <div v-if="hasMore" class="fd-more"><n-button size="tiny" quaternary @click="loadMore">加载更多</n-button></div>
             <div v-else-if="pagedItems.length || pinnedItem" class="fd-more">已经到底了</div>
           </n-scrollbar>

@@ -44,7 +44,10 @@
 .fd-item-title { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; overflow-wrap: anywhere; margin-top: 6px; }
 .fd-item-sum { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; overflow-wrap: anywhere; margin-top: 3px; }
 /* 列表/阅读窗格里的空态居中 */
-.fd-list-empty { display: grid; place-items: center; min-height: calc(100vh - 300px); padding: 20px 0; }
+/* 空状态：NEmpty 本身是纵向 flex，这里只把它在卡片中部居中；
+   不要再改 display，grid 会把图标和文案分到两行并各自居中，间距被拉到几百像素 */
+.fd-list-empty { justify-content: center; min-height: calc(100vh - 300px); padding: 20px 0; }
+.fd-empty-actions { display: flex; align-items: center; justify-content: center; gap: 8px; }
 /* 阅读器抽屉：工具条固定，正文区自己滚动，避免整页跟着滚 */
 .fd-reader-body { display: flex; flex-direction: column; gap: 8px; height: calc(100vh - 130px); min-height: 0; }
 .fd-tools { display: flex; align-items: center; flex-wrap: wrap; gap: 4px; }
