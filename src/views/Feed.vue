@@ -211,28 +211,32 @@ function smartCount(k: FeedKind): number {
   if (k === 'starred') return allItems.value.filter((i) => i.starred).length
   return allItems.value.filter((i) => i.readLater).length
 }
+/** 智能分类是否高亮：只有没选任何分类/订阅时才算选中，保证侧栏始终只有一项高亮 */
 function smartActive(k: FeedKind): boolean {
-  return kind.value === k
+  return kind.value === k && !groupId.value && !sourceId.value
 }
-/** 分类与订阅源可同时选中：这里只改分类，不动 sourceId */
-function setSmart(k: FeedKind): void {
-  kind.value = k
-}
-/** 再次点击已选中的分类即取消分类，订阅源选择保持不变 */
+/** 智能分类与我的分类互斥单选：选智能分类时清掉分类与订阅筛选 */
 function toggleSmart(k: FeedKind): void {
-  kind.value = smartActive(k) ? '' : k
-}
-function setGroup(g: FeedGroupRow): void {
-  groupId.value = g.id
-}
-/** 再次点击已选中的分类即取消分类筛选；换分类时清掉订阅筛选（旧订阅不属于新分类） */
-function toggleGroup(g: FeedGroupRow): void {
-  groupId.value = groupId.value === g.id ? '' : g.id
+  if (smartActive(k)) { kind.value = ''; return }
+  kind.value = k
+  groupId.value = ''
   sourceId.value = ''
 }
-/** 点订阅行：在分类基础上再按订阅筛选，再点一次取消 */
+/** 再次点击已选中的分类即取消分类筛选；换分类时清掉订阅筛选并把智能分类退回「全部」 */
+function toggleGroup(g: FeedGroupRow): void {
+  const on = groupId.value === g.id && !sourceId.value
+  groupId.value = on ? '' : g.id
+  sourceId.value = ''
+  if (!on) kind.value = 'all'
+}
+/** 点订阅行：只按该订阅筛选，同时把智能分类退回「全部」；再点一次取消 */
 function toggleSource(s: FeedSource): void {
-  sourceId.value = sourceId.value === s.id ? '' : s.id
+  const on = sourceId.value === s.id
+  sourceId.value = on ? '' : s.id
+  if (!on) {
+    groupId.value = s.groupId || ''
+    kind.value = 'all'
+  }
 }
 
 /** 统一加载：全部数据经 IPC，调用失败由 call 的 fallback 兜底，异常统一记录 */
@@ -654,7 +658,7 @@ watch(unreadCount, (n) => store.setFeedUnread(n), { immediate: true })
           </div>
           <n-scrollbar v-if="groups.length" class="fd-cats">
             <template v-for="g in groups" :key="g.id">
-              <a class="fd-nav" :class="{ on: groupId === g.id }" href="#" @click.prevent="toggleGroup(g)">
+              <a class="fd-nav" :class="{ on: groupId === g.id && !sourceId }" href="#" @click.prevent="toggleGroup(g)">
                 <span class="dotc" :style="{ background: g.color || 'var(--muted-2)' }"></span><span class="fd-nav-label">{{ g.name }}</span><span class="fd-nav-count">{{ groupCount(g.id) }}</span>
               </a>
               <a v-for="s in sourcesOf(g.id)" :key="s.id" class="fd-nav fd-nav-sub" :class="{ on: sourceId === s.id }" href="#" @click.prevent="toggleSource(s)">
