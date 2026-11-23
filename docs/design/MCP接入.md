@@ -122,6 +122,25 @@
 }
 ```
 
+### DeepSeek Harness
+
+Harness 的 MCP 客户端是 `@deepseek-ai/dsh-mcp-client` 插件，配置不在 `mcpServers` JSON 里，而是写进 profile 的 `cordis.patch.yml`（Windows 默认 `%USERPROFILE%\.dsh\profiles\desktop\cordis.patch.yml`）。追加一个 insert 条目：
+
+```yaml
+- insert:
+    - id: something-plan
+      name: '@deepseek-ai/dsh-mcp-client'
+      config:
+        serverName: something-plan
+        transport: streamable-http
+        url: http://127.0.0.1:3927/mcp
+        headers:
+          Authorization: Bearer <TOKEN>
+        reconnect: { enabled: true, initialDelayMs: 1000, maxDelayMs: 30000, maxAttempts: 30 }
+```
+
+重启 Harness 生效；URL 端口按上一节的环境取值。条目 `id` 不能与已有条目重复，已有同名服务时直接改原条目即可。
+
 关闭开关立即停止监听；应用退出时也会停止。设置项 `mcp.enabled` 默认 `false`，即默认不监听端口。
 
 ### 端口与环境隔离
