@@ -19,6 +19,8 @@
 .fd-list { min-width: 0; padding: 12px; }
 /* 分类下的订阅行：缩进表示从属；订阅多时侧栏内部滚动，不撑破卡片 */
 .fd-nav-sub { padding-left: 26px; }
+/* 订阅行首图标：固定尺寸，不参与挤压 */
+.fd-sub-icon { flex: 0 0 auto; }
 .fd-cats { max-height: calc(100vh - 300px); }
 /* 列表工具栏：与邮件 .ml-tools 同构（勾选 + 刷新 + 右对齐操作） */
 .fd-list-tools { display: flex; align-items: center; gap: 4px; padding: 2px 2px 8px; min-height: 32px; }

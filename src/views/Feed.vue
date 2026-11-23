@@ -4,13 +4,14 @@ import { useRoute } from 'vue-router'
 import {
   NButton, NCheckbox, NInput, NTag, NText,
   NBlockquote, NEmpty, NSpin, NUpload, NScrollbar, NAlert,
-  NModal, NDrawer, NDrawerContent, useMessage, useDialog
+  NModal, NDrawer, NDrawerContent, NAvatar, useMessage, useDialog
 } from 'naive-ui'
 import type { UploadCustomRequestOptions } from 'naive-ui'
 import Shell from '@/components/Shell.vue'
 import FeedPanel from '@/components/settings/FeedPanel.vue'
 import HtmlBodyFrame from '@/components/HtmlBodyFrame.vue'
 import { call, bridge, plain } from '@/lib/ipc'
+import { siteIconUrl, siteInitial } from '@/lib/siteIcon'
 import { log } from '@/lib/logger'
 import { useAppStore } from '@/stores/app'
 import { useFocusQuery } from '@/composables/useFocusQuery'
@@ -657,6 +658,10 @@ watch(unreadCount, (n) => store.setFeedUnread(n), { immediate: true })
                 <span class="dotc" :style="{ background: g.color || 'var(--muted-2)' }"></span><span class="fd-nav-label">{{ g.name }}</span><span class="fd-nav-count">{{ groupCount(g.id) }}</span>
               </a>
               <a v-for="s in sourcesOf(g.id)" :key="s.id" class="fd-nav fd-nav-sub" :class="{ on: sourceId === s.id }" href="#" @click.prevent="toggleSource(s)">
+                <!-- 订阅图标默认取源站 favicon，取不到时 NAvatar 回退到首字 -->
+                <n-avatar class="fd-sub-icon" round :size="16" :src="siteIconUrl(s.url)">
+                  <template #fallback>{{ siteInitial(s.title, s.url) }}</template>
+                </n-avatar>
                 <span class="fd-nav-label">{{ s.title || s.url }}</span><span class="fd-nav-count">{{ sourceCount(s) }}</span>
               </a>
             </template>

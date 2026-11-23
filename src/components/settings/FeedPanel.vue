@@ -2,11 +2,12 @@
 import SectionTitle from '@/components/settings/SectionTitle.vue'
 import { computed, h, onMounted, ref } from 'vue'
 import {
-  NCard, NButton, NDataTable, NTag, NInput, NSelect, NSwitch, NUpload,
+  NCard, NButton, NDataTable, NTag, NInput, NSelect, NSwitch, NUpload, NAvatar,
   NEmpty, NSpin, NPopconfirm, NAlert, NModal, NForm, NFormItem, useMessage
 } from 'naive-ui'
 import type { DataTableColumns } from 'naive-ui'
 import { call, bridge, hasBridge, plain } from '@/lib/ipc'
+import { siteIconUrl, siteInitial } from '@/lib/siteIcon'
 import { log } from '@/lib/logger'
 import { useSettings } from '@/composables/useSettings'
 import type { FeedSetting, FeedGroupRow, FeedSource, ExportResult } from '@/types/api'
@@ -62,6 +63,16 @@ function intervalLabel(min: number): string {
 }
 
 const columns = computed<DataTableColumns<FeedSource>>(() => [
+  {
+    title: '图标',
+    key: 'icon',
+    width: 64,
+    render: (row) => h(NAvatar, {
+      size: 22,
+      round: true,
+      src: siteIconUrl(row.url)
+    }, { fallback: () => siteInitial(row.title, row.url) })
+  },
   {
     title: '名称 / URL',
     key: 'title',
