@@ -12,6 +12,7 @@ import Shell from '@/components/Shell.vue'
 import { bridge, call, hasBridge } from '@/lib/ipc'
 import { log } from '@/lib/logger'
 import { useFocusQuery } from '@/composables/useFocusQuery'
+import { PARCEL_ENABLED } from '@/lib/features'
 import type { NotificationItem, NotifyCounts, NotifyPage } from '@/types/api'
 import '@/styles/notice.css'
 
@@ -41,6 +42,9 @@ const MODULE_OPTIONS = [
   { label: '系统', value: 'system' }
 ]
 
+/** 快递入口已隐藏（见 src/lib/features.ts），筛选里也不再出现；历史快递通知仍按原模块显示 */
+const MODULE_FILTER_OPTIONS = MODULE_OPTIONS.filter((o) => PARCEL_ENABLED || o.value !== 'parcel')
+
 const PAGE_SIZE = 60
 const items = ref<NotificationItem[]>([])
 const counts = ref<NotifyCounts>({ total: 0, unread: 0, byModule: {} })
@@ -60,8 +64,9 @@ const {
   dismiss: dismissHint
 } = useFocusQuery()
 
+const NOTIFY_SOURCES = '日程 / 待办 / 番茄钟 / ' + (PARCEL_ENABLED ? '快递 / ' : '') + '邮件 / 天气'
 const subtitle = computed(() =>
-  '共 ' + counts.value.total + ' 条 · 未读 ' + counts.value.unread + ' 条 · 日程 / 待办 / 番茄钟 / 快递 / 邮件 / 天气统一在这里'
+  '共 ' + counts.value.total + ' 条 · 未读 ' + counts.value.unread + ' 条 · ' + NOTIFY_SOURCES + '统一在这里'
 )
 
 /** 按自然日分组：今天 / 昨天 / 更早，长列表才有时间坐标 */
@@ -259,7 +264,7 @@ onBeforeUnmount(() => {
           <n-radio-button :value="false">全部</n-radio-button>
           <n-radio-button :value="true">未读</n-radio-button>
         </n-radio-group>
-        <n-select class="nt-module" size="small" v-model:value="moduleFilter" :options="MODULE_OPTIONS" />
+        <n-select class="nt-module" size="small" v-model:value="moduleFilter" :options="MODULE_FILTER_OPTIONS" />
         <div class="nt-toolbar-end">
           <span class="nt-count">{{ items.length }} / {{ counts.total }} 条</span>
         </div>
@@ -268,7 +273,7 @@ onBeforeUnmount(() => {
       <n-spin :show="loading">
         <n-empty v-if="!items.length" class="nt-empty" description="没有符合条件的通知">
           <template #extra>
-            <span class="nt-muted">日程、待办到期、番茄钟结束、快递状态与邮件都会在这里留下记录</span>
+            <span class="nt-muted">{{ PARCEL_ENABLED ? '日程、待办到期、番茄钟结束、快递状态与邮件都会在这里留下记录' : '日程、待办到期、番茄钟结束与邮件都会在这里留下记录' }}</span>
           </template>
         </n-empty>
 

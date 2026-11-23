@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import { NCard, NSwitch, NButton, useMessage, useDialog } from 'naive-ui'
-import { CARD_KEYS, CARD_META, useHomeCards } from '@/composables/useHomeCards'
+import { CARD_META, ENABLED_CARD_KEYS, useHomeCards } from '@/composables/useHomeCards'
 import { defaultLayout, normalizeLayout } from '@/composables/useHomeLayout'
 import { useSettings } from '@/composables/useSettings'
 import '@/styles/settings.css'
@@ -15,7 +15,7 @@ const layout = computed(() => normalizeLayout(settings.value.home && settings.va
 const locked = computed(() => settings.value.home && settings.value.home.locked === true)
 const isDefault = computed(() => JSON.stringify(layout.value) === JSON.stringify(defaultLayout()))
 
-async function toggle(key: (typeof CARD_KEYS)[number], v: boolean) {
+async function toggle(key: (typeof ENABLED_CARD_KEYS)[number], v: boolean) {
   try {
     await setVisible(key, v)
     message.success(v ? '已在首页显示「' + CARD_META[key].label + '」' : '已隐藏「' + CARD_META[key].label + '」')
@@ -25,7 +25,7 @@ async function toggle(key: (typeof CARD_KEYS)[number], v: boolean) {
 }
 
 async function showAll() {
-  for (const key of CARD_KEYS) if (!shown(key)) await setVisible(key, true)
+  for (const key of ENABLED_CARD_KEYS) if (!shown(key)) await setVisible(key, true)
   message.success('已恢复显示全部卡片')
 }
 
@@ -76,7 +76,7 @@ function resetLayout() {
 
     <div class="set-section">卡片显示</div>
     <div class="set-list">
-      <div v-for="key in CARD_KEYS" :key="key" class="set-list-row">
+      <div v-for="key in ENABLED_CARD_KEYS" :key="key" class="set-list-row">
         <span class="set-list-main">
           <strong>{{ CARD_META[key].label }}</strong>
           <small>{{ CARD_META[key].hint }}</small>

@@ -7,6 +7,7 @@ import { NButton, NCard, NSelect, NSwitch, NTag, useMessage } from 'naive-ui'
 import { useSettings } from '@/composables/useSettings'
 import { DEFAULT_SOUND, SOUND_OPTIONS, playNotifySound } from '@/composables/useNotifySound'
 import type { NotifySetting, NotifySoundModule } from '@/types/api'
+import { PARCEL_ENABLED } from '@/lib/features'
 
 const { settings, save } = useSettings()
 const message = useMessage()
@@ -19,6 +20,9 @@ const MODULES: Array<{ key: NotifySoundModule; label: string; hint: string }> = 
   { key: 'parcel', label: '快递状态', hint: '派送中、待取件、已签收' },
   { key: 'mail', label: '新邮件', hint: '重要未读邮件汇总' }
 ]
+
+/** 快递入口已隐藏（见 src/lib/features.ts），分模块开关里也不再出现 */
+const SHOWN_MODULES = MODULES.filter((m) => PARCEL_ENABLED || m.key !== 'parcel')
 
 /** 两条通道都关掉时，分模块开关没有意义 */
 const anyChannel = computed(() => Boolean(settings.value.notify.desktop || settings.value.notify.inApp))
@@ -87,7 +91,7 @@ function patchSound(key: NotifySoundModule, value: string) {
     </div>
     <SectionTitle title="分模块通知" />
     <div>
-      <div v-for="m in MODULES" :key="m.key" class="set-field">
+      <div v-for="m in SHOWN_MODULES" :key="m.key" class="set-field">
         <span class="set-field-key">{{ m.label }}</span>
         <div class="set-inline">
           <n-select
@@ -116,7 +120,7 @@ function patchSound(key: NotifySoundModule, value: string) {
         </div>
       </div>
     </div>
-    <p class="set-note">日程按每条记录的提前量提醒；待办在提醒时间与到期时各提醒一次；天气播报每天 9 / 12 / 17 / 20 点各一次，与快递一样取自最近一次本地缓存，不额外联网。</p>
+    <p class="set-note">日程按每条记录的提前量提醒；待办在提醒时间与到期时各提醒一次；天气播报每天 9 / 12 / 17 / 20 点各一次，取自最近一次本地缓存，不额外联网。</p>
 
     <SectionTitle title="免打扰时段" />
     <div class="set-field">

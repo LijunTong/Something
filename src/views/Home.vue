@@ -13,7 +13,7 @@ import FeedCard from '@/components/home/FeedCard.vue'
 import MailCard from '@/components/home/MailCard.vue'
 import NoticeCard from '@/components/home/NoticeCard.vue'
 import { bridge, hasBridge } from '@/lib/ipc'
-import { CARD_META, useHomeCards, type CardKey } from '@/composables/useHomeCards'
+import { CARD_META, ENABLED_CARD_KEYS, useHomeCards, type CardKey } from '@/composables/useHomeCards'
 import { CARD_SIZE, GAP_PX, MAX_H, ROW_PX, useHomeLayout } from '@/composables/useHomeLayout'
 import { triggerHomeRefresh } from '@/composables/useHomeRefresh'
 import CardSettingsPanel from '@/components/home/CardSettingsPanel.vue'
@@ -28,7 +28,7 @@ const { shown, hiddenCount } = useHomeCards()
  */
 const { cols, gridItems, locked, onGridLayoutUpdated, moveBy, resizeBy, commit, scheduleCommit } = useHomeLayout(shown)
 const showCards = ref(false)
-const anyCard = computed(() => hiddenCount.value < 8)
+const anyCard = computed(() => hiddenCount.value < ENABLED_CARD_KEYS.length)
 
 /**
  * 拖动只从卡片标题区开始，且避开标题里的按钮、开关、输入框，避免误触。

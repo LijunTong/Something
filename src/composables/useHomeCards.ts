@@ -1,10 +1,14 @@
 // 首页卡片的显隐统一收口：首页卡片菜单、卡片设置面板、首页渲染都读同一份 modules 设置。
 import { computed } from 'vue'
 import { useSettings } from '@/composables/useSettings'
+import { PARCEL_ENABLED } from '@/lib/features'
 import type { ModulesSetting } from '@/types/api'
 
 export const CARD_KEYS = ['weather', 'schedule', 'todo', 'pomodoro', 'feed', 'parcel', 'mail', 'notice'] as const
 export type CardKey = (typeof CARD_KEYS)[number]
+
+/** 当前上线的卡片：关掉的功能（见 src/lib/features.ts）不进设置面板，也不参与显隐统计 */
+export const ENABLED_CARD_KEYS: CardKey[] = CARD_KEYS.filter((k) => PARCEL_ENABLED || k !== 'parcel')
 
 export const CARD_META: Record<CardKey, { label: string; hint: string }> = {
   weather: { label: '天气', hint: '当前温度、体感、湿度与风向' },
@@ -24,6 +28,7 @@ export function useHomeCards() {
 
   /** 未设置过视为显示，避免老数据里缺字段导致卡片消失 */
   function shown(key: CardKey): boolean {
+    if (!PARCEL_ENABLED && key === 'parcel') return false
     return modules.value[key] !== false
   }
 
@@ -31,7 +36,7 @@ export function useHomeCards() {
     await save('modules', { ...modules.value, [key]: visible })
   }
 
-  const hiddenCount = computed(() => CARD_KEYS.filter((k) => !shown(k)).length)
+  const hiddenCount = computed(() => ENABLED_CARD_KEYS.filter((k) => !shown(k)).length)
 
   return { shown, setVisible, modules, hiddenCount }
 }

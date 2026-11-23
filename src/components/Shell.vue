@@ -11,12 +11,13 @@ import BrandMark from './BrandMark.vue'
 import NotifyHost from './NotifyHost.vue'
 import SearchDialog from './SearchDialog.vue'
 import { matchesCombo } from '@/lib/shortcut'
+import { PARCEL_ENABLED } from '@/lib/features'
 
 const route = useRoute()
 const router = useRouter()
 const store = useAppStore()
 
-const nav = [
+const navAll = [
   { path: '/', label: '仪表盘', icon: 'i-grid' },
   { path: '/weather', label: '天气', icon: 'i-sun' },
   { path: '/schedule', label: '日程', icon: 'i-cal' },
@@ -26,6 +27,9 @@ const nav = [
   { path: '/parcel', label: '快递', icon: 'i-box' },
   { path: '/mail', label: '邮件', icon: 'i-mail' }
 ]
+
+/** 快递接口没有免费额度，入口先整体隐藏；见 src/lib/features.ts，改回 true 即恢复 */
+const nav = navAll.filter((item) => PARCEL_ENABLED || item.path !== '/parcel')
 
 /** 「系统」分区：通知属于应用级入口，排在设置之前 */
 const sysNav = [
