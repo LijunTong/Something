@@ -103,11 +103,14 @@ export interface MailSetting {
 /** Agent 接入：本机 MCP 服务开关与端口（令牌不落在设置对象里） */
 export interface McpSetting {
   enabled: boolean
-  /** 监听端口，1024-65535；被占用时不会自动改端口 */
-  port: number
+  /** 手动指定的监听端口，1024-65535；null 表示按环境取默认 */
+  port: number | null
 }
+/** 端口来源：env=TK_MCP_PORT 覆盖，setting=设置里保存过，default=按开发/安装版默认 */
+export type McpPortSource = 'env' | 'setting' | 'default'
 export interface McpStatus {
-  enabled: boolean; port: number; configuredPort: number; endpoint: string | null
+  enabled: boolean; port: number; configuredPort: number | null; portSource: McpPortSource
+  endpoint: string | null
   tokenSet: boolean; calls: number; lastCallAt: number | null; lastTool: string | null
   lastError: string | null
 }

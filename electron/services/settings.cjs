@@ -45,7 +45,8 @@ const DEFAULTS = {
   // 邮件：autoSyncMin 是自动同步间隔（分钟，默认 15）；0 表示只在手动点「同步」时拉取
   mail: { autoSyncMin: 15 },
   // MCP：Agent 接入开关与端口。只监听 127.0.0.1，默认关闭；Token 在 INTERNAL_KEYS 里
-  mcp: { enabled: false, port: 3927 },
+  // port 为 null 表示没有手动指定，由主进程按环境取默认（开发 3927 / 安装版 3928，TK_MCP_PORT 优先）
+  mcp: { enabled: false, port: null },
   // 快递：provider 为选中的数据源（manual=手动维护）；autoRefreshMin 是后台自动刷新间隔（分钟，0 关闭）
   // credentials 只是凭据状态位，由库里是否保存推算，真值不进 all()
   parcel: { provider: 'manual', autoRefreshMin: 0, detectCompany: true, credentials: {} },

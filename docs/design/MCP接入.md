@@ -6,7 +6,7 @@
 
 ## 形态
 
-- 应用内本地 HTTP 服务（MCP Streamable HTTP），只监听 `127.0.0.1`，默认端口 `3927`。
+- 应用内本地 HTTP 服务（MCP Streamable HTTP），只监听 `127.0.0.1`，默认端口：开发版 `3927`、安装版 `3928`（两套数据目录可同时运行，互不抢端口）。
 - 单端点 `POST /mcp`，JSON-RPC 2.0；只实现 tools 能力，无 session、无 SSE。
 - 鉴权：`Authorization: Bearer <token>`。令牌 32 字节随机 hex，存 `app_setting` 的 `mcpToken`（应用设置里默认掩码显示）。
 - 协议版本：响应 `2025-06-18`，兼容客户端请求的 `2025-03-26` / `2024-11-05`。
@@ -124,8 +124,22 @@
 
 关闭开关立即停止监听；应用退出时也会停止。设置项 `mcp.enabled` 默认 `false`，即默认不监听端口。
 
+### 端口与环境隔离
+
+| 场景 | 默认端口 | 说明 |
+| --- | --- | --- |
+| 开发（`npm run dev` / 未打包） | `3927` | 数据目录 `<repo>/.data` |
+| 安装版 | `3928` | 数据目录 `%APPDATA%\Something`（或 exe 同级 `data/`） |
+| `TK_MCP_PORT` 环境变量 | 以变量为准 | 合法范围 1024-65535；设置面板会显示来源并锁住端口输入 |
+| 设置里手动改端口 | 以设置为准 | 点「应用」后立即重启监听 |
+
+优先级：`TK_MCP_PORT` > 设置里的端口 > 按运行方式默认。设置项 `mcp.port` 默认 `null`（未手动指定）；只切开关时不会把默认端口写进设置。
+
+令牌按数据目录各自生成（`app_setting.mcpToken`），开发版与安装版互不共用；同一个库内轮换令牌，所有客户端都要换新值。
+
 ## 涉及文件
 
+- `electron/main.cjs`：MCP 生命周期、端口解析（环境变量/设置/默认）与 IPC 控制面。
 - `electron/mcp/server.cjs`：HTTP 服务、鉴权、JSON-RPC 分发。
 - `electron/mcp/tools.cjs`：工具 schema（zod → JSON Schema）与调度。
 - `electron/services/project.cjs`：计划写入/读取/更新、项目解析与事务。

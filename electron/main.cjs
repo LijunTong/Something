@@ -373,13 +373,31 @@ function createWindow() {
 // MCP：应用内本地 HTTP 服务。只在设置开启时监听 127.0.0.1，端口/令牌改动后由 syncMcp 重载。
 let mcpReady = false
 
+// 默认端口按运行方式分开：开发版与安装版可能同时开着，同端口会让后启动的一方 START_FAILED。
+// 优先级：TK_MCP_PORT（环境变量，适合多实例/自测） > 设置里保存的端口 > 按环境默认。
+const MCP_DEFAULT_PORT = IS_PACKAGED ? 3928 : 3927
+
+function mcpPort() {
+  const raw = String(process.env.TK_MCP_PORT || '').trim()
+  if (raw) {
+    const n = Number(raw)
+    if (Number.isInteger(n) && n >= 1024 && n <= 65535) return { port: n, source: 'env' }
+    logger.warn('mcp', 'invalid_env_port', { value: raw })
+  }
+  const cfg = settingsSvc.all().mcp || {}
+  if (Number.isInteger(cfg.port) && cfg.port >= 1024 && cfg.port <= 65535) return { port: cfg.port, source: 'setting' }
+  return { port: MCP_DEFAULT_PORT, source: 'default' }
+}
+
 function mcpState() {
   const st = mcpServer.status()
-  const cfg = settingsSvc.all().mcp || { enabled: false, port: 3927 }
+  const cfg = settingsSvc.all().mcp || { enabled: false, port: null }
+  const resolved = mcpPort()
   return {
     enabled: !!cfg.enabled,
-    port: st.port || cfg.port,
-    configuredPort: cfg.port,
+    port: st.port || resolved.port,
+    configuredPort: Number.isInteger(cfg.port) ? cfg.port : null,
+    portSource: resolved.source,
     endpoint: st.running ? st.endpoint : null,
     tokenSet: !!settingsSvc.mcpToken(),
     calls: st.calls,
@@ -396,7 +414,7 @@ async function syncMcp() {
   mcpServer.stop()
   if (!cfg.enabled) return mcpState()
   settingsSvc.ensureMcpToken()
-  const started = await mcpServer.start(cfg.port)
+  const started = await mcpServer.start(mcpPort().port)
   if (!started.ok) logger.warn('mcp', 'start_failed', { error: started.error })
   return mcpState()
 }
@@ -720,7 +738,8 @@ function registerIpc() {
         port: z.number().int().min(1024).max(65535).optional()
       }),
       handler: async function (dto) {
-        settingsSvc.setMcp(dto)
+        // 环境变量优先时端口不落库：存了也不会生效，只会让设置页与实际监听对不上
+        settingsSvc.setMcp(mcpPort().source === 'env' ? { enabled: dto.enabled } : dto)
         return syncMcp()
       }
     },

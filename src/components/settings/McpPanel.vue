@@ -18,6 +18,13 @@ const busy = ref(false)
 
 const running = computed(() => !!status.value && status.value.enabled && !!status.value.endpoint)
 const endpoint = computed(() => (running.value && status.value ? status.value.endpoint : '') || '')
+// 环境变量优先时端口由进程环境决定，设置里改了也不会生效，直接锁住避免误解
+const envLocked = computed(() => status.value?.portSource === 'env')
+const portHint = computed(() => {
+  if (status.value?.portSource === 'env') return '由环境变量 TK_MCP_PORT 指定，设置里改不了'
+  if (status.value?.portSource === 'setting') return '使用设置里保存的端口；被占用时不会自动换端口'
+  return '未手动指定：开发版默认 3927、安装版默认 3928；被占用时不会自动换端口'
+})
 const configText = computed(() => {
   const url = endpoint.value || 'http://127.0.0.1:' + (status.value?.port || port.value) + '/mcp'
   return JSON.stringify({
@@ -37,18 +44,20 @@ async function refresh() {
     const next = await call(() => bridge().mcp.status(), null as McpStatus | null)
     if (next) {
       status.value = next
-      port.value = next.port || next.configuredPort || 3927
+      port.value = next.port || 3927
     }
   } catch (e) {
     log.exception('settings.mcp.status', e)
   }
 }
 
-async function setEnabled(enabled: boolean) {
+async function setEnabled(enabled: boolean, withPort = false) {
   if (busy.value) return
   busy.value = true
   try {
-    const next = await call(() => bridge().mcp.setEnabled({ enabled, port: port.value }), null as McpStatus | null)
+    // 只切开关时不回传端口，避免把「按环境默认」悄悄固化成设置值
+    const dto = withPort ? { enabled, port: Number(port.value) } : { enabled }
+    const next = await call(() => bridge().mcp.setEnabled(dto), null as McpStatus | null)
     if (next) status.value = next
     if (next && next.enabled && !next.endpoint) {
       message.error(next.lastError || '服务未能启动，请检查端口是否被占用')
@@ -64,13 +73,14 @@ async function setEnabled(enabled: boolean) {
 }
 
 async function applyPort() {
+  if (envLocked.value) return
   const p = Number(port.value)
   if (!Number.isInteger(p) || p < 1024 || p > 65535) {
     message.error('端口需在 1024-65535 之间')
     return
   }
   const enabled = !!status.value?.enabled
-  await setEnabled(enabled)
+  await setEnabled(enabled, true)
 }
 
 async function revealToken() {
@@ -143,11 +153,11 @@ onMounted(() => { void refresh() })
     <div class="set-field">
       <span class="set-field-key">
         端口
-        <small class="set-hint">被占用时不会自动换端口，避免客户端配置悄悄失效</small>
+        <small class="set-hint">{{ portHint }}</small>
       </span>
       <span class="set-inline">
-        <n-input-number v-model:value="port" class="set-port" size="small" :min="1024" :max="65535" :step="1" />
-        <n-button size="small" :disabled="busy" @click="applyPort">应用</n-button>
+        <n-input-number v-model:value="port" class="set-port" size="small" :min="1024" :max="65535" :step="1" :disabled="envLocked" />
+        <n-button size="small" :disabled="busy || envLocked" @click="applyPort">应用</n-button>
       </span>
     </div>
     <div class="set-field">
