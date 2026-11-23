@@ -249,8 +249,10 @@ async function addCal() {
 }
 
 /** 删除分组：日程不删，整体移到默认分组；有存量时先提示条数与去向 */
-function confirmRemoveCal(c: CalendarRow) {
-  const affected = events.value.filter((e) => e.calendarId === c.id).length
+async function confirmRemoveCal(c: CalendarRow) {
+  // 月视图只持有当月事件，跨月分组的条数由主进程统计，避免提示漏算
+  const local = events.value.filter((e) => e.calendarId === c.id).length
+  const affected = await call(() => bridge().schedule.calendarUsage(c.id), local)
   const fallback = defaultCalendar.value
   const fallbackName = fallback && fallback.id !== c.id ? fallback.name : '默认分组'
   dialog.warning({

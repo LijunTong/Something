@@ -20,7 +20,7 @@ const api = {
     checkConflict: call('schedule:checkConflict'),
     calendars: call('schedule:calendars'), toggleCalendar: call('schedule:toggleCalendar'),
     createCalendar: call('schedule:createCalendar'), updateCalendar: call('schedule:updateCalendar'),
-    removeCalendar: call('schedule:removeCalendar'),
+    calendarUsage: call('schedule:calendarUsage'), removeCalendar: call('schedule:removeCalendar'),
     exportICS: call('schedule:exportICS'), importICS: call('schedule:importICS')
   },
   pomodoro: {

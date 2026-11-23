@@ -391,6 +391,7 @@ function registerIpc() {
     checkConflict: scheduleSvc.checkConflict,
     calendars: scheduleSvc.calendars, toggleCalendar: scheduleSvc.toggleCalendar,
     createCalendar: scheduleSvc.createCalendar, updateCalendar: scheduleSvc.updateCalendar,
+  calendarUsage: scheduleSvc.calendarUsage,
     removeCalendar: scheduleSvc.removeCalendar,
     exportICS: scheduleSvc.exportICS, importICS: scheduleSvc.importICS
   })

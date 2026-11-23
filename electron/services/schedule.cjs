@@ -226,6 +226,12 @@ function importICS(dto) {
 }
 
 /** 删除分组：分组内的日程迁移到默认分组，不清空；默认分组不允许删除。 */
+/** 分组内日程条数：删除前提示用。月视图只持有当月事件，所以跨月分组也要算准。 */
+function calendarUsage(id) {
+  const row = get().prepare('SELECT COUNT(*) AS n FROM schedule WHERE calendar_id = ?').get(String(id || ''))
+  return row ? row.n : 0
+}
+
 function removeCalendar(id) {
   return withTx(function () {
     const row = get().prepare('SELECT * FROM schedule_calendar WHERE id = ?').get(id)
@@ -242,6 +248,7 @@ function removeCalendar(id) {
 module.exports = {
   range: range, get: getOne, create: create, update: update, remove: remove,
   checkConflict: checkConflict, calendars: calendars, toggleCalendar: toggleCalendar,
-  createCalendar: createCalendar, updateCalendar: updateCalendar, removeCalendar: removeCalendar,
+  createCalendar: createCalendar, updateCalendar: updateCalendar, calendarUsage: calendarUsage,
+  removeCalendar: removeCalendar,
   exportICS: exportICS, importICS: importICS
 }

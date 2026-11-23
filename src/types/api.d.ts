@@ -262,6 +262,8 @@ export interface ScheduleApi {
   createCalendar(dto: { name: string; color?: string }): Promise<IpcResult<CalendarRow[]>>
   /** 修改分组名称；默认分组同样允许改名 */
   updateCalendar(dto: { id: string; name: string }): Promise<IpcResult<CalendarRow[]>>
+  /** 分组内日程条数（含非当月），用于删除前提示 */
+  calendarUsage(id: string): Promise<IpcResult<number>>
   /** 删除分组：分组内的日程迁移到默认分组 */
   removeCalendar(id: string): Promise<IpcResult<CalendarRow[]>>
   exportICS(dto?: { from?: number; to?: number }): Promise<IpcResult<string>>
