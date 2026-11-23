@@ -51,6 +51,8 @@ const api = {
   },
   parcel: {
     list: call('parcel:list'), get: call('parcel:get'), add: call('parcel:add'), refresh: call('parcel:refresh'),
+    refreshAll: call('parcel:refreshAll'), providers: call('parcel:providers'),
+    companies: call('parcel:companies'), testProvider: call('parcel:testProvider'),
     tracks: call('parcel:tracks'), archive: call('parcel:archive'),
     togglePrivacy: call('parcel:togglePrivacy'), toTodoInfo: call('parcel:toTodoInfo')
   },
@@ -71,7 +73,11 @@ const api = {
     clearCache: call('settings:clearCache'), clearTrash: call('settings:clearTrash'),
     resetAll: call('settings:resetAll'), setWeatherKey: call('settings:setWeatherKey'),
     setWeatherJwt: call('settings:setWeatherJwt'), clearWeatherJwt: call('settings:clearWeatherJwt'),
-    revealSecret: call('settings:revealSecret'), testWeather: call('settings:testWeather')
+    revealSecret: call('settings:revealSecret'), testWeather: call('settings:testWeather'),
+    // 快递数据源凭据：按数据源分别保存，空串字段即删除
+    setParcelCredential: call('settings:setParcelCredential'),
+    clearParcelCredential: call('settings:clearParcelCredential'),
+    revealParcelCredential: call('settings:revealParcelCredential')
   },
   search: { query: call('search:query') },
   notification: {

@@ -1,8 +1,8 @@
 <script setup lang="ts">
-import { computed, onMounted, ref, watch } from 'vue'
+import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import {
   NAlert, NButton, NDrawer, NDrawerContent, NEmpty, NForm, NFormItem,
-  NInput, NModal, NSpace, NSpin, NSwitch, NTabPane, NTabs, NTag, NTimeline,
+  NInput, NModal, NSelect, NSpace, NSpin, NSwitch, NTabPane, NTabs, NTag, NTimeline,
   NTimelineItem, useDialog, useMessage
 } from 'naive-ui'
 import { useAppStore } from '@/stores/app'
@@ -10,15 +10,19 @@ import Shell from '@/components/Shell.vue'
 import { bridge, call, plain } from '@/lib/ipc'
 import { log } from '@/lib/logger'
 import { useFocusQuery } from '@/composables/useFocusQuery'
-import type { ParcelTrack, ParcelRow } from '@/types/api'
+import ParcelSourcePanel from '@/components/settings/ParcelSourcePanel.vue'
+import type { ParcelProvider, ParcelRefreshAllResult, ParcelRefreshResult, ParcelTrack, ParcelRow } from '@/types/api'
 import '@/styles/parcel.css'
 
 type ParcelApiBridge = typeof window.api & {
   parcel: {
     list(dto?: { status?: string; archived?: boolean }): Promise<{ ok: boolean; data?: ParcelRow[]; error?: { code: string; message: string } }>
-    add(dto: { numbers: string[]; alias?: string; note?: string }): Promise<{ ok: boolean; data?: ParcelRow[]; error?: { code: string; message: string } }>
+    add(dto: { numbers: string[]; alias?: string; note?: string; company?: string; phoneTail?: string }): Promise<{ ok: boolean; data?: ParcelRow[]; error?: { code: string; message: string } }>
     get(id: string): Promise<{ ok: boolean; data?: ParcelRow | null; error?: { code: string; message: string } }>
-    refresh(id: string): Promise<{ ok: boolean; data?: ParcelRow; error?: { code: string; message: string } }>
+    refresh(dto: string | { id: string; company?: string; phoneTail?: string }): Promise<{ ok: boolean; data?: ParcelRefreshResult; error?: { code: string; message: string } }>
+    refreshAll(dto?: { force?: boolean }): Promise<{ ok: boolean; data?: ParcelRefreshAllResult; error?: { code: string; message: string } }>
+    providers(): Promise<{ ok: boolean; data?: ParcelProvider[]; error?: { code: string; message: string } }>
+    companies(): Promise<{ ok: boolean; data?: Array<{ name: string; short: string }>; error?: { code: string; message: string } }>
     tracks(id: string): Promise<{ ok: boolean; data?: ParcelTrack[]; error?: { code: string; message: string } }>
     archive(id: string): Promise<{ ok: boolean; data?: boolean; error?: { code: string; message: string } }>
     togglePrivacy(dto: { id: string; masked: boolean }): Promise<{ ok: boolean; data?: boolean; error?: { code: string; message: string } }>
@@ -52,7 +56,11 @@ const trackLoading = ref(false)
 const adding = ref(false)
 const privacyOn = ref(false)
 const lastRefresh = ref<number | null>(null)
-const addForm = ref({ numbers: '', alias: '', note: '' })
+const addForm = ref({ numbers: '', alias: '', note: '', company: '', phoneTail: '' })
+const showSource = ref(false)
+const providers = ref<ParcelProvider[]>([])
+const companies = ref<Array<{ name: string; short: string }>>([])
+let offData: (() => void) | null = null
 // 深链定位：仪表盘点某个包裹 → /parcel?focus=<id>，落地后打开轨迹抽屉并把卡片滚到中间
 const {
   focusId: focusKey,
@@ -178,27 +186,55 @@ async function load(): Promise<void> {
   }
 }
 
+async function loadProviders(): Promise<void> {
+  try {
+    providers.value = await call(() => api.parcel.providers(), [] as ParcelProvider[])
+    companies.value = await call(() => api.parcel.companies(), [] as Array<{ name: string; short: string }>)
+  } catch (e) {
+    log.exception('parcel.providers', e)
+  }
+}
+
+/** 当前数据源的中文名；未装桥或还没加载时为「手动维护」 */
+function providerLabel(): string {
+  const item = providers.value.find((p) => p.active)
+  if (!item) return '手动维护'
+  return item.id === 'manual' ? '手动维护' : item.name
+}
+
+const companySelectOptions = computed(() => [{ label: '按单号自动识别', value: '' }].concat(companies.value.map((c) => ({ label: c.name, value: c.name }))))
+
+/** 卡片上只用一句话提示上次失败原因，完整原文放 title 与详情抽屉 */
+function lastErrorText(row: ParcelRow): string {
+  const raw = String(row.lastError || '')
+  if (!raw) return ''
+  const idx = raw.indexOf('|')
+  return idx >= 0 ? raw.slice(idx + 1) : raw
+}
+
 async function refreshAll(): Promise<void> {
   const targets = visibleRows.value
   if (!targets.length) { message.info('当前没有可刷新的包裹'); return }
   loading.value = true
   try {
-    const updates = await Promise.all(targets.map(async (row) => {
-      try {
-        return await call(() => api.parcel.refresh(row.id), row)
-      } catch (e) {
-        log.exception('parcel.refresh', e)
-        return row
-      }
-    }))
-    const byId = new Map(updates.map((row) => [row.id, row]))
-    rows.value = rows.value.map((row) => ({ ...row, ...(byId.get(row.id) ?? {}) }))
+    // 统一交给主进程批量刷新：并发 3、只查未签收，失败原因逐条汇总后再回页面
+    const result = await call(() => api.parcel.refreshAll({ force: true }), null as unknown as ParcelRefreshAllResult | null)
+    await load()
+    const cur = selected.value
+    if (cur) {
+      const fresh = rows.value.find((row) => row.id === cur.id)
+      if (fresh) await openTrack(fresh)
+    }
     lastRefresh.value = Date.now()
-    // 没有物流查询接口时状态不会变化，据实反馈，避免「刷新成功」的错觉
-    const changed = updates.filter((row, i) => row.status !== targets[i].status).length
-    if (changed) message.success('已更新 ' + changed + ' 个包裹状态')
-    else message.info('已刷新 ' + targets.length + ' 个包裹：未接入物流查询接口，状态暂无变化')
-    if (selected.value) await openTrack(byId.get(selected.value.id) ?? selected.value)
+    if (!result) { message.info('已刷新，状态暂无变化'); return }
+    if (result.failed > 0) {
+      const reason = result.errors && result.errors.length ? result.errors[0] : '详见包裹卡片上的失败提示'
+      message.warning('刷新 ' + result.total + ' 个：' + result.changed + ' 个状态变化，' + result.failed + ' 个失败（' + reason + '）')
+    } else if (result.added > 0 || result.changed > 0) {
+      message.success('已刷新 ' + result.total + ' 个包裹：新增 ' + result.added + ' 条轨迹，' + result.changed + ' 个状态变化')
+    } else {
+      message.info('已刷新 ' + result.total + ' 个包裹，状态暂无变化（数据源：' + providerLabel() + '）')
+    }
   } catch (e) {
     log.exception('parcel.refreshAll', e)
     message.error('刷新失败：' + errMsg(e))
@@ -241,21 +277,28 @@ async function applyFocus(id: string): Promise<void> {
   await locateFocus(key, '来自仪表盘：' + row.company + ' ' + displayNo(row))
 }
 
-function nextStatus(status: string): string {
-  if (status === '在途') return '派送中'
-  if (status === '派送中') return '待取件'
-  if (status === '待取件') return '已签收'
-  return status
-}
-
+/** 单条刷新：结果显示在抽屉里；失败如实提示，不推进状态、不伪造轨迹 */
 async function refreshOne(row: ParcelRow): Promise<void> {
   try {
-    const updated = await call(() => api.parcel.refresh(row.id), { ...row, status: nextStatus(row.status), updatedAt: Date.now() })
+    const result = await call(() => api.parcel.refresh(row.id), null as unknown as ParcelRefreshResult | null)
+    if (!result) { message.info('刷新完成，状态暂无变化'); return }
+    if (result.error) {
+      message.warning(result.error.message)
+      if (result.parcel) {
+        const next = result.parcel
+        rows.value = rows.value.map((item) => (item.id === next.id ? next : item))
+        if (selected.value?.id === next.id) selected.value = next
+      }
+      return
+    }
+    const updated = result.parcel
+    if (!updated) return
     rows.value = rows.value.map((item) => (item.id === updated.id ? updated : item))
     if (selected.value?.id === updated.id) selected.value = updated
     lastRefresh.value = Date.now()
     await openTrack(updated)
-    message.success('轨迹已更新')
+    if (result.added > 0) message.success('已新增 ' + result.added + ' 条轨迹')
+    else message.info('已刷新，暂无新轨迹')
   } catch (e) {
     log.exception('parcel.refreshOne', e)
     message.error('刷新失败：' + errMsg(e))
@@ -324,7 +367,7 @@ function confirmArchive(row: ParcelRow): void {
 }
 
 function openAdd(): void {
-  addForm.value = { numbers: '', alias: '', note: '' }
+  addForm.value = { numbers: '', alias: '', note: '', company: '', phoneTail: '' }
   showAdd.value = true
 }
 
@@ -333,12 +376,13 @@ async function addParcels(): Promise<void> {
   if (!numbers.length) { message.warning('请至少输入一个快递单号'); return }
   adding.value = true
   try {
-    const created = await call(() => api.parcel.add(plain({ numbers, alias: addForm.value.alias || undefined, note: addForm.value.note || undefined })), [])
+    const created = await call(() => api.parcel.add(plain({ numbers, alias: addForm.value.alias || undefined, note: addForm.value.note || undefined, company: addForm.value.company || undefined, phoneTail: addForm.value.phoneTail.trim() || undefined })), [] as ParcelRow[])
     if (!created.length) {
       message.warning('快递接口没有返回包裹，请确认单号与网络后重试')
     } else {
       rows.value = [...created, ...rows.value]
       message.success('已添加 ' + created.length + ' 个包裹')
+      if (providerLabel() === '手动维护') message.info('当前为手动维护：到右上角「数据源」选好接口后刷新，就能自动查轨迹')
     }
     showAdd.value = false
   } catch (e) {
@@ -351,8 +395,15 @@ async function addParcels(): Promise<void> {
 
 onMounted(async () => {
   await load()
+  await loadProviders()
+  // 主进程自动刷新或其它窗口写入后，列表与数据源状态一起跟上
+  offData = bridge().onDataChanged((p) => {
+    if (p.domain === 'parcel') void load()
+    if (p.domain === 'settings') void loadProviders()
+  })
   await applyFocus(focusKey.value)
 })
+onUnmounted(() => { offData?.(); offData = null })
 // 同一页面里再从仪表盘点另一个包裹时重新定位
 watch(focusKey, (v) => { void applyFocus(String(v || '')) })
 </script>
@@ -361,6 +412,7 @@ watch(focusKey, (v) => { void applyFocus(String(v || '')) })
   <Shell>
     <template #subtitle>{{ subtitle }}</template>
     <template #actions>
+      <n-button size="medium" @click="showSource = true">数据源 · {{ providerLabel() }}</n-button>
       <n-button size="medium" :loading="loading" @click="refreshAll">全部刷新</n-button>
       <n-button size="medium" type="primary" @click="openAdd">添加单号</n-button>
       <span class="privacy-toggle"><span>隐私模式</span><n-switch :value="privacyOn" size="small" @update:value="privacyOn = $event" /></span>
@@ -411,6 +463,7 @@ watch(focusKey, (v) => { void applyFocus(String(v || '')) })
           <div class="pc-card-foot">
             <span>更新 {{ formatTime(row.updatedAt) }}</span>
             <div class="pc-card-actions">
+              <n-tag v-if="lastErrorText(row)" size="tiny" type="error" :bordered="false" :title="lastErrorText(row)">{{ lastErrorText(row).slice(0, 12) }}</n-tag>
               <n-switch :value="row.privacyMasked" size="small" @update:value="(masked: boolean) => toggleRowPrivacy(row, masked)" />
               <n-tag size="tiny" :bordered="false" :type="row.privacyMasked ? 'warning' : 'success'">{{ row.privacyMasked ? '已脱敏' : '未脱敏' }}</n-tag>
               <n-button size="tiny" quaternary type="primary" @click="openTrack(row)">查看轨迹</n-button>
@@ -429,8 +482,10 @@ watch(focusKey, (v) => { void applyFocus(String(v || '')) })
         <n-spin :show="trackLoading">
           <div v-if="selected" class="pc-drawer-info">
             <n-tag size="small" :type="statusType(selected.status)" :bordered="false">{{ selected.status }}</n-tag>
-            <div class="field"><span class="k">收件人</span><span class="v">张三 · 138****1234</span></div>
-            <div class="field"><span class="k">地址</span><span class="v">{{ isPrivate(selected) ? '****' : (selected.station || '佛山市禅城区 XX 路 12 号') }}</span></div>
+            <div class="field"><span class="k">快递公司</span><span class="v">{{ selected.company }}</span></div>
+            <div class="field"><span class="k">数据源</span><span class="v">{{ providerLabel() }}{{ selected.lastSyncAt ? ' · 同步于 ' + formatTime(selected.lastSyncAt) : ' · 尚未同步' }}</span></div>
+            <div class="field"><span class="k">取件点</span><span class="v">{{ isPrivate(selected) ? '****' : (selected.station || '—') }}</span></div>
+            <div v-if="lastErrorText(selected)" class="field"><span class="k">上次失败</span><span class="v">{{ lastErrorText(selected) }}</span></div>
             <div class="pc-track-title">物流轨迹</div>
             <n-empty v-if="!tracks.length" description="暂无轨迹记录" size="small" />
             <n-timeline v-else>
@@ -456,10 +511,22 @@ watch(focusKey, (v) => { void applyFocus(String(v || '')) })
       </n-drawer-content>
     </n-drawer>
 
+    <n-drawer v-model:show="showSource" :width="680" placement="right">
+      <n-drawer-content title="快递数据源" closable :native-scrollbar="false">
+        <ParcelSourcePanel embedded />
+      </n-drawer-content>
+    </n-drawer>
+
     <n-modal v-model:show="showAdd" preset="card" title="添加快递" style="width:460px">
       <n-form label-placement="left" label-width="48" size="small">
         <n-form-item label="单号">
           <n-input v-model:value="addForm.numbers" type="textarea" :autosize="{ minRows: 3 }" placeholder="粘贴或输入快递单号，每行一个" />
+        </n-form-item>
+        <n-form-item label="公司">
+          <n-select v-model:value="addForm.company" :options="companySelectOptions" placeholder="默认按单号自动识别" clearable />
+        </n-form-item>
+        <n-form-item label="后四位">
+          <n-input v-model:value="addForm.phoneTail" maxlength="4" placeholder="手机号后四位，顺丰等需要（可选）" />
         </n-form-item>
         <n-form-item label="别名"><n-input v-model:value="addForm.alias" placeholder="如：双十一耳机" /></n-form-item>
         <n-form-item label="备注"><n-input v-model:value="addForm.note" placeholder="可选" /></n-form-item>

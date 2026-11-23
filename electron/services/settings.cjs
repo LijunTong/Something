@@ -44,6 +44,9 @@ const DEFAULTS = {
   feed: { defaultInterval: 360, keepContent: true },
   // 邮件：autoSyncMin 是自动同步间隔（分钟，默认 15）；0 表示只在手动点「同步」时拉取
   mail: { autoSyncMin: 15 },
+  // 快递：provider 为选中的数据源（manual=手动维护）；autoRefreshMin 是后台自动刷新间隔（分钟，0 关闭）
+  // credentials 只是凭据状态位，由库里是否保存推算，真值不进 all()
+  parcel: { provider: 'manual', autoRefreshMin: 0, detectCompany: true, credentials: {} },
   // 首页卡片显隐：只影响首页展示，模块页与数据不受影响
   modules: { dashboard: true, weather: true, schedule: true, todo: true, pomodoro: true, feed: true, parcel: true, mail: true, notice: true },
   // 首页卡片布局：x/y 为网格坐标、w/h 为网格单位（行高 40px、间距 16px、列数 3/2/1 自适应）
@@ -65,7 +68,12 @@ const DEFAULTS = {
 }
 
 // 内部键：不进 all()，避免凭据或内部游标泄漏到渲染层
-const INTERNAL_KEYS = ['weatherKey', 'noticeReadAt', 'noticeDerivedRead', 'noticeDismissed', 'notifyEmitted']
+const INTERNAL_KEYS = [
+  'weatherKey', 'qweatherJwt',
+  // 快递数据源凭据：按数据源分别存一条，键名含 key，日志里自动脱敏
+  'parcelKey_kuaidi100', 'parcelKey_kdniao', 'parcelKey_juhe',
+  'noticeReadAt', 'noticeDerivedRead', 'noticeDismissed', 'notifyEmitted'
+]
 
 // 备份包含的业务表（按外键顺序插入，删除时反向）
 const TABLES = [
@@ -108,6 +116,10 @@ function readAll() {
   if (out.weather && typeof out.weather === 'object') {
     Object.assign(out.weather, weatherStatus())
   }
+  // 快递数据源同理：只合并「是否已配置」，凭据本身留在 INTERNAL_KEYS 里
+  if (out.parcel && typeof out.parcel === 'object') {
+    Object.assign(out.parcel, parcelStatus())
+  }
   // 历史配置清理：快捷添加已移除；视图切换区间收敛为 Ctrl+1-2
   if (out.shortcuts && typeof out.shortcuts === 'object') {
     delete out.shortcuts.quickAdd
@@ -137,6 +149,8 @@ function set(dto) {
         const merged = base
           ? Object.assign({}, prev && typeof prev === 'object' ? prev : {}, dto[k] && typeof dto[k] === 'object' ? dto[k] : {})
           : dto[k]
+        // credentials 是派生状态，渲染层回传时丢掉，避免把状态位写进库里
+        if (k === 'parcel' && merged && typeof merged === 'object') delete merged.credentials
         writeKey(k, merged)
       }
       get().prepare('INSERT INTO operation_log (action, detail, created_at) VALUES (?,?,?)')
@@ -645,10 +659,114 @@ async function testWeather() {
   }
 }
 
+/* ---------- 快递数据源凭据 ---------- */
+
+// 每个数据源一条凭据，JSON 明文存放（键名在 INTERNAL_KEYS 里，不会出现在 all()）
+const PARCEL_CRED_KEYS = {
+  kuaidi100: 'parcelKey_kuaidi100',
+  kdniao: 'parcelKey_kdniao',
+  juhe: 'parcelKey_juhe'
+}
+
+function parcelCredKey(provider) {
+  const key = String(provider || '')
+  const name = PARCEL_CRED_KEYS[key]
+  if (!name) throw new Error('未知的快递数据源：' + (key || '空'))
+  return name
+}
+
+/** 读某个数据源的凭据明文对象；没有则 null */
+function readParcelCredential(provider) {
+  try {
+    const name = PARCEL_CRED_KEYS[String(provider || '')]
+    if (!name) return null
+    const row = get().prepare('SELECT value FROM app_setting WHERE key = ?').get(name)
+    if (!row) return null
+    const plain = secret.unpack(row.value)
+    if (!plain) return null
+    const cred = JSON.parse(plain)
+    return cred && typeof cred === 'object' ? cred : null
+  } catch (e) {
+    return null
+  }
+}
+
+function maskTail(value) {
+  const text = String(value || '')
+  return text ? '••••' + text.slice(-4) : ''
+}
+
+/** 单个数据源的配置状态：哪些字段已填、尾号提示（不回传完整凭据） */
+function parcelCredentialStatus(provider) {
+  const cred = readParcelCredential(provider) || {}
+  const filled = []
+  const hints = {}
+  Object.keys(cred).forEach(function (k) {
+    const text = String(cred[k] || '')
+    if (!text) return
+    filled.push(k)
+    hints[k] = maskTail(text)
+  })
+  return { set: filled.length > 0, filled: filled, hints: hints }
+}
+
+function parcelStatus() {
+  const credentials = {}
+  Object.keys(PARCEL_CRED_KEYS).forEach(function (p) { credentials[p] = parcelCredentialStatus(p) })
+  return { credentials: credentials }
+}
+
+/** 保存凭据：values 里的空串表示清掉该字段；全部为空时删除整条记录 */
+function setParcelCredential(dto) {
+  try {
+    return withTx(function () {
+      const provider = String((dto && dto.provider) || '')
+      const name = parcelCredKey(provider)
+      const values = (dto && dto.values) || {}
+      const next = Object.assign({}, readParcelCredential(provider) || {})
+      Object.keys(values).forEach(function (k) {
+        const text = String(values[k] == null ? '' : values[k]).trim()
+        if (text) next[k] = text
+        else delete next[k]
+      })
+      if (!Object.keys(next).length) {
+        get().prepare('DELETE FROM app_setting WHERE key = ?').run(name)
+      } else {
+        get().prepare('INSERT OR REPLACE INTO app_setting (key,value) VALUES (?,?)').run(name, secret.pack(JSON.stringify(next)))
+      }
+      return parcelStatus()
+    })
+  } catch (err) {
+    return fail('setParcelCredential failed', err, {})
+  }
+}
+
+function clearParcelCredential(dto) {
+  try {
+    return withTx(function () {
+      const name = parcelCredKey(String((dto && dto.provider) || ''))
+      get().prepare('DELETE FROM app_setting WHERE key = ?').run(name)
+      return parcelStatus()
+    })
+  } catch (err) {
+    return fail('clearParcelCredential failed', err, {})
+  }
+}
+
+/** 明文回显：设置面板点「显示已保存」时才调 */
+function revealParcelCredential(dto) {
+  const provider = String((dto && dto.provider) || '')
+  parcelCredKey(provider)
+  return { provider: provider, values: readParcelCredential(provider) || {} }
+}
+
 module.exports = {
   all: readAll, get: getOne, set: set, defaults: DEFAULTS,
   storage: storage, backup: backup, backups: backups, restore: restore,
   exportData: exportData, clearCache: clearCache, clearTrash: clearTrash, resetAll: resetAll,
   setWeatherKey: setWeatherKey, setWeatherJwt: setWeatherJwt, clearWeatherJwt: clearWeatherJwt,
-  revealSecret: revealSecret, migratePlain: migratePlain, testWeather: testWeather
+  revealSecret: revealSecret, migratePlain: migratePlain, testWeather: testWeather,
+  readParcelCredential: readParcelCredential, setParcelCredential: setParcelCredential,
+  clearParcelCredential: clearParcelCredential, revealParcelCredential: revealParcelCredential,
+  parcelStatus: parcelStatus
 }

@@ -451,9 +451,59 @@ function registerIpc() {
     refresh: feedSvc.refresh, importOPML: feedSvc.importOPML, exportOPML: feedSvc.exportOPML
   })
   registry.register('parcel', {
-    list: parcelSvc.list, add: parcelSvc.add, refresh: parcelSvc.refresh,
+    list: parcelSvc.list,
+    // 新增：可传手选快递公司与手机号后四位，未传则按单号前缀自动识别
+    add: {
+      schema: z.object({
+        numbers: z.array(z.string()).min(1),
+        alias: z.string().optional(),
+        note: z.string().optional(),
+        company: z.string().optional(),
+        phoneTail: z.string().optional()
+      }),
+      handler: function (dto) { const out = parcelSvc.add(dto); broadcastParcel('add'); return out }
+    },
+    // 刷新：兼容旧调用只传 id 字符串；新版可带手选公司与手机号后四位
+    refresh: {
+      schema: z.union([
+        z.string().min(1),
+        z.object({ id: z.string().min(1), company: z.string().optional(), phoneTail: z.string().optional() })
+      ]),
+      handler: function (dto) { return parcelSvc.refresh(dto).then(function (out) { if (!out.error) broadcastParcel('refresh'); return out }) }
+    },
+    // 一键刷新：默认只刷未签收的，force 为真时连已签收也重查
+    refreshAll: {
+      schema: z.object({ force: z.boolean().optional() }).optional(),
+      handler: function (dto) {
+        return parcelSvc.refreshAll(dto || {}).then(function (out) {
+          if (out.added || out.changed) broadcastParcel('refreshAll')
+          return out
+        })
+      }
+    },
+    // 数据源菜单与凭据状态：只回状态位，不回明文
+    providers: function () { return parcelSvc.providers() },
+    companies: function () { return parcelSvc.companies() },
+    testProvider: {
+      schema: z.object({
+        provider: z.string().optional(),
+        no: z.string().optional(),
+        company: z.string().optional(),
+        phoneTail: z.string().optional(),
+        values: z.record(z.string(), z.string()).optional()
+      }),
+      handler: parcelSvc.testProvider
+    },
     get: { schema: z.string().min(1), handler: parcelSvc.get },
-    tracks: parcelSvc.tracks, archive: parcelSvc.archive,
+    tracks: parcelSvc.tracks,
+    archive: {
+      schema: z.union([z.string().min(1), z.object({ id: z.string().min(1) })]),
+      handler: function (dto) { const out = parcelSvc.archive(dto); broadcastParcel('archive'); return out }
+    },
+    togglePrivacy: {
+      schema: z.object({ id: z.string().min(1), masked: z.boolean() }),
+      handler: function (dto) { const out = parcelSvc.togglePrivacy(dto); broadcastParcel('togglePrivacy'); return out }
+    },
     togglePrivacy: parcelSvc.togglePrivacy, toTodoInfo: parcelSvc.toTodoInfo
   })
   registry.register('mail', {
@@ -566,7 +616,32 @@ function registerIpc() {
     clearWeatherJwt: settingsSvc.clearWeatherJwt,
     // 凭据明文回显：kind=weatherKey | weatherJwt，界面默认掩码
     revealSecret: { schema: z.object({ kind: z.enum(['weatherKey', 'weatherJwt']) }), handler: settingsSvc.revealSecret },
-    testWeather: settingsSvc.testWeather
+    testWeather: settingsSvc.testWeather,
+    // 快递数据源凭据：values 里每个字段独立保存，空串表示删除该字段
+    setParcelCredential: {
+      schema: z.object({
+        provider: z.enum(['kuaidi100', 'kdniao', 'juhe']),
+        values: z.record(z.string(), z.string())
+      }),
+      handler: function (dto) {
+        const out = settingsSvc.setParcelCredential(dto)
+        BrowserWindow.getAllWindows().forEach(function (w) { if (!w.isDestroyed()) registry.broadcast(w.webContents, 'settings', 'set') })
+        return out
+      }
+    },
+    clearParcelCredential: {
+      schema: z.object({ provider: z.enum(['kuaidi100', 'kdniao', 'juhe']) }),
+      handler: function (dto) {
+        const out = settingsSvc.clearParcelCredential(dto)
+        BrowserWindow.getAllWindows().forEach(function (w) { if (!w.isDestroyed()) registry.broadcast(w.webContents, 'settings', 'set') })
+        return out
+      }
+    },
+    // 凭据明文回显：provider=kuaidi100 | kdniao | juhe，界面默认掩码
+    revealParcelCredential: {
+      schema: z.object({ provider: z.enum(['kuaidi100', 'kdniao', 'juhe']) }),
+      handler: settingsSvc.revealParcelCredential
+    }
   })
   registry.register('search', {
     query: { schema: z.object({ keyword: z.string().min(1).max(60) }), handler: searchSvc.query }
@@ -753,6 +828,57 @@ let mailAutoTimer = null
 let mailAutoLastAt = 0
 let mailAutoRunning = false
 
+/* ---------- 快递自动刷新 ---------- */
+// 频率取设置里的 parcel.autoRefreshMin（分钟，0 = 关闭，只手动刷新）；默认只刷未签收的包裹。
+// 与邮件一样走 60s 轮询：用户改完频率、换完数据源，下一个 tick 就按新配置走。
+const PARCEL_TICK_MS = 60 * 1000
+let parcelAutoTimer = null
+let parcelAutoLastAt = 0
+let parcelAutoRunning = false
+
+function parcelAutoRefreshMin() {
+  const cfg = settingsSvc.get('parcel') || {}
+  const v = Number(cfg.autoRefreshMin)
+  return Number.isFinite(v) && v > 0 ? Math.max(5, Math.round(v)) : 0
+}
+
+// 快递列表变更后广播：页面与首页卡片都监听这个频道重新拉数据
+function broadcastParcel(action) {
+  BrowserWindow.getAllWindows().forEach(function (w) {
+    if (w.isDestroyed()) return
+    registry.broadcast(w.webContents, 'parcel', action)
+  })
+}
+
+async function runParcelAutoRefresh() {
+  if (parcelAutoRunning) return
+  const min = parcelAutoRefreshMin()
+  if (!min) return
+  if (Date.now() - parcelAutoLastAt < min * 60000) return
+  const cfg = settingsSvc.get('parcel') || {}
+  // 手动维护模式没有可调用的接口，定时器空转只会白写 last_error
+  if (!cfg.provider || cfg.provider === 'manual') return
+  parcelAutoRunning = true
+  parcelAutoLastAt = Date.now()
+  try {
+    const r = await parcelSvc.refreshAll({ force: false })
+    if (r.added || r.changed) broadcastParcel('autoRefresh')
+    logger.info('parcel', 'auto_refresh_done', { total: r.total, added: r.added, changed: r.changed, failed: r.failed, min: min })
+  } catch (e) {
+    logger.warn('parcel', 'auto_refresh_failed', { message: e && e.message })
+  } finally {
+    parcelAutoRunning = false
+  }
+}
+
+function startParcelAutoRefresh() {
+  if (parcelAutoTimer) return
+  parcelAutoLastAt = 0
+  parcelAutoTimer = setInterval(function () { void runParcelAutoRefresh() }, PARCEL_TICK_MS)
+  // 启动后 8s 补一次：与邮件错开，避免同时打接口
+  setTimeout(function () { void runParcelAutoRefresh() }, 8000)
+}
+
 function mailAutoSyncMin() {
   const cfg = settingsSvc.get('mail') || {}
   const v = Number(cfg.autoSyncMin)
@@ -854,6 +980,8 @@ app.whenReady().then(function () {
   createTray()
   // 邮件自动同步：频率读设置里的 mail.autoSyncMin，改动后下一个 tick 就按新值走
   startMailAutoSync()
+  // 快递自动刷新：频率读设置里的 parcel.autoRefreshMin，换数据源后下一个 tick 生效
+  startParcelAutoRefresh()
   // 事件通知引擎：系统通知 + 应用内通知。窗口对象每次重建都取最新的，所以传函数而不是引用
   notifySvc.start({
     getWindow: function () { return win },

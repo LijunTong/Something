@@ -104,6 +104,7 @@ export interface AllSettings {
   appearance: AppearanceSetting; notify: NotifySetting; shortcuts: ShortcutSetting; window: WindowSetting
   backup: BackupSetting; weather: WeatherSetting; feed: FeedSetting; modules: ModulesSetting
   mail: MailSetting
+  parcel: ParcelSetting
   home: HomeSetting
 }
 export interface StorageSegment { key: string; label: string; color: string; bytes: number }
@@ -189,6 +190,11 @@ export interface Api {
   revealSecret(dto: { kind: 'weatherKey' | 'weatherJwt' }): Promise<IpcResult<{ kind: string; value: string }>>
   clearWeatherJwt(): Promise<IpcResult<WeatherSetting>>
     testWeather(): Promise<IpcResult<WeatherTestResult>>
+    /** 快递数据源凭据：values 里空串字段表示删除 */
+    setParcelCredential(dto: { provider: 'kuaidi100' | 'kdniao' | 'juhe'; values: Record<string, string> }): Promise<IpcResult<ParcelSetting>>
+    clearParcelCredential(dto: { provider: 'kuaidi100' | 'kdniao' | 'juhe' }): Promise<IpcResult<ParcelSetting>>
+    /** 凭据明文回显：界面默认掩码，点「显示」时按需取 */
+    revealParcelCredential(dto: { provider: 'kuaidi100' | 'kdniao' | 'juhe' }): Promise<IpcResult<{ provider: string; values: Record<string, string> }>>
   }
   search: {
     query(dto: { keyword: string }): Promise<IpcResult<{ keyword: string; total: number; groups: SearchGroup[] }>>
@@ -375,14 +381,76 @@ export interface FeedApi {
   exportOPML(): Promise<IpcResult<string>>
 }
 
-export interface ParcelRow { id: string; company: string; trackingNo: string; alias: string | null; note: string | null; status: string; pickupCode: string | null; station: string | null; etaAt: number | null; archived: boolean; privacyMasked: boolean; createdAt: number; updatedAt: number }
+export interface ParcelRow {
+  id: string; company: string; trackingNo: string; alias: string | null; note: string | null
+  status: string; pickupCode: string | null; station: string | null; etaAt: number | null
+  archived: boolean; privacyMasked: boolean; createdAt: number; updatedAt: number
+  /** 各数据源自己的快递公司编码（如 shunfeng / SF / sf），刷新时现算 */
+  courierCode?: string | null
+  /** 顺丰等需要手机号后四位才能查到轨迹 */
+  phoneTail?: string | null
+  /** 上次成功查询所用的数据源 id；manual 表示手动维护 */
+  provider?: string | null
+  /** 数据源返回的原始状态码，排查用，界面不直接展示 */
+  providerState?: string | null
+  lastSyncAt?: number | null
+  /** 上次失败原因，格式 code|message；成功刷新后清空 */
+  lastError?: string | null
+}
+export interface ParcelProviderField { key: string; label: string; placeholder: string; secret: boolean }
+export interface ParcelProvider {
+  id: 'manual' | 'kuaidi100' | 'kdniao' | 'juhe'; name: string; site: string; desc: string
+  fields: ParcelProviderField[]
+  /** 当前设置里选中的就是它 */
+  active: boolean
+  /** 手动模式恒为 true；其余数据源填齐必填字段才算 true */
+  configured: boolean
+  /** 已保存的字段 key 列表 */
+  filled: string[]
+  /** 已保存字段的掩码尾号，不含明文 */
+  hints: Record<string, string>
+}
+export interface ParcelRefreshResult {
+  parcel: ParcelRow | null
+  provider: string
+  added: number
+  statusChanged: boolean
+  error: { code: string; message: string } | null
+}
+export interface ParcelRefreshAllResult {
+  total: number; added: number; changed: number; failed: number; provider: string
+  /** 失败原因摘要，最多 3 条，用于批量刷新后就地提示 */
+  errors?: string[]
+}
+export interface ParcelTestResult {
+  ok: boolean; code: string; message: string
+  company?: string; status?: string; traces?: number
+}
+/** 快递设置：provider=manual 表示只手动维护；autoRefreshMin 为自动刷新间隔（分钟，0 关闭） */
+export interface ParcelSetting {
+  provider: string
+  autoRefreshMin: number
+  detectCompany: boolean
+  /** 各数据源的凭据填写状态，由主进程按凭据推算，不落库 */
+  credentials?: Record<string, { set: boolean; filled: string[]; hints: Record<string, string> }>
+}
 export interface ParcelTrack { id: string; parcelId: string; nodeTime: number; description: string; location: string | null }
 export interface ParcelApi {
   list(filter?: { status?: string; archived?: boolean }): Promise<IpcResult<ParcelRow[]>>
   /** 单条：仪表盘深链定位用，查不到返回 null */
   get(id: string): Promise<IpcResult<ParcelRow | null>>
-  add(dto: { numbers: string[]; alias?: string; note?: string }): Promise<IpcResult<ParcelRow[]>>
-  refresh(id: string): Promise<IpcResult<ParcelRow>>
+  /** 新增：company / phoneTail 可选，不传则按单号前缀自动识别公司 */
+  add(dto: { numbers: string[]; alias?: string; note?: string; company?: string; phoneTail?: string }): Promise<IpcResult<ParcelRow[]>>
+  /** 刷新单条：兼容旧调用只传 id；带公司/手机号后四位时会先落库再查询 */
+  refresh(idOrDto: string | { id: string; company?: string; phoneTail?: string }): Promise<IpcResult<ParcelRefreshResult>>
+  /** 一键刷新：默认只刷未签收，force 为真时连已签收也重查 */
+  refreshAll(dto?: { force?: boolean }): Promise<IpcResult<ParcelRefreshAllResult>>
+  /** 数据源清单与凭据填写状态（不含明文） */
+  providers(): Promise<IpcResult<ParcelProvider[]>>
+  /** 快递公司选项，新增包裹时手选用 */
+  companies(): Promise<IpcResult<Array<{ name: string; short: string }>>>
+  /** 用真实单号试查一次，不写库 */
+  testProvider(dto: { provider?: string; no?: string; company?: string; phoneTail?: string; values?: Record<string, string> }): Promise<IpcResult<ParcelTestResult>>
   tracks(id: string): Promise<IpcResult<ParcelTrack[]>>
   archive(id: string): Promise<IpcResult<boolean>>
   togglePrivacy(dto: { id: string; masked: boolean }): Promise<IpcResult<boolean>>
