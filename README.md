@@ -430,4 +430,12 @@ npx electron-builder --win --config.npmRebuild=false
 
 应用不提供账户注册与登录，没有云端同步；WebDAV、S3、GitHub 等同步能力不属于本项目。
 
+## 开源许可
+
+本项目采用 [MIT 许可证](LICENSE)，全文见仓库根目录的 `LICENSE`。
+
+可以自由使用、修改、分发，包括商业用途；只需在副本或衍生作品中保留原始的版权声明与许可声明。软件按「现状」提供，不附带任何明示或默示的担保。
+
+「设置 → 关于 → 开源许可」里列出的是第三方依赖各自的协议（Vue、Vue Router、Pinia、Naive UI、better-sqlite3、zod、Electron 均为 MIT），与本项目自身的协议相互独立。
+
 
