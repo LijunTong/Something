@@ -1057,6 +1057,17 @@ function startMailAutoSync() {
   setTimeout(function () { void runMailAutoSync() }, 5000)
 }
 
+/** 自动备份：服务层按设置判断是否到期、是否受加密限制；这里只负责调度与日志 */
+function runAutoBackup(source) {
+  try {
+    const r = settingsSvc.autoBackup(source)
+    if (r && r.created) logger.info('main', 'auto_backup_done', { source: source, name: r.created.name })
+    else if (r && r.error) logger.warn('main', 'auto_backup_failed', { source: source, error: r.error })
+  } catch (e) {
+    logger.warn('main', 'auto_backup_failed', { source: source, message: e && e.message })
+  }
+}
+
 app.whenReady().then(function () {
   // 拼写词典：Chromium 默认去 redirector.gvt1.com 拉 en-us 词典，这条链路常被重置，
   // 控制台就会刷 ssl_client_socket_impl handshake failed / net_error -100。
@@ -1116,6 +1127,9 @@ app.whenReady().then(function () {
   startMailAutoSync()
   // 快递自动刷新：频率读设置里的 parcel.autoRefreshMin，换数据源后下一个 tick 生效
   startParcelAutoRefresh()
+  // 自动备份：启动后先检查一次是否到期，运行中每 30 分钟检查，退出时由 before-quit 再触发
+  setTimeout(function () { runAutoBackup('startup') }, 8000)
+  setInterval(function () { runAutoBackup('timer') }, 30 * 60 * 1000)
   // 事件通知引擎：系统通知 + 应用内通知。窗口对象每次重建都取最新的，所以传函数而不是引用
   notifySvc.start({
     getWindow: function () { return win },
@@ -1140,6 +1154,8 @@ app.whenReady().then(function () {
 
 app.on('window-all-closed', function () { if (process.platform !== 'darwin') app.quit() })
 app.on('before-quit', function () {
+  // 「每次退出」在这里落盘；quitting 兼作重复触发保护，避免连按关闭生成多份
+  if (!quitting) runAutoBackup('quit')
   quitting = true
   notifySvc.stop()
   stopMcp()

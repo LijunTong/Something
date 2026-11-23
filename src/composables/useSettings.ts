@@ -10,7 +10,7 @@ const FALLBACK: AllSettings = {
   notify: { inApp: true, desktop: true, systemOnlyAway: true, weather: true, schedule: true, todo: true, pomodoro: true, parcel: false, mail: true, dndOn: false, dndStart: '22:00', dndEnd: '08:00', privacy: 'summary', sounds: { weather: '蜂鸣', schedule: '蜂鸣', todo: '蜂鸣', pomodoro: '蜂鸣', parcel: '蜂鸣', mail: '蜂鸣' } },
   shortcuts: { search: 'Ctrl+K', newTodo: 'N', focus: 'F' },
   window: { closeToTray: true, minimizeToTray: false, launchAtLogin: false },
-  backup: { auto: true, path: '', freq: '每天', encrypted: false, passwordSet: false, lastAt: null, lastFile: null },
+  backup: { auto: true, path: '', freq: '每天', encrypted: false, keep: 10, passwordSet: false, lastAt: null, lastFile: null },
   weather: { source: 'qweather', host: '', geoHost: '', cacheMin: 5, refreshMin: 5, authType: 'jwt', offlineCache: true, alertPush: true, unit: 'C', apiKeySet: false, jwtSet: false, authMode: 'none' },
   feed: { defaultInterval: 360, keepContent: true },
   mail: { autoSyncMin: 15 },

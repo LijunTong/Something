@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
 import {
-  NCard, NButton, NSwitch, NSelect, NInput, NTag, NAlert, NPopconfirm,
+  NCard, NButton, NSwitch, NSelect, NInput, NInputNumber, NTag, NAlert, NPopconfirm,
   NUpload, NModal, NEmpty, NSpin, NDescriptions, NDescriptionsItem, useMessage, useDialog
 } from 'naive-ui'
 import { call, bridge, hasBridge } from '@/lib/ipc'
@@ -272,11 +272,25 @@ onMounted(loadStorage)
             @update:value="(v: string) => saveBackup({ freq: v as BackupSetting['freq'] })"
           />
         </div>
+        <div class="set-field">
+          <span class="set-field-key">保留份数</span>
+          <n-input-number
+            class="set-input"
+            size="small"
+            :value="settings.backup.keep"
+            :min="1"
+            :max="100"
+            :step="1"
+            @update:value="(v: number | null) => saveBackup({ keep: v ?? 10 })"
+          />
+        </div>
         <div class="set-actions">
           <n-button size="small" type="primary" :loading="busy === 'backup'" @click="doBackup">立即备份</n-button>
           <span class="set-muted" v-if="settings.backup.lastAt">上次备份 {{ new Date(settings.backup.lastAt).toLocaleString('zh-CN') }}</span>
           <span class="set-muted" v-else>尚未执行过备份</span>
         </div>
+
+        <p class="set-note">自动备份在启动、运行中每 30 分钟检查与退出时触发；「每天/每周」按上次备份时间判断是否到期。只保留最近「保留份数」份，超出的旧文件会自动删除。开启加密后后台无法输入密码，自动备份会跳过，仅手动备份生效。</p>
 
         <SectionTitle title="加密" />
         <div class="set-field">

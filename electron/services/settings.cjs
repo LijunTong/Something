@@ -30,7 +30,8 @@ const DEFAULTS = {
   // 窗口行为：关闭/最小化到托盘、开机启动（开机启动同时写入系统登录项）
   window: { closeToTray: true, minimizeToTray: false, launchAtLogin: false },
   // 自动备份：path 为空时落在数据库同级的 backups 目录
-  backup: { auto: true, path: '', freq: '每天', encrypted: false, passwordSet: false, lastAt: null, lastFile: null },
+  // keep：最多保留多少份本程序生成的备份（超出删最旧），1-100
+  backup: { auto: true, path: '', freq: '每天', encrypted: false, passwordSet: false, keep: 10, lastAt: null, lastFile: null },
   // 天气：unit 供天气页与首页共享；apiKeySet 只是状态位，真值不进 all()
   // host/geoHost 均为和风天气 API Host：老账号用 devapi/geoapi，新账号填控制台里自己的 Host
   // host/geoHost 为空表示还没配置：和风天气要求使用控制台分配的账号专属 API Host
@@ -327,7 +328,9 @@ function backup(dto) {
     const t = now()
     writeKey('backup', Object.assign({}, cfg, { lastAt: t, lastFile: target, passwordSet: useEnc }))
     get().prepare('INSERT INTO operation_log (action, detail, created_at) VALUES (?,?,?)').run('settings.backup', name, t)
-    return { path: target, name: name, bytes: Buffer.byteLength(body), encrypted: useEnc, at: t }
+    // 保留份数：写入成功后立即清理最旧的备份，target 自身永远受保护
+    const pruned = prune(dir, cfg.keep, target)
+    return { path: target, name: name, bytes: Buffer.byteLength(body), encrypted: useEnc, at: t, pruned: pruned }
   } catch (err) {
     return fail('backup failed', err, {})
   }
@@ -348,6 +351,64 @@ function backups() {
   })
   files.sort(function (a, b) { return b.at - a.at })
   return { dir: dir, files: files.slice(0, 50) }
+}
+
+/** 本程序生成的备份文件（兼容旧 efficiency- 前缀，便于老用户在同一个目录里统一计数） */
+const BACKUP_NAME_RE = /^(?:something|efficiency)-backup-.*\.json$/
+
+/** 只保留最近 keep 份备份；protect 指向刚写入的文件，不参与删除 */
+function prune(dir, keep, protect) {
+  const max = Math.max(1, Math.min(100, Number(keep) || 10))
+  let names = []
+  try { names = fs.readdirSync(dir).filter(function (n) { return BACKUP_NAME_RE.test(n) }) } catch (e) { return [] }
+  const guard = protect ? path.resolve(String(protect)) : ''
+  const files = names.map(function (n) {
+    const p = path.join(dir, n)
+    let at = 0
+    try { at = fs.statSync(p).mtimeMs } catch (e) { at = 0 }
+    return { path: p, name: n, at: at, guard: guard && path.resolve(p) === guard }
+  })
+  files.sort(function (a, b) { return b.at - a.at })
+  const removed = []
+  files.forEach(function (f, i) {
+    if (i < max || f.guard) return
+    try { fs.unlinkSync(f.path); removed.push(f.name) } catch (e) { /* 被占用或已删除，下次再清 */ }
+  })
+  if (removed.length) logger.info('settings', 'backup_pruned', { keep: max, removed: removed })
+  return removed
+}
+
+const FREQ_MS = { '每天': 24 * 60 * 60 * 1000, '每周': 7 * 24 * 60 * 60 * 1000 }
+
+/**
+ * 自动备份：由主进程在启动、定时检查与退出时调用。
+ * source: startup | timer | quit。只在 auto 打开时生效；
+ * 每天/每周按 lastAt 判断是否到期，每次退出只在 quit 触发。
+ * 开启加密时不自动备份（后台拿不到密码），跳过并返回原因，避免生成无密码的半成品。
+ */
+function autoBackup(source) {
+  try {
+    const cfg = getOne('backup') || DEFAULTS.backup
+    if (!cfg.auto) return { skipped: 'disabled' }
+    if (cfg.freq === '每次退出') {
+      if (source !== 'quit') return { skipped: 'quit-only' }
+    } else {
+      if (source === 'quit') return { skipped: 'not-quit-mode' }
+      const span = FREQ_MS[cfg.freq] || FREQ_MS['每天']
+      if (cfg.lastAt && Date.now() - Number(cfg.lastAt) < span) return { skipped: 'not-due' }
+    }
+    if (cfg.encrypted) {
+      logger.warn('settings', 'auto_backup_skipped', { source: source, reason: 'encrypted' })
+      return { skipped: 'encrypted' }
+    }
+    const r = backup({})
+    get().prepare('INSERT INTO operation_log (action, detail, created_at) VALUES (?,?,?)').run('settings.backup.auto', source + ' ' + r.name, now())
+    logger.info('settings', 'auto_backup', { source: source, name: r.name, pruned: r.pruned.length })
+    return { created: r, source: source }
+  } catch (err) {
+    try { logger.error('settings', 'auto_backup_failed', err, { source: source }) } catch (e) { /* 日志失败不影响退出 */ }
+    return { error: String((err && err.message) || err) }
+  }
 }
 
 function restore(dto) {
@@ -811,7 +872,7 @@ function revealParcelCredential(dto) {
 
 module.exports = {
   all: readAll, get: getOne, set: set, defaults: DEFAULTS,
-  storage: storage, backup: backup, backups: backups, restore: restore,
+  storage: storage, backup: backup, backups: backups, restore: restore, autoBackup: autoBackup,
   exportData: exportData, clearCache: clearCache, clearTrash: clearTrash, resetAll: resetAll,
   setWeatherKey: setWeatherKey, setWeatherJwt: setWeatherJwt, clearWeatherJwt: clearWeatherJwt,
   revealSecret: revealSecret, migratePlain: migratePlain, testWeather: testWeather,

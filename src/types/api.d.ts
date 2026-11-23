@@ -69,6 +69,8 @@ export interface ShortcutSetting {
 }
 export interface BackupSetting {
   auto: boolean; path: string; freq: '每天' | '每周' | '每次退出'
+  /** 最多保留的备份份数，超出后删除最旧的（1-100，默认 10） */
+  keep: number
   encrypted: boolean; passwordSet: boolean; lastAt: number | null; lastFile: string | null
 }
 export interface WeatherSetting {
