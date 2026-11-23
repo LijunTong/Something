@@ -131,6 +131,15 @@ const selectedHtml = computed(() => {
 
 /** 列表：顶部标题搜索 + 每页 20 条的无限滚动（数据仍一次性取全，只为渲染分页） */
 const keyword = ref('')
+/** 搜索框草稿：只有回车（或清空）才写入 keyword，避免输入过程中列表频繁跳动 */
+const searchDraft = ref('')
+function applySearch(): void {
+  keyword.value = searchDraft.value.trim()
+}
+function clearSearch(): void {
+  searchDraft.value = ''
+  applySearch()
+}
 const PAGE_SIZE = 20
 const page = ref(1)
 const matchedItems = computed(() => {
@@ -160,7 +169,10 @@ function onListScroll(e: Event): void {
   if (!el || !el.scrollHeight) return
   if (el.scrollTop + el.clientHeight >= el.scrollHeight - 80) loadMore()
 }
-watch(keyword, () => { page.value = 1 })
+watch(keyword, (v) => {
+  if (searchDraft.value !== v) searchDraft.value = v
+  page.value = 1
+})
 /** 切换分类 / 订阅：页码回到第一页、收起阅读器、清空多选，避免停在上一个视图的文章上 */
 watch([groupId, sourceId, kind], () => {
   page.value = 1
@@ -685,7 +697,14 @@ watch(unreadCount, (n) => store.setFeedUnread(n), { immediate: true })
             </n-button>
           </div>
           <div class="fd-search">
-            <n-input v-model:value="keyword" size="small" clearable placeholder="搜索标题…">
+            <n-input
+              v-model:value="searchDraft"
+              size="small"
+              clearable
+              placeholder="搜索标题，回车确认"
+              @keyup.enter="applySearch"
+              @clear="clearSearch"
+            >
               <template #prefix><svg class="fd-search-ico"><use href="#i-search" /></svg></template>
             </n-input>
           </div>
@@ -744,7 +763,7 @@ watch(unreadCount, (n) => store.setFeedUnread(n), { immediate: true })
             <n-empty v-else class="fd-list-empty" size="small" :description="keyword ? '没有匹配的文章' : '这里还没有文章'">
               <template #extra>
                 <div class="fd-empty-actions">
-                  <n-button v-if="keyword" size="small" @click="keyword = ''">清除搜索</n-button>
+                  <n-button v-if="keyword" size="small" @click="clearSearch">清除搜索</n-button>
                   <template v-else>
                     <n-button size="small" :loading="busy" :disabled="busy" @click="refreshAll">刷新</n-button>
                     <n-button size="small" type="primary" @click="openManagePanel">管理订阅</n-button>
