@@ -126,6 +126,8 @@ h1 { margin: 0; font-size: var(--fs-title); line-height: 1.3; font-weight: 650; 
 .app-shell.shell-compact .local-status-text,
 .app-shell.shell-compact .sidebar-version { display: none; }
 .app-shell.shell-compact .nav { padding: 0 6px; }
+/* 折叠后只有图标：数字角标挤在图标右侧显得杂乱，收起 */
+.app-shell.shell-compact .nav-count { display: none; }
 .app-shell.shell-compact .nav-item { justify-content: center; gap: 4px; min-height: 40px; padding: 0; }
 .app-shell.shell-compact .sidebar-footer { display: grid; justify-items: center; padding: 10px 6px 14px; }
 .app-shell.shell-compact .local-status { justify-content: center; gap: 0; }
