@@ -243,16 +243,6 @@ function scanTodos() {
   })
 }
 
-function scanParcels() {
-  const rows = get().prepare(
-    "SELECT id, company, status, pickup_code, station, eta_at, updated_at FROM parcel WHERE archived = 0 AND status IN ('派送中','待取件','已签收') LIMIT 10"
-  ).all()
-  rows.forEach(function (p) {
-    const copy = notifyText.parcel(p)
-    push({ id: 'parcel:' + p.id + ':' + (Number(p.updated_at) || 0), module: 'parcel', level: copy.level, title: copy.title, body: copy.body })
-  })
-}
-
 function scanMails() {
   const row = get().prepare('SELECT COUNT(*) AS n, COALESCE(MAX(sent_at), 0) AS latest FROM mail WHERE read = 0 AND important = 1').get()
   if (!row || !row.n) return
@@ -310,7 +300,9 @@ function scanWeatherDigest() {
 }
 
 function safeScan() {
-  const steps = [scanSchedules, scanTodos, scanParcels, scanMails, scanWeatherAlerts, scanWeatherDigest]
+  // 快递入口已隐藏（src/lib/features.ts 的 PARCEL_ENABLED=false），不再扫描快递状态；
+  // 历史通知仍按 MODULE_LABEL / MODULE_ROUTE 保留「快递」标签与跳转。
+  const steps = [scanSchedules, scanTodos, scanMails, scanWeatherAlerts, scanWeatherDigest]
   steps.forEach(function (fn) {
     try { fn() } catch (e) { logger.warn('notify', 'scan_failed', { step: fn.name, message: e && e.message }) }
   })
