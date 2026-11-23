@@ -211,32 +211,23 @@ function smartCount(k: FeedKind): number {
   if (k === 'starred') return allItems.value.filter((i) => i.starred).length
   return allItems.value.filter((i) => i.readLater).length
 }
-/** 智能分类是否高亮：只有没选任何分类/订阅时才算选中，保证侧栏始终只有一项高亮 */
+/** 智能分类与分类筛选是两个维度，可叠加（例如「未读」+「IT之家」） */
 function smartActive(k: FeedKind): boolean {
-  return kind.value === k && !groupId.value && !sourceId.value
+  return kind.value === k
 }
-/** 智能分类与我的分类互斥单选：选智能分类时清掉分类与订阅筛选 */
+/** 再次点击已选中的智能分类即取消，分类/订阅选择保持不变 */
 function toggleSmart(k: FeedKind): void {
-  if (smartActive(k)) { kind.value = ''; return }
-  kind.value = k
-  groupId.value = ''
-  sourceId.value = ''
+  kind.value = smartActive(k) ? '' : k
 }
-/** 再次点击已选中的分类即取消分类筛选；换分类时清掉订阅筛选并把智能分类退回「全部」 */
+/** 我的分类与订阅互斥单选：选分类时清掉订阅筛选 */
 function toggleGroup(g: FeedGroupRow): void {
-  const on = groupId.value === g.id && !sourceId.value
-  groupId.value = on ? '' : g.id
+  groupId.value = groupId.value === g.id ? '' : g.id
   sourceId.value = ''
-  if (!on) kind.value = 'all'
 }
-/** 点订阅行：只按该订阅筛选，同时把智能分类退回「全部」；再点一次取消 */
+/** 点订阅行：只按该订阅筛选，同时清掉分类选择（两者互斥）；再点一次取消 */
 function toggleSource(s: FeedSource): void {
-  const on = sourceId.value === s.id
-  sourceId.value = on ? '' : s.id
-  if (!on) {
-    groupId.value = s.groupId || ''
-    kind.value = 'all'
-  }
+  sourceId.value = sourceId.value === s.id ? '' : s.id
+  groupId.value = ''
 }
 
 /** 统一加载：全部数据经 IPC，调用失败由 call 的 fallback 兜底，异常统一记录 */
@@ -658,7 +649,7 @@ watch(unreadCount, (n) => store.setFeedUnread(n), { immediate: true })
           </div>
           <n-scrollbar v-if="groups.length" class="fd-cats">
             <template v-for="g in groups" :key="g.id">
-              <a class="fd-nav" :class="{ on: groupId === g.id && !sourceId }" href="#" @click.prevent="toggleGroup(g)">
+              <a class="fd-nav" :class="{ on: groupId === g.id }" href="#" @click.prevent="toggleGroup(g)">
                 <span class="dotc" :style="{ background: g.color || 'var(--muted-2)' }"></span><span class="fd-nav-label">{{ g.name }}</span><span class="fd-nav-count">{{ groupCount(g.id) }}</span>
               </a>
               <a v-for="s in sourcesOf(g.id)" :key="s.id" class="fd-nav fd-nav-sub" :class="{ on: sourceId === s.id }" href="#" @click.prevent="toggleSource(s)">
