@@ -220,6 +220,16 @@ async function onToggleSubtask(id: string) {
   await withLoading(() => store.toggleSubtask(id))
 }
 
+/** 列表行内勾选子任务：不走整页 loading，避免勾一下复选框整个列表转圈 */
+async function onToggleSubtaskInline(id: string) {
+  try {
+    await store.toggleSubtask(id)
+  } catch (e) {
+    log.exception('todo.toggleSubtask', e)
+    message.error((e as Error).message)
+  }
+}
+
 // Electron 30+ 已移除 window.prompt，调用会抛 Illegal invocation，
 // 这里改用 Naive UI 的输入弹窗。
 const showSubtaskModal = ref(false)
@@ -601,6 +611,18 @@ watch(activeListId, () => { void refreshPlanMeta() })
               </span>
               <n-tag v-if="isOverdue(t)" size="tiny" type="error">{{ fmtDue(t.dueAt) }}</n-tag>
               <span v-else class="td-due">{{ fmtDue(t.dueAt) }}</span>
+              <!-- 子待办：行内缩进列出，可直接勾选；容器吞掉点击，避免误开详情抽屉 -->
+              <div v-if="t.subtasks.length" class="td-subs" @click.stop>
+                <div v-for="s in t.subtasks" :key="s.id" class="td-sub-row">
+                  <n-checkbox
+                    size="small"
+                    :checked="s.done"
+                    :disabled="t.status === '已完成'"
+                    @update:checked="onToggleSubtaskInline(s.id)"
+                  />
+                  <n-text :depth="s.done ? 3 : 1" :delete-line="s.done">{{ s.title }}</n-text>
+                </div>
+              </div>
             </div>
             <n-empty v-if="!visible.length" class="td-empty" description="这里还没有任务" />
           </div>

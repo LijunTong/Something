@@ -37,6 +37,10 @@
 .td-row.done .td-title { font-weight: 400; text-decoration: line-through; }
 .td-tags { display: flex; gap: 5px; align-items: center; }
 .td-due { font-size: var(--fs-11); text-align: right; white-space: nowrap; }
+/* 列表行内子待办：跨满整行、缩进到标题下方；只写布局，文字样式交给 n-text */
+.td-subs { grid-column: 1 / -1; display: flex; flex-direction: column; gap: 2px; padding: 0 0 4px 25px; }
+.td-sub-row { display: flex; align-items: center; gap: 8px; min-height: 22px; }
+.td-sub-row .n-text { font-size: var(--fs-11); }
 
 .td-actions { display: flex; flex-direction: column; gap: 8px; width: 100%; }
 
