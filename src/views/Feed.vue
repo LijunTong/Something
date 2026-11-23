@@ -487,9 +487,13 @@ function confirmRemoveCat(g: FeedGroupRow): void {
         const r = await call(() => feedBridge().removeGroup(g.id), null as { groups: FeedGroupRow[]; count: number; defaultGroup: FeedGroupRow | null } | null)
         if (r) {
           groups.value = r.groups
+          const destId = r.defaultGroup ? r.defaultGroup.id : ''
+          // 订阅已迁到默认分类：先本地同步 groupId，再整体重载，避免侧栏和列表停留在旧分类下
+          if (destId) sources.value = sources.value.map((s) => (s.groupId === g.id ? { ...s, groupId: destId } : s))
           // 当前正筛着被删分类时，视图落到默认分类，避免停在空列表上
-          if (groupId.value === g.id) groupId.value = r.defaultGroup ? r.defaultGroup.id : ''
+          if (groupId.value === g.id) groupId.value = destId
         }
+        await loadAll()
         message.success(affected > 0
           ? '已删除分类，' + affected + ' 个订阅已移到「' + destName + '」'
           : '已删除分类')
