@@ -8,16 +8,21 @@
 //   node scripts/release.cjs --skip-push            # package + local tag only
 //   node scripts/release.cjs --skip-build           # reuse existing dist/ and installer
 //   node scripts/release.cjs --yes                  # no confirmation prompts
+//   node scripts/release.cjs --edit                 # open the tag message in $EDITOR first
 //   node scripts/release.cjs --notes-file notes.md  # use your own tag message
 //
 // The annotated tag message lists what changed since the previous tag (generated
-// from git log, grouped into 新增 / 修复 / 优化 / 改动). The tag is always created
-// locally first; pushing it to origin is asked separately and defaults to "no".
+// from git log, grouped into 新增 / 修复 / 优化 / 改动). It is written to a temp .txt
+// file first, so the text can be reviewed and edited in any editor before the tag
+// exists; --notes-file points at your own file instead (it is never overwritten).
+// The tag is always created locally first; pushing it to origin is asked separately
+// and defaults to "no".
 //
 // Auth: GITHUB_TOKEN / GH_TOKEN, else the token stored by git credential helper
 // (Git for Windows "wincred"/manager). The token is never printed or written anywhere.
 const { spawnSync } = require('node:child_process')
 const fs = require('node:fs')
+const os = require('node:os')
 const path = require('node:path')
 const notesLib = require('./release-notes.cjs')
 
@@ -38,6 +43,7 @@ const OPT = {
   skipPush: flag('skip-push'),
   skipBuild: flag('skip-build'),
   yes: flag('yes'),
+  edit: flag('edit'),
   notesFile: value('notes-file')
 }
 
@@ -251,6 +257,14 @@ log('package', installer + ' (' + sizeMb + ' MB)')
 // The tag message is the release note: commits since the previous tag, grouped by
 // type. It is written into the annotated tag (and reused for the GitHub Release), so
 // "git tag -n" / "git show v1.0.3" answer "what changed here?" without a browser.
+//
+// The generated text lands in a temp .txt first: that file is the single source of the
+// message, so it can be reviewed and edited in any editor before the tag exists.
+// --notes-file swaps in your own file, which is read but never overwritten.
+const notesPath = OPT.notesFile
+  ? path.resolve(root, OPT.notesFile)
+  : path.join(os.tmpdir(), 'something-release-notes-' + tag + '.txt')
+
 let notes = ''
 try {
   notes = notesLib.build({ root: root, version: version, tag: tag, notesFile: OPT.notesFile })
@@ -258,12 +272,60 @@ try {
   fail(e && e.message ? e.message : String(e))
 }
 
-log('tag', 'message:')
-console.log(notes.split('\n').map((line) => '  ' + line).join('\n'))
+if (!OPT.notesFile) {
+  fs.writeFileSync(notesPath, notes + '\n', 'utf8')
+  log('tag', 'notes file: ' + notesPath)
+}
+
+function readNotes() {
+  let text = ''
+  try {
+    text = fs.readFileSync(notesPath, 'utf8').trim()
+  } catch (e) {
+    fail('cannot read notes file ' + notesPath + ': ' + (e && e.message ? e.message : String(e)))
+  }
+  if (!text) fail('notes file is empty: ' + notesPath + ' (the tag message is required)')
+  return text
+}
+
+function showNotes(text) {
+  console.log(text.split('\n').map((line) => '  ' + line).join('\n'))
+}
+
+// Opens the notes file in an editor and waits for it to close, then takes whatever is
+// saved in the file. EDITOR / VISUAL win; notepad on Windows, vi elsewhere.
+function editNotes() {
+  const custom = process.env.VISUAL || process.env.EDITOR
+  log('tag', 'open ' + notesPath + ' in ' + (custom || (process.platform === 'win32' ? 'notepad' : 'vi')))
+  const res = custom
+    ? spawnSync(custom + ' "' + notesPath + '"', { cwd: root, stdio: 'inherit', shell: true })
+    : spawnSync(process.platform === 'win32' ? 'notepad.exe' : 'vi', [notesPath], { cwd: root, stdio: 'inherit' })
+  if (res.error) fail('cannot launch editor: ' + res.error.message + ' (edit ' + notesPath + ' by hand)')
+  return readNotes()
+}
+
+// Only an interactive terminal is asked: piped runs (CI) keep the generated text, and
+// --yes never blocks on an editor unless --edit asked for one explicitly.
+const interactive = Boolean(process.stdin.isTTY) && !OPT.yes
+let wantEdit = OPT.edit
+if (interactive && !wantEdit) wantEdit = ask('Edit the tag message before tagging? [' + notesPath + ']')
+
+if (wantEdit) {
+  for (;;) {
+    notes = editNotes()
+    log('tag', 'message:')
+    showNotes(notes)
+    if (!interactive || !ask('Edit it again?')) break
+  }
+} else {
+  notes = readNotes()
+  log('tag', 'message:')
+  showNotes(notes)
+}
 
 // Message goes through stdin (-F -) so blank lines and long lines survive intact;
 // -m would squeeze it into one paragraph.
-const tagArgs = (moveTag ? ['-f'] : []).concat(['-a', tag, '-F', '-'])
+const tagArgs = ['tag'].concat(moveTag ? ['-f'] : [], ['-a', tag, '-F', '-'])
 if (moveTag) {
   git(tagArgs, { input: notes })
   log('tag', tag + ' moved to ' + headSha.slice(0, 7))
