@@ -1,0 +1,189 @@
+<script setup lang="ts">
+// Agent 接入：本机 MCP 服务的开关、端口、访问令牌与客户端配置片段。
+// 服务只监听 127.0.0.1，写入的令牌由主进程生成，这里按需回显，不进入设置对象。
+import { computed, onMounted, ref } from 'vue'
+import { NAlert, NButton, NCard, NInput, NInputNumber, NSwitch, NTag, NText, useDialog, useMessage } from 'naive-ui'
+import SectionTitle from '@/components/settings/SectionTitle.vue'
+import { call, bridge, hasBridge } from '@/lib/ipc'
+import { log } from '@/lib/logger'
+import type { McpStatus } from '@/types/api'
+
+const message = useMessage()
+const dialog = useDialog()
+
+const status = ref<McpStatus | null>(null)
+const port = ref(3927)
+const token = ref('')
+const busy = ref(false)
+
+const running = computed(() => !!status.value && status.value.enabled && !!status.value.endpoint)
+const endpoint = computed(() => (running.value && status.value ? status.value.endpoint : '') || '')
+const configText = computed(() => {
+  const url = endpoint.value || 'http://127.0.0.1:' + (status.value?.port || port.value) + '/mcp'
+  return JSON.stringify({
+    mcpServers: {
+      'something-plan': {
+        type: 'http',
+        url: url,
+        headers: { Authorization: 'Bearer ' + (token.value || '<点击下方「显示令牌」后填入>') }
+      }
+    }
+  }, null, 2)
+})
+
+async function refresh() {
+  if (!hasBridge()) return
+  try {
+    const next = await call(() => bridge().mcp.status(), null as McpStatus | null)
+    if (next) {
+      status.value = next
+      port.value = next.port || next.configuredPort || 3927
+    }
+  } catch (e) {
+    log.exception('settings.mcp.status', e)
+  }
+}
+
+async function setEnabled(enabled: boolean) {
+  if (busy.value) return
+  busy.value = true
+  try {
+    const next = await call(() => bridge().mcp.setEnabled({ enabled, port: port.value }), null as McpStatus | null)
+    if (next) status.value = next
+    if (next && next.enabled && !next.endpoint) {
+      message.error(next.lastError || '服务未能启动，请检查端口是否被占用')
+    } else {
+      message.success(enabled ? '已开启本机 MCP 服务' : '已关闭本机 MCP 服务')
+    }
+  } catch (e) {
+    log.exception('settings.mcp.toggle', e)
+    message.error('切换失败：' + ((e as Error).message || '未知错误'))
+  } finally {
+    busy.value = false
+  }
+}
+
+async function applyPort() {
+  const p = Number(port.value)
+  if (!Number.isInteger(p) || p < 1024 || p > 65535) {
+    message.error('端口需在 1024-65535 之间')
+    return
+  }
+  const enabled = !!status.value?.enabled
+  await setEnabled(enabled)
+}
+
+async function revealToken() {
+  try {
+    const out = await call(() => bridge().mcp.revealToken(), { token: '' })
+    token.value = out.token
+  } catch (e) {
+    log.exception('settings.mcp.reveal', e)
+    message.error('读取令牌失败：' + ((e as Error).message || '未知错误'))
+  }
+}
+
+async function copy(text: string) {
+  if (!text) return
+  try {
+    await navigator.clipboard.writeText(text)
+    message.success('已复制')
+  } catch (e) {
+    log.exception('settings.mcp.copy', e)
+    message.error('复制失败，请手动选中复制')
+  }
+}
+
+function rotate() {
+  dialog.warning({
+    title: '重新生成令牌',
+    content: '旧令牌会立即失效，已经接好的 Agent 需要重新配置。',
+    positiveText: '重新生成',
+    negativeText: '取消',
+    onPositiveClick: async () => {
+      try {
+        const out = await call(() => bridge().mcp.rotateToken(), { token: '' })
+        token.value = out.token
+        await refresh()
+        message.success('已生成新令牌')
+      } catch (e) {
+        log.exception('settings.mcp.rotate', e)
+        message.error('生成失败：' + ((e as Error).message || '未知错误'))
+      }
+    }
+  })
+}
+
+function fmtAt(ts: number | null): string {
+  if (!ts) return '尚未调用'
+  return new Date(ts).toLocaleString('zh-CN', { hour12: false })
+}
+
+onMounted(() => { void refresh() })
+</script>
+
+<template>
+  <n-card size="small" title="Agent 接入">
+    <template #header-extra>
+      <n-tag size="small" :type="running ? 'success' : 'default'">{{ running ? '运行中' : '未启动' }}</n-tag>
+    </template>
+
+    <p class="set-muted">
+      开启后在本机 127.0.0.1 上提供一个 MCP 服务，Agent 可把项目计划写成待办与子任务。服务不对外网开放，关闭开关立即停止监听。
+    </p>
+
+    <SectionTitle title="本机服务" />
+    <div class="set-field">
+      <span class="set-field-key">
+        启用 MCP 服务
+        <small class="set-hint">只监听回环地址，不经过任何云端</small>
+      </span>
+      <n-switch :value="!!status?.enabled" :loading="busy" @update:value="(v: boolean) => setEnabled(v)" />
+    </div>
+    <div class="set-field">
+      <span class="set-field-key">
+        端口
+        <small class="set-hint">被占用时不会自动换端口，避免客户端配置悄悄失效</small>
+      </span>
+      <span class="set-inline">
+        <n-input-number v-model:value="port" class="set-port" size="small" :min="1024" :max="65535" :step="1" />
+        <n-button size="small" :disabled="busy" @click="applyPort">应用</n-button>
+      </span>
+    </div>
+    <div class="set-field">
+      <span class="set-field-key">服务地址</span>
+      <n-text depth="3" class="set-field-value">{{ endpoint || '—' }}</n-text>
+    </div>
+    <div class="set-field">
+      <span class="set-field-key">最近调用</span>
+      <n-text depth="3" class="set-field-value">{{ fmtAt(status?.lastCallAt ?? null) }}{{ status?.lastTool ? ' · ' + status.lastTool : '' }}</n-text>
+    </div>
+    <n-alert v-if="status?.lastError" type="warning" :bordered="false" class="mcp-alert">{{ status.lastError }}</n-alert>
+
+    <SectionTitle title="访问令牌" />
+    <div class="set-field">
+      <span class="set-field-key">
+        Bearer Token
+        <small class="set-hint">每个请求都需要它；令牌只保存在本机数据库</small>
+      </span>
+      <span class="set-inline">
+        <n-button size="small" @click="revealToken">显示令牌</n-button>
+        <n-button size="small" @click="copy(token)">复制</n-button>
+        <n-button size="small" type="warning" ghost @click="rotate">重新生成</n-button>
+      </span>
+    </div>
+    <div v-if="token" class="mcp-block">
+      <n-input :value="token" type="text" readonly size="small" />
+    </div>
+
+    <SectionTitle title="客户端配置" />
+    <p class="set-muted">把下面的片段加到支持 Streamable HTTP 的 MCP 客户端配置里；先点「显示令牌」替换占位符。</p>
+    <div class="mcp-block">
+      <n-input :value="configText" type="textarea" readonly :autosize="{ minRows: 6, maxRows: 12 }" />
+      <div class="mcp-row">
+        <n-button size="small" @click="copy(configText)">复制配置</n-button>
+        <n-text depth="3">工具：project_plan_write / project_plan_read / project_plan_item_update / project_plan_list</n-text>
+      </div>
+    </div>
+  </n-card>
+</template>

@@ -10,6 +10,7 @@ import WindowPanel from '@/components/settings/WindowPanel.vue'
 import DataPanel from '@/components/settings/DataPanel.vue'
 import ShortcutPanel from '@/components/settings/ShortcutPanel.vue'
 import AboutPanel from '@/components/settings/AboutPanel.vue'
+import McpPanel from '@/components/settings/McpPanel.vue'
 import { useSettings } from '@/composables/useSettings'
 import '@/styles/settings.css'
 
@@ -24,6 +25,7 @@ const PANELS: Record<string, { label: string; comp: unknown }> = {
   window: { label: '窗口与启动', comp: WindowPanel },
   data: { label: '数据与存储', comp: DataPanel },
   shortcut: { label: '快捷键', comp: ShortcutPanel },
+  mcp: { label: 'Agent 接入', comp: McpPanel },
   about: { label: '关于', comp: AboutPanel }
 }
 
@@ -65,6 +67,7 @@ const menuOptions = computed<MenuOption[]>(() => [
       { label: '窗口与启动', key: 'window', icon: icon('i-gear') },
       { label: '数据与存储', key: 'data', icon: icon('i-database') },
       { label: '快捷键', key: 'shortcut', icon: icon('i-key') },
+      { label: 'Agent 接入', key: 'mcp', icon: icon('i-board') },
       { label: '关于', key: 'about', icon: icon('i-info') }
     ]
   }
@@ -112,6 +115,7 @@ onMounted(async () => {
         <WindowPanel v-else-if="active === 'window'" />
         <DataPanel v-else-if="active === 'data'" />
         <ShortcutPanel v-else-if="active === 'shortcut'" />
+        <McpPanel v-else-if="active === 'mcp'" />
         <AboutPanel v-else-if="active === 'about'" />
         <n-card v-else size="small" title="未选择面板">
           <span class="set-muted">从左侧选择一个设置面板。</span>

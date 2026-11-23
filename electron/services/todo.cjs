@@ -52,19 +52,22 @@ function findListByName(name) {
   return get().prepare('SELECT * FROM todo_list WHERE deleted_at IS NULL AND lower(name) = lower(?)').get(n) || null
 }
 
+/** 内部实现：不开启事务，供已在外层事务中的调用方（如 Agent 计划写入）使用。 */
+function createListRaw(dto) {
+  const name = String((dto && dto.name) || '').trim()
+  if (!name) throw new Error('LIST_NAME_REQUIRED')
+  const existed = findListByName(name)
+  if (existed) return camel(existed)
+  const id = uid('list')
+  const max = get().prepare('SELECT COALESCE(MAX(sort),-1) AS m FROM todo_list').get()
+  get().prepare('INSERT INTO todo_list (id,name,color,sort) VALUES (?,?,?,?)')
+    .run(id, name, (dto && dto.color) || null, (max ? max.m : -1) + 1)
+  return camel(get().prepare('SELECT * FROM todo_list WHERE id = ?').get(id))
+}
+
 /** 新建清单；同名已存在则直接复用。返回清单行。 */
 function createList(dto) {
-  return withTx(function () {
-    const name = String((dto && dto.name) || '').trim()
-    if (!name) throw new Error('LIST_NAME_REQUIRED')
-    const existed = findListByName(name)
-    if (existed) return camel(existed)
-    const id = uid('list')
-    const max = get().prepare('SELECT COALESCE(MAX(sort),-1) AS m FROM todo_list').get()
-    get().prepare('INSERT INTO todo_list (id,name,color,sort) VALUES (?,?,?,?)')
-      .run(id, name, (dto && dto.color) || null, (max ? max.m : -1) + 1)
-    return camel(get().prepare('SELECT * FROM todo_list WHERE id = ?').get(id))
-  })
+  return withTx(function () { return createListRaw(dto) })
 }
 
 /**
@@ -119,22 +122,25 @@ function getOne(id) {
   return r
 }
 
+/** 内部实现：不开启事务，供已在外层事务中的调用方使用。 */
+function createRaw(dto) {
+  const t = now()
+  const id = uid('todo')
+  // 没指定清单就落到默认清单：快速添加、信息流/日程/快递「转为待办」都不传 listId，
+  // 兜底后不会留下「无清单」的待办（侧栏任何清单下都看不到它）。
+  const fallbackList = dto.listId ? null : defaultList()
+  const listId = dto.listId || (fallbackList ? fallbackList.id : null)
+  get().prepare('INSERT INTO todo (id,title,note,list_id,priority,due_at,remind_at,status,recur_rule,source_type,source_ref,labels,schedule_id,sort,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)')
+    .run(id, dto.title, dto.note || null, listId, dto.priority || '中', dto.dueAt || null, dto.remindAt || null, dto.status || '未开始', dto.recurRule || null, dto.sourceType || null, dto.sourceRef || null, serializeLabels(dto.labels), dto.scheduleId || null, dto.sort || 0, t, t)
+  if (dto.subtasks && dto.subtasks.length) {
+    const ins = get().prepare('INSERT INTO todo_subtask (id,todo_id,title,done,sort) VALUES (?,?,?,?,?)')
+    dto.subtasks.forEach(function (s, i) { ins.run(uid('sub'), id, s.title, bool(s.done), i) })
+  }
+  return getOne(id)
+}
+
 function create(dto) {
-  return withTx(function () {
-    const t = now()
-    const id = uid('todo')
-    // 没指定清单就落到默认清单：快速添加、信息流/日程/快递「转为待办」都不传 listId，
-    // 兜底后不会留下「无清单」的待办（侧栏任何清单下都看不到它）。
-    const fallbackList = dto.listId ? null : defaultList()
-    const listId = dto.listId || (fallbackList ? fallbackList.id : null)
-    get().prepare('INSERT INTO todo (id,title,note,list_id,priority,due_at,remind_at,status,recur_rule,source_type,source_ref,labels,schedule_id,sort,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)')
-      .run(id, dto.title, dto.note || null, listId, dto.priority || '中', dto.dueAt || null, dto.remindAt || null, dto.status || '未开始', dto.recurRule || null, dto.sourceType || null, dto.sourceRef || null, serializeLabels(dto.labels), dto.scheduleId || null, dto.sort || 0, t, t)
-    if (dto.subtasks && dto.subtasks.length) {
-      const ins = get().prepare('INSERT INTO todo_subtask (id,todo_id,title,done,sort) VALUES (?,?,?,?,?)')
-      dto.subtasks.forEach(function (s, i) { ins.run(uid('sub'), id, s.title, bool(s.done), i) })
-    }
-    return getOne(id)
-  })
+  return withTx(function () { return createRaw(dto) })
 }
 
 /** 内部实现：不开启事务，供已在外层事务中的调用方使用。 */
@@ -234,4 +240,12 @@ function stats() {
   return { pending: pending, done: done, overdue: overdue, focusSeconds: focus }
 }
 
-module.exports = { list: list, lists: lists, createList: createList, updateList: updateList, removeList: removeList, get: getOne, create: create, update: update, toggle: toggle, remove: remove, reorder: reorder, addSubtask: addSubtask, toggleSubtask: toggleSubtask, stats: stats }
+module.exports = {
+  list: list, lists: lists,
+  // Raw 版本不开关事务，供 project.cjs 在自己的事务里复用；其余调用方仍用带事务的入口
+  createList: createList, createListRaw: createListRaw, create: create, createRaw: createRaw,
+  findListByName: findListByName, defaultList: defaultList, serializeLabels: serializeLabels,
+  updateList: updateList, removeList: removeList, get: getOne, update: update, updateRaw: updateRaw,
+  toggle: toggle, remove: remove, reorder: reorder, addSubtask: addSubtask, toggleSubtask: toggleSubtask,
+  notifyTaskDone: notifyTaskDone, stats: stats
+}

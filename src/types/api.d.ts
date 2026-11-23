@@ -100,10 +100,28 @@ export interface WindowSetting {
 export interface MailSetting {
   autoSyncMin: number
 }
+/** Agent 接入：本机 MCP 服务开关与端口（令牌不落在设置对象里） */
+export interface McpSetting {
+  enabled: boolean
+  /** 监听端口，1024-65535；被占用时不会自动改端口 */
+  port: number
+}
+export interface McpStatus {
+  enabled: boolean; port: number; configuredPort: number; endpoint: string | null
+  tokenSet: boolean; calls: number; lastCallAt: number | null; lastTool: string | null
+  lastError: string | null
+}
+/** 项目计划的只读元信息：待办页计划条与设置页用 */
+export interface PlanMeta {
+  listId: string; projectKey: string; title: string; summary: string | null
+  version: string | null; revision: number; updatedAt: number; source: string
+  lastWriter: string | null; repoPath: string | null; total: number; done: number
+}
 export interface AllSettings {
   appearance: AppearanceSetting; notify: NotifySetting; shortcuts: ShortcutSetting; window: WindowSetting
   backup: BackupSetting; weather: WeatherSetting; feed: FeedSetting; modules: ModulesSetting
   mail: MailSetting
+  mcp: McpSetting
   parcel: ParcelSetting
   home: HomeSetting
 }
@@ -171,6 +189,15 @@ export interface Api {
   feed: FeedApi
   parcel: ParcelApi
   mail: MailApi
+  project: {
+    planMeta(dto: { listId: string }): Promise<IpcResult<PlanMeta | null>>
+  }
+  mcp: {
+    status(): Promise<IpcResult<McpStatus>>
+    setEnabled(dto: { enabled: boolean; port?: number }): Promise<IpcResult<McpStatus>>
+    revealToken(): Promise<IpcResult<{ token: string }>>
+    rotateToken(): Promise<IpcResult<{ token: string }>>
+  }
   settings: {
     all(): Promise<IpcResult<AllSettings>>
     get(key: keyof AllSettings): Promise<IpcResult<unknown>>

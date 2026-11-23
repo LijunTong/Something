@@ -14,6 +14,7 @@ const api = {
     createList: call('todo:createList'), updateList: call('todo:updateList'),
     removeList: call('todo:removeList')
   },
+  project: { planMeta: call('project:planMeta') },
   schedule: {
     range: call('schedule:range'), get: call('schedule:get'), create: call('schedule:create'),
     update: call('schedule:update'), remove: call('schedule:remove'),
@@ -78,6 +79,12 @@ const api = {
     setParcelCredential: call('settings:setParcelCredential'),
     clearParcelCredential: call('settings:clearParcelCredential'),
     revealParcelCredential: call('settings:revealParcelCredential')
+  },
+  mcp: {
+    status: call('mcp:status'),
+    setEnabled: call('mcp:setEnabled'),
+    revealToken: call('mcp:revealToken'),
+    rotateToken: call('mcp:rotateToken')
   },
   search: { query: call('search:query') },
   notification: {

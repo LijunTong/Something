@@ -85,3 +85,8 @@ p.set-muted { margin: 12px 0 0; max-width: 52em; line-height: 1.65; }
   .set-nav { position: static; }
   .set-export-grid { grid-template-columns: 1fr; }
 }
+
+/* Agent 接入：令牌与客户端配置块的布局，外观由 Naive UI 组件与主题变量决定 */
+.mcp-block { display: grid; gap: 10px; margin-top: 8px; }
+.mcp-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.mcp-alert { margin-top: 12px; }

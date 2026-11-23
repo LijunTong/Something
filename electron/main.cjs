@@ -24,6 +24,9 @@ const notificationSvc = require('./services/notification.cjs')
 const notifySvc = require('./services/notify.cjs')
 const searchSvc = require('./services/search.cjs')
 const updateSvc = require('./services/update.cjs')
+const projectSvc = require('./services/project.cjs')
+const mcpServer = require('./mcp/server.cjs')
+const mcpTools = require('./mcp/tools.cjs')
 
 // 开发/生产方式只由 VITE_URL 决定：只有 scripts/dev.cjs 会注入它（同时拉起 Vite）。
 // 未注入时即使未打包也只加载 dist，避免 npm start 去连一个没启动的 5173。
@@ -367,6 +370,62 @@ function createWindow() {
   win.on('unmaximize', function () { win && win.webContents.send('window:maximized', false) })
 }
 
+// MCP：应用内本地 HTTP 服务。只在设置开启时监听 127.0.0.1，端口/令牌改动后由 syncMcp 重载。
+let mcpReady = false
+
+function mcpState() {
+  const st = mcpServer.status()
+  const cfg = settingsSvc.all().mcp || { enabled: false, port: 3927 }
+  return {
+    enabled: !!cfg.enabled,
+    port: st.port || cfg.port,
+    configuredPort: cfg.port,
+    endpoint: st.running ? st.endpoint : null,
+    tokenSet: !!settingsSvc.mcpToken(),
+    calls: st.calls,
+    lastCallAt: st.lastCallAt,
+    lastTool: st.lastTool,
+    lastError: st.lastError
+  }
+}
+
+// 开启 -> 确保令牌并起服务；关闭 -> 停服务。端口被占用时不漂移到别的端口，保留 lastError 给设置页显示。
+async function syncMcp() {
+  if (!mcpReady) return mcpState()
+  const cfg = settingsSvc.all().mcp || {}
+  mcpServer.stop()
+  if (!cfg.enabled) return mcpState()
+  settingsSvc.ensureMcpToken()
+  const started = await mcpServer.start(cfg.port)
+  if (!started.ok) logger.warn('mcp', 'start_failed', { error: started.error })
+  return mcpState()
+}
+
+function initMcp() {
+  mcpReady = true
+  mcpServer.init({
+    version: app.getVersion(),
+    getToken: function () { return settingsSvc.mcpToken() },
+    listTools: mcpTools.list,
+    callTool: function (name, args) {
+      const out = mcpTools.call(name, args)
+      // 写入成功后广播 todo 域，待办列表与计划条立即重取（与设置广播同一套 data:changed 约定）
+      if (!out.isError) {
+        BrowserWindow.getAllWindows().forEach(function (w) {
+          if (!w.isDestroyed()) registry.broadcast(w.webContents, 'todo', 'mcp')
+        })
+      }
+      return out
+    },
+    log: function (level, msg, meta) { logger[level === 'warn' ? 'warn' : 'info']('mcp', msg, meta) }
+  })
+  return syncMcp()
+}
+
+function stopMcp() {
+  mcpServer.stop()
+}
+
 function registerIpc() {
   registry = createRegistry()
   registry.register('todo', {
@@ -575,6 +634,8 @@ function registerIpc() {
       schema: z.record(z.string(), z.unknown()),
       handler: function (dto) {
         const out = settingsSvc.set(dto)
+        // MCP 开关/端口也可能经通用设置入口写入（恢复备份、导入配置），这里补一次重载
+        if (dto && dto.mcp) void syncMcp()
         // 设置变更后广播：渲染层的 store 重新拉取，主题/强调色/首页卡片立即联动
         BrowserWindow.getAllWindows().forEach(function (w) {
           if (!w.isDestroyed()) registry.broadcast(w.webContents, 'settings', 'set')
@@ -641,6 +702,32 @@ function registerIpc() {
     revealParcelCredential: {
       schema: z.object({ provider: z.enum(['kuaidi100', 'kdniao', 'juhe']) }),
       handler: settingsSvc.revealParcelCredential
+    }
+  })
+  // 项目计划：Agent 写入的计划的只读元信息（计划条、设置页用）
+  registry.register('project', {
+    planMeta: {
+      schema: z.object({ listId: z.string().min(1) }),
+      handler: function (dto) { return projectSvc.planMeta(dto.listId) }
+    }
+  })
+  // MCP 控制面：开关/端口/令牌/运行状态
+  registry.register('mcp', {
+    status: function () { return mcpState() },
+    setEnabled: {
+      schema: z.object({
+        enabled: z.boolean(),
+        port: z.number().int().min(1024).max(65535).optional()
+      }),
+      handler: async function (dto) {
+        settingsSvc.setMcp(dto)
+        return syncMcp()
+      }
+    },
+    revealToken: function () { return { token: settingsSvc.ensureMcpToken() } },
+    rotateToken: function () {
+      const out = settingsSvc.rotateMcpToken()
+      return { token: out.token }
     }
   })
   registry.register('search', {
@@ -965,6 +1052,8 @@ app.whenReady().then(function () {
     logger.warn('settings', 'secret_migrate_failed', String(e && e.message))
   }
   registerIpc()
+  // MCP：按设置决定是否监听本机端口；失败只记日志，不阻塞启动
+  void initMcp()
   // 启动时按设置同步系统登录项，避免用户手动改过之后状态漂移
   if (windowPrefs().launchAtLogin) {
     try {
@@ -1008,6 +1097,7 @@ app.on('window-all-closed', function () { if (process.platform !== 'darwin') app
 app.on('before-quit', function () {
   quitting = true
   notifySvc.stop()
+  stopMcp()
   // Windows 下进程退出后托盘图标可能残留在通知区直到鼠标划过，主动销毁
   if (tray && !tray.isDestroyed()) { try { tray.destroy() } catch (e) {} }
   logger.info('main', 'app_quit')

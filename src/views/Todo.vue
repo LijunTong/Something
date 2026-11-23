@@ -3,13 +3,13 @@ import { ref, computed, onBeforeUnmount, onMounted, watch } from 'vue'
 import {
   useMessage, useDialog,
   NButton, NInput, NSelect, NCheckbox, NEmpty, NSpin, NAlert,
-  NModal, NForm, NFormItem, NTag, NDrawer, NDrawerContent, NSpace, NTooltip, NDatePicker, NText
+  NModal, NForm, NFormItem, NTag, NDrawer, NDrawerContent, NSpace, NTooltip, NDatePicker, NText, NPopover
 } from 'naive-ui'
 import { useRouter } from 'vue-router'
 import { useAppStore } from '@/stores/app'
 import Shell from '@/components/Shell.vue'
-import type { TodoRow, TodoListRow, ScheduleRow } from '@/types/api'
-import { call, bridge, plain } from '@/lib/ipc'
+import type { TodoRow, TodoListRow, ScheduleRow, PlanMeta } from '@/types/api'
+import { call, bridge, plain, hasBridge } from '@/lib/ipc'
 import { isTypingTarget, matchesCombo } from '@/lib/shortcut'
 import { log } from '@/lib/logger'
 import { useFocusQuery } from '@/composables/useFocusQuery'
@@ -30,6 +30,15 @@ const quickTitle = ref('')
 const showModal = ref(false)
 const showDetail = ref(false)
 const loading = ref(false)
+// Agent 计划条：当前清单被 MCP 写入过时，显示来源、轮次与进度
+const planMeta = ref<PlanMeta | null>(null)
+let offPlan: (() => void) | null = null
+async function refreshPlanMeta() {
+  const id = activeListId.value
+  if (!id) { planMeta.value = null; return }
+  planMeta.value = await call(() => bridge().project.planMeta({ listId: id }), null as PlanMeta | null)
+}
+const fmtPlanAt = (ts: number) => new Date(ts).toLocaleString('zh-CN', { hour12: false })
 // 深链定位：仪表盘点某条待办 → /todo?focus=<id>，落地后打开详情并把该行滚到中间
 const {
   focusId: focusKey,
@@ -491,10 +500,22 @@ onMounted(async () => {
   // 先等数据到位再定位：列表为空时找不到目标行，会误报「已不存在」
   try { await store.refreshTodos() } catch (e) { log.exception('todo.refresh', e) }
   await applyFocus(focusKey.value)
+  if (hasBridge()) {
+    try {
+      offPlan = bridge().onDataChanged((p) => {
+        if (p.domain === 'todo') void refreshPlanMeta()
+      })
+    } catch (e) {
+      log.exception('todo.planSubscribe', e)
+    }
+  }
 })
+onBeforeUnmount(() => { if (offPlan) { offPlan(); offPlan = null } })
 
 // 同一页面里再从仪表盘点另一条：组件被复用，onMounted 不会再跑
 watch(focusKey, (v) => { void applyFocus(String(v || '')) })
+// 切换清单时重取计划元信息；写入方（MCP）广播 todo 时也重取一次
+watch(activeListId, () => { void refreshPlanMeta() })
 </script>
 
 <template>
@@ -537,6 +558,22 @@ watch(focusKey, (v) => { void applyFocus(String(v || '')) })
 
         <!-- 中栏：快速添加 + 筛选 + 任务列表 -->
         <section class="card td-mid">
+          <!-- Agent 计划条：只在当前清单有 project_plan 记录时出现，纯展示，不改写入逻辑 -->
+          <div v-if="planMeta" class="td-plan">
+            <div class="td-plan-head">
+              <n-tag size="tiny" type="success">Agent 计划</n-tag>
+              <span class="td-plan-title">{{ planMeta.title || '未命名计划' }}</span>
+              <n-text depth="3" class="td-plan-meta">第 {{ planMeta.revision }} 次写入 · {{ fmtPlanAt(planMeta.updatedAt) }}</n-text>
+              <n-popover v-if="planMeta.summary" trigger="hover" placement="bottom-end">
+                <template #trigger><n-button text size="tiny">摘要</n-button></template>
+                <n-text>{{ planMeta.summary }}</n-text>
+              </n-popover>
+            </div>
+            <div class="td-plan-sub">
+              <n-text depth="3">已完成 {{ planMeta.done }}/{{ planMeta.total }}</n-text>
+              <n-text v-if="planMeta.repoPath" depth="3" class="td-plan-repo">{{ planMeta.repoPath }}</n-text>
+            </div>
+          </div>
           <div class="td-quick">
             <n-input v-model:value="quickTitle" placeholder="快速添加任务，回车即可创建" @keyup.enter="quickAdd" />
           </div>

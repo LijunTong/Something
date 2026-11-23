@@ -44,6 +44,8 @@ const DEFAULTS = {
   feed: { defaultInterval: 360, keepContent: true },
   // 邮件：autoSyncMin 是自动同步间隔（分钟，默认 15）；0 表示只在手动点「同步」时拉取
   mail: { autoSyncMin: 15 },
+  // MCP：Agent 接入开关与端口。只监听 127.0.0.1，默认关闭；Token 在 INTERNAL_KEYS 里
+  mcp: { enabled: false, port: 3927 },
   // 快递：provider 为选中的数据源（manual=手动维护）；autoRefreshMin 是后台自动刷新间隔（分钟，0 关闭）
   // credentials 只是凭据状态位，由库里是否保存推算，真值不进 all()
   parcel: { provider: 'manual', autoRefreshMin: 0, detectCompany: true, credentials: {} },
@@ -72,12 +74,14 @@ const INTERNAL_KEYS = [
   'weatherKey', 'qweatherJwt',
   // 快递数据源凭据：按数据源分别存一条，键名含 key，日志里自动脱敏
   'parcelKey_kuaidi100', 'parcelKey_kdniao', 'parcelKey_juhe',
-  'noticeReadAt', 'noticeDerivedRead', 'noticeDismissed', 'notifyEmitted'
+  'noticeReadAt', 'noticeDerivedRead', 'noticeDismissed', 'notifyEmitted',
+  // MCP Bearer Token：等同计划写权限，绝不进 all()
+  'mcpToken'
 ]
 
 // 备份包含的业务表（按外键顺序插入，删除时反向）
 const TABLES = [
-  'todo_list', 'todo', 'todo_subtask',
+  'todo_list', 'todo', 'todo_subtask', 'project_plan',
   'schedule_calendar', 'schedule', 'schedule_exception',
   'pomodoro_session', 'pomodoro_state',
   'weather_city', 'weather_cache',
@@ -198,13 +202,14 @@ function storage() {
   try {
     const scheduleRows = num('SELECT COUNT(*) AS v FROM schedule') + num('SELECT COUNT(*) AS v FROM schedule_exception')
     const todoRows = num('SELECT COUNT(*) AS v FROM todo') + num('SELECT COUNT(*) AS v FROM todo_subtask')
+    const planRows = num('SELECT COUNT(*) AS v FROM project_plan')
     const mailText = num("SELECT COALESCE(SUM(length(coalesce(body_html,''))+length(coalesce(body_text,''))+length(coalesce(snippet,''))+length(coalesce(subject,''))),0) AS v FROM mail")
     const feedText = num("SELECT COALESCE(SUM(length(coalesce(content,''))+length(coalesce(summary,''))+length(coalesce(title,''))),0) AS v FROM feed_item")
     const mailRows = num('SELECT COUNT(*) AS v FROM mail')
     const attachRows = num('SELECT COUNT(*) AS v FROM mail_attachment')
     const seg = {
       schedule: scheduleRows * 420,
-      todo: todoRows * 360,
+      todo: todoRows * 360 + planRows * 320,
       mail: mailText + mailRows * 220,
       feed: feedText,
       attachment: attachmentBytes() + attachRows * 512
@@ -659,6 +664,49 @@ async function testWeather() {
   }
 }
 
+/* ---------- MCP 接入 ---------- */
+
+/** 当前 MCP Token 明文；没有返回空串。每次请求都现取，轮换立即生效。 */
+function mcpToken() {
+  try {
+    const row = get().prepare("SELECT value FROM app_setting WHERE key = 'mcpToken'").get()
+    return row ? String(secret.unpack(row.value) || '').trim() : ''
+  } catch (e) {
+    return ''
+  }
+}
+
+/** 首次使用时生成 32 字节随机 Token（64 位 hex）。 */
+function ensureMcpToken() {
+  const existed = mcpToken()
+  if (existed) return existed
+  const token = crypto.randomBytes(32).toString('hex')
+  get().prepare('INSERT OR REPLACE INTO app_setting (key,value) VALUES (?,?)').run('mcpToken', secret.pack(token))
+  return token
+}
+
+/** 轮换 Token：旧值立即失效，等价于让旧配置作废。 */
+function rotateMcpToken() {
+  try {
+    return withTx(function () {
+      const token = crypto.randomBytes(32).toString('hex')
+      get().prepare('INSERT OR REPLACE INTO app_setting (key,value) VALUES (?,?)').run('mcpToken', secret.pack(token))
+      return { token: token }
+    })
+  } catch (err) {
+    return fail('rotateMcpToken failed', err, {})
+  }
+}
+
+/** 保存 MCP 开关与端口；返回归一化后的 mcp 配置。 */
+function setMcp(dto) {
+  const o = dto || {}
+  const patch = { enabled: !!o.enabled }
+  if (o.port != null) patch.port = o.port
+  const all = set({ mcp: patch })
+  return all.mcp
+}
+
 /* ---------- 快递数据源凭据 ---------- */
 
 // 每个数据源一条凭据，JSON 明文存放（键名在 INTERNAL_KEYS 里，不会出现在 all()）
@@ -768,5 +816,6 @@ module.exports = {
   revealSecret: revealSecret, migratePlain: migratePlain, testWeather: testWeather,
   readParcelCredential: readParcelCredential, setParcelCredential: setParcelCredential,
   clearParcelCredential: clearParcelCredential, revealParcelCredential: revealParcelCredential,
-  parcelStatus: parcelStatus
+  parcelStatus: parcelStatus,
+  mcpToken: mcpToken, ensureMcpToken: ensureMcpToken, rotateMcpToken: rotateMcpToken, setMcp: setMcp
 }
