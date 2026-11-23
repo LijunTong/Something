@@ -8,6 +8,28 @@ function calendars() {
   return camelAll(get().prepare('SELECT * FROM schedule_calendar ORDER BY sort ASC').all())
 }
 
+/** 默认分组：删除其它分组时承接其中的日程；标记丢失时退回排序最前的一条。 */
+function defaultCalendar() {
+  const d = get()
+  return d.prepare('SELECT * FROM schedule_calendar WHERE is_default = 1 ORDER BY sort ASC LIMIT 1').get()
+    || d.prepare('SELECT * FROM schedule_calendar ORDER BY sort ASC LIMIT 1').get()
+    || null
+}
+
+/** 修改分组名称：只改名字；默认分组同样允许改名。 */
+function updateCalendar(dto) {
+  return withTx(function () {
+    const name = String((dto && dto.name) || '').trim()
+    if (!name) throw new Error('CALENDAR_NAME_REQUIRED')
+    const row = get().prepare('SELECT * FROM schedule_calendar WHERE id = ?').get(dto.id)
+    if (!row) throw new Error('CALENDAR_NOT_FOUND')
+    const dup = get().prepare('SELECT id FROM schedule_calendar WHERE lower(name) = lower(?) AND id <> ?').get(name, dto.id)
+    if (dup) throw new Error('CALENDAR_NAME_EXISTS')
+    get().prepare('UPDATE schedule_calendar SET name = ? WHERE id = ?').run(name, dto.id)
+    return calendars()
+  })
+}
+
 function toggleCalendar(dto) {
   return withTx(function () {
     get().prepare('UPDATE schedule_calendar SET visible = ? WHERE id = ?').run(bool(dto.visible), dto.id)
@@ -203,9 +225,15 @@ function importICS(dto) {
   return { imported: created.length }
 }
 
+/** 删除分组：分组内的日程迁移到默认分组，不清空；默认分组不允许删除。 */
 function removeCalendar(id) {
   return withTx(function () {
-    get().prepare('UPDATE schedule SET calendar_id = NULL WHERE calendar_id = ?').run(id)
+    const row = get().prepare('SELECT * FROM schedule_calendar WHERE id = ?').get(id)
+    if (!row) throw new Error('CALENDAR_NOT_FOUND')
+    if (row.is_default) throw new Error('CALENDAR_IS_DEFAULT')
+    const fallback = defaultCalendar()
+    if (!fallback) throw new Error('CALENDAR_DEFAULT_MISSING')
+    get().prepare('UPDATE schedule SET calendar_id = ? WHERE calendar_id = ?').run(fallback.id, id)
     get().prepare('DELETE FROM schedule_calendar WHERE id = ?').run(id)
     return calendars()
   })
@@ -214,6 +242,6 @@ function removeCalendar(id) {
 module.exports = {
   range: range, get: getOne, create: create, update: update, remove: remove,
   checkConflict: checkConflict, calendars: calendars, toggleCalendar: toggleCalendar,
-  createCalendar: createCalendar, removeCalendar: removeCalendar,
+  createCalendar: createCalendar, updateCalendar: updateCalendar, removeCalendar: removeCalendar,
   exportICS: exportICS, importICS: importICS
 }

@@ -43,7 +43,8 @@ function addGroup(dto) {
   return withTx(function () {
     const id = uid('grp')
     get().prepare('INSERT INTO feed_group (id,name) VALUES (?,?)').run(id, dto.name)
-    return camel(get().prepare('SELECT * FROM feed_group WHERE id = ?').get(id))
+    // 返回最新分组列表，调用方（添加订阅时输入了新分组名）可直接取到新 id
+    return groups()
   })
 }
 
@@ -121,7 +122,8 @@ function items(filter) {
   else if (kind === 'starred') where.push('i.starred = 1')
   else if (kind === 'later') where.push('i.read_later = 1')
   // 列表不取 content_html：正文可能上百 KB，全量列表会把渲染进程撑爆，阅读器按需调 detail()
-  const cols = 'i.id, i.source_id, i.guid, i.title, i.link, i.author, i.summary, i.content, i.published_at, i.read, i.starred, i.read_later'
+  // source_title 是订阅源「添加时填写的名称」，卡片与阅读器优先显示它
+  const cols = 'i.id, i.source_id, i.guid, i.title, i.link, i.author, i.summary, i.content, i.published_at, i.read, i.starred, i.read_later, s.title AS source_title'
   const sql = 'SELECT ' + cols + ' FROM feed_item i LEFT JOIN feed_source s ON s.id = i.source_id WHERE ' + where.join(' AND ') + ' ORDER BY i.published_at DESC'
   return camelAll(get().prepare(sql).all(...args))
 }

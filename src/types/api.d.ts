@@ -19,7 +19,7 @@ export interface UpdateCheckResult {
   checkedAt: number
 }
 
-export interface TodoListRow { id: string; name: string; color: string | null; sort: number; deletedAt?: number | null }
+export interface TodoListRow { id: string; name: string; color: string | null; sort: number; isDefault?: boolean; deletedAt?: number | null }
 export interface TodoSubtask { id: string; todoId: string; title: string; done: boolean; sort: number }
 export interface TodoRow {
   id: string; title: string; note: string | null; listId: string | null; listName: string | null
@@ -158,8 +158,10 @@ export interface Api {
     lists(): Promise<IpcResult<TodoListRow[]>>
     /** 新建清单；同名（忽略大小写）已存在时直接返回原有清单 */
     createList(dto: { name: string; color?: string | null }): Promise<IpcResult<TodoListRow>>
-    /** 删除清单，清单下的待办一并删除 */
-    removeList(id: string): Promise<IpcResult<{ list: TodoListRow; count: number }>>
+    /** 修改清单名称；默认清单同样允许改名 */
+    updateList(dto: { id: string; name: string }): Promise<IpcResult<TodoListRow>>
+    /** 删除清单：清单下的待办迁移到默认清单，返回迁移条数与承接清单 */
+    removeList(id: string): Promise<IpcResult<{ list: TodoListRow; count: number; defaultList: TodoListRow | null }>>
     stats(): Promise<IpcResult<TodoStats>>
   }
   schedule: ScheduleApi
@@ -247,7 +249,7 @@ export interface ScheduleRow {
   remindMin: number; recurRule: string | null; note: string | null; status: string
   instanceAt?: number; occurrence?: boolean
 }
-export interface CalendarRow { id: string; name: string; color: string; visible: boolean; sort: number }
+export interface CalendarRow { id: string; name: string; color: string; visible: boolean; sort: number; isDefault?: boolean }
 export interface ScheduleApi {
   range(dto?: { from?: number; to?: number }): Promise<IpcResult<ScheduleRow[]>>
   get(id: string): Promise<IpcResult<ScheduleRow>>
@@ -258,6 +260,9 @@ export interface ScheduleApi {
   calendars(): Promise<IpcResult<CalendarRow[]>>
   toggleCalendar(dto: { id: string; visible: boolean }): Promise<IpcResult<CalendarRow[]>>
   createCalendar(dto: { name: string; color?: string }): Promise<IpcResult<CalendarRow[]>>
+  /** 修改分组名称；默认分组同样允许改名 */
+  updateCalendar(dto: { id: string; name: string }): Promise<IpcResult<CalendarRow[]>>
+  /** 删除分组：分组内的日程迁移到默认分组 */
   removeCalendar(id: string): Promise<IpcResult<CalendarRow[]>>
   exportICS(dto?: { from?: number; to?: number }): Promise<IpcResult<string>>
   importICS(dto: { text: string; calendarId?: string }): Promise<IpcResult<{ imported: number }>>

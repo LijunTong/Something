@@ -9,9 +9,10 @@ function countOf(db, table) {
 
 function seed(db) {
   if (countOf(db, 'todo_list') > 0) return false
-  db.prepare('INSERT INTO todo_list (id,name,color,sort) VALUES (?,?,?,?)').run(uid('list'), '收件箱', '#0f766e', 0)
+  // is_default=1：种子清单/分组是默认项，可改名但不可删除
+  db.prepare('INSERT INTO todo_list (id,name,color,sort,is_default) VALUES (?,?,?,?,?)').run(uid('list'), '收件箱', '#0f766e', 0, 1)
   if (countOf(db, 'schedule_calendar') === 0) {
-    db.prepare('INSERT INTO schedule_calendar (id,name,color,visible,sort) VALUES (?,?,?,?,?)').run(uid('cal'), '默认', '#2563eb', 1, 0)
+    db.prepare('INSERT INTO schedule_calendar (id,name,color,visible,sort,is_default) VALUES (?,?,?,?,?,?)').run(uid('cal'), '默认', '#2563eb', 1, 0, 1)
   }
   if (countOf(db, 'pomodoro_state') === 0) {
     db.prepare('INSERT INTO pomodoro_state (id,phase,remain_sec,round,task_id,updated_at) VALUES (1,?,?,?,?,?)').run('idle', 1500, 1, null, now())

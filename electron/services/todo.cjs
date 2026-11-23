@@ -68,21 +68,46 @@ function createList(dto) {
 }
 
 /**
- * 删除清单：清单下的待办一并删除（子任务由 todo_subtask 的外键级联清掉）。
- * 这是有意的破坏性语义 —— 空清单留着没意义，孤儿待办又会散落在「全部」里。
+ * 默认清单：删除其它清单时承接里面的待办；标记丢失时退回排序最前的一条。
+ * 默认清单只能改名，不能删除（removeList 会拦下）。
+ */
+function defaultList() {
+  const d = get()
+  return d.prepare('SELECT * FROM todo_list WHERE deleted_at IS NULL AND is_default = 1 ORDER BY sort ASC LIMIT 1').get()
+    || d.prepare('SELECT * FROM todo_list WHERE deleted_at IS NULL ORDER BY sort ASC LIMIT 1').get()
+    || null
+}
+
+/** 修改清单名称：只改名字，颜色与排序保持不动；默认清单同样允许改名。 */
+function updateList(dto) {
+  return withTx(function () {
+    const name = String((dto && dto.name) || '').trim()
+    if (!name) throw new Error('LIST_NAME_REQUIRED')
+    const row = get().prepare('SELECT * FROM todo_list WHERE id = ?').get(dto.id)
+    if (!row) throw new Error('LIST_NOT_FOUND')
+    const dup = get().prepare('SELECT id FROM todo_list WHERE deleted_at IS NULL AND lower(name) = lower(?) AND id <> ?').get(name, dto.id)
+    if (dup) throw new Error('LIST_NAME_EXISTS')
+    get().prepare('UPDATE todo_list SET name = ? WHERE id = ?').run(name, dto.id)
+    return camel(get().prepare('SELECT * FROM todo_list WHERE id = ?').get(dto.id))
+  })
+}
+
+/**
+ * 删除清单：清单下的待办整体迁移到默认清单，不清空数据。
+ * 默认清单不允许删除；返回迁移条数与承接方，供渲染层提示。
  */
 function removeList(id) {
-  const removed = withTx(function () {
+  return withTx(function () {
     const row = get().prepare('SELECT * FROM todo_list WHERE id = ?').get(id)
     if (!row) throw new Error('LIST_NOT_FOUND')
-    const ids = get().prepare('SELECT id FROM todo WHERE list_id = ?').all(id).map(function (r) { return r.id })
-    get().prepare('DELETE FROM todo WHERE list_id = ?').run(id)
+    if (row.is_default) throw new Error('LIST_IS_DEFAULT')
+    const fallback = defaultList()
+    if (!fallback) throw new Error('LIST_DEFAULT_MISSING')
+    const moved = get().prepare('SELECT COUNT(*) AS n FROM todo WHERE list_id = ?').get(id).n
+    get().prepare('UPDATE todo SET list_id = ? WHERE list_id = ?').run(fallback.id, id)
     get().prepare('DELETE FROM todo_list WHERE id = ?').run(id)
-    return { list: camel(row), removedTodos: ids, count: ids.length }
+    return { list: camel(row), count: moved, defaultList: camel(fallback) }
   })
-  // 待办没了，绑在上面的番茄计时也要收尾，否则计时器会挂在不存在的任务上
-  removed.removedTodos.forEach(function (tid) { notifyTaskDone(tid) })
-  return { list: removed.list, count: removed.count }
 }
 
 function getOne(id) {
@@ -205,4 +230,4 @@ function stats() {
   return { pending: pending, done: done, overdue: overdue, focusSeconds: focus }
 }
 
-module.exports = { list: list, lists: lists, createList: createList, removeList: removeList, get: getOne, create: create, update: update, toggle: toggle, remove: remove, reorder: reorder, addSubtask: addSubtask, toggleSubtask: toggleSubtask, stats: stats }
+module.exports = { list: list, lists: lists, createList: createList, updateList: updateList, removeList: removeList, get: getOne, create: create, update: update, toggle: toggle, remove: remove, reorder: reorder, addSubtask: addSubtask, toggleSubtask: toggleSubtask, stats: stats }

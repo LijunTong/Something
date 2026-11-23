@@ -13,11 +13,11 @@ function now() { return Date.now() }
 // 不会被识别，会漏成数字 0/1，进而让 visible !== false 这类判断失效。
 const BOOL_FIELDS = new Set([
   'done', 'all_day', 'enabled', 'read', 'starred', 'important',
-  'archived', 'privacy_masked', 'has_attach', 'is_home', 'read_later'
+  'archived', 'privacy_masked', 'has_attach', 'is_home', 'is_default', 'read_later'
 ])
 // 带前缀的别名也要覆盖，如 calendarVisible / folderVisible
 // 裸列名（visible/done/...）与带前缀别名（calendarVisible/...）都要覆盖
-const BOOL_SUFFIX = /(Visible|Done|Enabled|Read|Starred|Important|Archived|ReadLater|HasAttach|IsHome|AllDay)$/i
+const BOOL_SUFFIX = /(Visible|Done|Enabled|Read|Starred|Important|Archived|ReadLater|HasAttach|IsHome|IsDefault|AllDay)$/i
 
 function camel(row) {
   if (!row) return null

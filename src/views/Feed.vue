@@ -560,9 +560,6 @@ watch(unreadCount, (n) => store.setFeedUnread(n), { immediate: true })
             </n-tooltip>
           </div>
 
-          <div class="fd-side-foot">
-            <n-button size="tiny" quaternary block @click="openManagePanel">+ 分组管理</n-button>
-          </div>
         </aside>
 
         <section class="card fd-list">

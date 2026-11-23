@@ -203,6 +203,76 @@ async function toggleCal(c: CalendarRow) {
   }
 }
 
+/** 分组管理：改名 / 新增 / 删除；默认分组只能改名，删除时日程迁移到它 */
+const showCalManage = ref(false)
+const newCalName = ref('')
+const editingCalId = ref<string | null>(null)
+const calDraftName = ref('')
+const defaultCalendar = computed(() => calendars.value.find((c) => c.isDefault) || null)
+
+function startEditCal(c: CalendarRow) {
+  editingCalId.value = c.id
+  calDraftName.value = c.name
+}
+
+function cancelEditCal() {
+  editingCalId.value = null
+  calDraftName.value = ''
+}
+
+async function saveCalName(c: CalendarRow) {
+  const name = calDraftName.value.trim()
+  if (!name) { message.warning('请填写分组名称'); return }
+  if (name === c.name) { cancelEditCal(); return }
+  try {
+    await call(() => bridge().schedule.updateCalendar({ id: c.id, name }))
+    message.success('已把分组改名为「' + name + '」')
+    cancelEditCal()
+    await load()
+  } catch (e) {
+    message.error((e as Error).message)
+  }
+}
+
+async function addCal() {
+  const name = newCalName.value.trim()
+  if (!name) { message.warning('请填写分组名称'); return }
+  if (calendars.value.some((c) => c.name === name)) { message.warning('已存在同名分组'); return }
+  try {
+    await call(() => bridge().schedule.createCalendar({ name }))
+    message.success('已新增分组「' + name + '」')
+    newCalName.value = ''
+    await load()
+  } catch (e) {
+    message.error((e as Error).message)
+  }
+}
+
+/** 删除分组：日程不删，整体移到默认分组；有存量时先提示条数与去向 */
+function confirmRemoveCal(c: CalendarRow) {
+  const affected = events.value.filter((e) => e.calendarId === c.id).length
+  const fallback = defaultCalendar.value
+  const fallbackName = fallback && fallback.id !== c.id ? fallback.name : '默认分组'
+  dialog.warning({
+    title: '删除分组',
+    content: affected
+      ? '「' + c.name + '」下还有 ' + affected + ' 条日程，删除分组后这些日程会移到「' + fallbackName + '」，不会被删除。确定删除？'
+      : '确定删除分组「' + c.name + '」？',
+    positiveText: '删除',
+    negativeText: '取消',
+    onPositiveClick: async () => {
+      try {
+        await call(() => bridge().schedule.removeCalendar(c.id))
+        if (form.value.calendarId === c.id) form.value.calendarId = fallback ? fallback.id : null
+        message.success(affected ? '已删除分组，' + affected + ' 条日程已移到「' + fallbackName + '」' : '已删除分组')
+        await load()
+      } catch (e) {
+        message.error((e as Error).message)
+      }
+    }
+  })
+}
+
 function openEvent(e: ScheduleRow) { selected.value = e; showDrawer.value = true }
 
 /** 深链定位：目标可能在别的月份，先按 id 取真实开始时间，切月重载后再打开抽屉。 */
@@ -466,7 +536,10 @@ watch([focusKey, focusAtQuery], () => { void applyFocus(focusKey.value, focusAtQ
 
       <aside class="sc-month-side">
         <div class="card" style="padding:14px">
-          <div class="card-head" style="margin-bottom:8px"><div class="card-title">我的日历</div></div>
+          <div class="card-head" style="margin-bottom:8px;justify-content:space-between">
+            <div class="card-title">我的日历</div>
+            <n-button text size="tiny" @click="showCalManage = true">分组管理</n-button>
+          </div>
           <label v-for="c in calendars" :key="c.id" class="cal-check" style="display:flex;align-items:center;gap:8px;min-height:28px">
             <n-checkbox :checked="c.visible" @update:checked="toggleCal(c)" />
             <span class="dotc" :style="{ background: c.color }"></span>
@@ -531,7 +604,7 @@ watch([focusKey, focusAtQuery], () => { void applyFocus(focusKey.value, focusAtQ
             <n-date-picker v-model:value="form.endAt" type="datetime" clearable style="width:100%" placeholder="选择结束时间" @update:value="recheck" />
           </n-form-item>
           <n-form-item label="地点"><n-input v-model:value="form.place" placeholder="会议室 / 线上" /></n-form-item>
-          <n-form-item label="日历"><n-select v-model:value="form.calendarId" :options="calOptions" placeholder="选择分类" /></n-form-item>
+          <n-form-item label="分组"><n-select v-model:value="form.calendarId" :options="calOptions" placeholder="选择分组" /></n-form-item>
           <n-form-item label="提醒"><n-select v-model:value="form.remindMin" :options="remindOptions" /></n-form-item>
           <n-form-item label="重复"><n-select v-model:value="form.recurRule" :options="recurOptions" /></n-form-item>
           <n-form-item label="备注"><n-input v-model:value="form.note" type="textarea" placeholder="补充说明" /></n-form-item>
@@ -544,6 +617,34 @@ watch([focusKey, focusAtQuery], () => { void applyFocus(focusKey.value, focusAtQ
           <n-button size="small" type="primary" @click="save">保存</n-button>
         </div>
       </template>
+    </n-modal>
+
+    <!-- 分组管理：改名 / 新增 / 删除；默认分组只能改名，删除时日程迁移到它 -->
+    <n-modal v-model:show="showCalManage" preset="card" title="分组管理" style="width:420px">
+      <div class="lm-rows">
+        <div v-for="c in calendars" :key="c.id" class="lm-row">
+          <template v-if="editingCalId === c.id">
+            <n-input v-model:value="calDraftName" size="small" placeholder="分组名称" @keyup.enter="saveCalName(c)" />
+            <div class="lm-row-actions">
+              <n-button size="tiny" type="primary" @click="saveCalName(c)">保存</n-button>
+              <n-button size="tiny" @click="cancelEditCal">取消</n-button>
+            </div>
+          </template>
+          <template v-else>
+            <span class="dotc" :style="{ background: c.color }"></span>
+            <span class="lm-name">{{ c.name }}</span>
+            <n-tag v-if="c.isDefault" size="tiny" round>默认</n-tag>
+            <div class="lm-row-actions">
+              <n-button text size="tiny" @click="startEditCal(c)">改名</n-button>
+              <n-button v-if="!c.isDefault" text size="tiny" @click="confirmRemoveCal(c)">删除</n-button>
+            </div>
+          </template>
+        </div>
+      </div>
+      <div class="lm-add">
+        <n-input v-model:value="newCalName" size="small" placeholder="新分组名称，回车新增" @keyup.enter="addCal" />
+        <n-button size="small" type="primary" :disabled="!newCalName.trim()" @click="addCal">新增分组</n-button>
+      </div>
     </n-modal>
   </Shell>
 </template>

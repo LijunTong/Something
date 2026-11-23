@@ -271,27 +271,78 @@ async function resolveDraftListId(): Promise<string | null> {
   return row ? row.id : null
 }
 
-/** 删除清单：清单下的待办一起删，删前把受影响的条数说清楚 */
+/** 清单管理弹窗：列表增删改都在这里，侧栏只负责切换与计数 */
+const showListManage = ref(false)
+const newListName = ref('')
+const editingListId = ref<string | null>(null)
+const listDraftName = ref('')
+
+/** 默认清单：改名可以，删除会被拦下；删除其它清单时它的待办迁到这里 */
+const defaultList = computed(() => store.todoLists.find((l) => l.isDefault) || null)
+
+function startEditList(l: TodoListRow) {
+  editingListId.value = l.id
+  listDraftName.value = l.name
+}
+
+function cancelEditList() {
+  editingListId.value = null
+  listDraftName.value = ''
+}
+
+async function saveListName(l: TodoListRow) {
+  const name = listDraftName.value.trim()
+  if (!name) { message.warning('请填写清单名称'); return }
+  if (name === l.name) { cancelEditList(); return }
+  try {
+    const row = await store.updateTodoList(l.id, name)
+    if (!row) { message.error('改名失败'); return }
+    message.success('已把清单改名为「' + row.name + '」')
+    cancelEditList()
+  } catch (e) {
+    message.error((e as Error).message)
+  }
+}
+
+async function addList() {
+  const name = newListName.value.trim()
+  if (!name) { message.warning('请填写清单名称'); return }
+  try {
+    const row = await store.createTodoList(name)
+    if (!row) { message.error('新增清单失败'); return }
+    message.success('已新增清单「' + row.name + '」')
+    newListName.value = ''
+  } catch (e) {
+    message.error((e as Error).message)
+  }
+}
+
+/** 删除清单：待办不删，整体移到默认清单；有存量时先提示条数与去向 */
 function confirmRemoveList(l: TodoListRow) {
   const affected = store.todos.filter((t) => t.listId === l.id).length
+  const fallback = defaultList.value
+  const fallbackName = fallback && fallback.id !== l.id ? fallback.name : '默认清单'
   dialog.warning({
     title: '删除清单',
     content: affected
-      ? '「' + l.name + '」下还有 ' + affected + ' 条待办，删除清单会把它们一起删除。确定删除？'
+      ? '「' + l.name + '」下还有 ' + affected + ' 条待办，删除清单后这些待办会移到「' + fallbackName + '」，不会被删除。确定删除？'
       : '确定删除清单「' + l.name + '」？',
     positiveText: '删除',
     negativeText: '取消',
     onPositiveClick: async () => {
-      await withLoading(async () => {
-        const removed = await store.removeTodoList(l.id)
-        if (activeListId.value === l.id) activeListId.value = null
-        if (draft.value.listId === l.id) draft.value.listId = null
+      try {
+        const res = await store.removeTodoList(l.id)
+        if (!res) { message.error('删除清单失败'); return }
+        if (activeListId.value === l.id) activeListId.value = res.defaultList ? res.defaultList.id : null
+        if (draft.value.listId === l.id) draft.value.listId = res.defaultList ? res.defaultList.id : null
         if (selectedId.value && !store.todos.some((t) => t.id === selectedId.value)) {
           selectedId.value = null
           showDetail.value = false
         }
-        message.success(removed ? '已删除清单及 ' + removed + ' 条待办' : '已删除清单')
-      })
+        message.success(res.count ? '已删除清单，' + res.count + ' 条待办已移到「' + (res.defaultList ? res.defaultList.name : '默认清单') + '」' : '已删除清单')
+      } catch (e) {
+        message.error((e as Error).message)
+      }
     }
   })
 }
@@ -462,12 +513,12 @@ watch(focusKey, (v) => { void applyFocus(String(v || '')) })
           <a class="td-nav" :class="{ on: smart === '已完成' }" href="#" @click.prevent="pickSmart('已完成')">
             <svg><use href="#i-check"/></svg><span>已完成</span><span>{{ doneCount }}</span>
           </a>
-          <div class="td-group">我的清单</div>
+          <div class="td-group td-group-head">
+            <span>我的清单</span>
+            <n-button text size="tiny" @click="showListManage = true">清单管理</n-button>
+          </div>
           <a v-for="l in store.todoLists" :key="l.id" class="td-nav" :class="{ on: activeListId === l.id }" href="#" @click.prevent="pickList(l.id)">
             <span class="dotc" :style="{ background: l.color || 'var(--muted-2)' }"></span><span class="td-name">{{ l.name }}</span>
-            <n-button class="td-list-del" text size="tiny" @click.stop="confirmRemoveList(l)">
-              <template #icon><svg class="td-del-ico"><use href="#i-trash"/></svg></template>
-            </n-button>
             <span class="td-count">{{ listCount(l.id) }}</span>
           </a>
         </aside>
@@ -602,6 +653,34 @@ watch(focusKey, (v) => { void applyFocus(String(v || '')) })
           <n-button size="small" type="primary" @click="saveDraft">保存</n-button>
         </div>
       </template>
+    </n-modal>
+
+    <!-- 清单管理：改名 / 新增 / 删除；默认清单只能改名，删除时待办迁移到它 -->
+    <n-modal v-model:show="showListManage" preset="card" title="清单管理" style="width:420px">
+      <div class="lm-rows">
+        <div v-for="l in store.todoLists" :key="l.id" class="lm-row">
+          <template v-if="editingListId === l.id">
+            <n-input v-model:value="listDraftName" size="small" placeholder="清单名称" @keyup.enter="saveListName(l)" />
+            <div class="lm-row-actions">
+              <n-button size="tiny" type="primary" @click="saveListName(l)">保存</n-button>
+              <n-button size="tiny" @click="cancelEditList">取消</n-button>
+            </div>
+          </template>
+          <template v-else>
+            <span class="dotc" :style="{ background: l.color || 'var(--muted-2)' }"></span>
+            <span class="lm-name">{{ l.name }}</span>
+            <n-tag v-if="l.isDefault" size="tiny" round>默认</n-tag>
+            <div class="lm-row-actions">
+              <n-button text size="tiny" @click="startEditList(l)">改名</n-button>
+              <n-button v-if="!l.isDefault" text size="tiny" @click="confirmRemoveList(l)">删除</n-button>
+            </div>
+          </template>
+        </div>
+      </div>
+      <div class="lm-add">
+        <n-input v-model:value="newListName" size="small" placeholder="新清单名称，回车新增" @keyup.enter="addList" />
+        <n-button size="small" type="primary" :disabled="!newListName.trim()" @click="addList">新增清单</n-button>
+      </div>
     </n-modal>
   </Shell>
 </template>

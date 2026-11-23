@@ -133,11 +133,18 @@ export const useAppStore = defineStore('app', {
       return row
     },
 
-    /** 删除清单，清单下的待办一并删除 */
-    async removeTodoList(id: string) {
-      const res = await call(() => bridge().todo.removeList(id), null as { count: number } | null)
+    /** 修改清单名称；默认清单同样允许改名 */
+    async updateTodoList(id: string, name: string) {
+      const row = await call(() => bridge().todo.updateList({ id, name }), null as TodoListRow | null)
       await this.refreshTodos()
-      return res ? res.count : 0
+      return row
+    },
+
+    /** 删除清单：清单下的待办迁移到默认清单，返回迁移条数与承接清单 */
+    async removeTodoList(id: string) {
+      const res = await call(() => bridge().todo.removeList(id), null as { count: number; defaultList: TodoListRow | null } | null)
+      await this.refreshTodos()
+      return res
     },
 
     async addSubtask(todoId: string, title: string) {

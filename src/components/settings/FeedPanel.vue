@@ -25,7 +25,8 @@ const newTitle = ref('')
 const newUrl = ref('')
 const newGroup = ref<string | null>(null)
 const newInterval = ref<number | null>(null)
-const newGroupName = ref('')
+/** 新增区域默认收起，点「添加订阅」再展开 */
+const showAdd = ref(false)
 const showEdit = ref(false)
 const editId = ref('')
 const editForm = ref({ title: '', url: '', groupId: '' as string | null, intervalMin: 60 })
@@ -113,43 +114,45 @@ async function saveFeed(patch: Partial<FeedSetting>) {
   }
 }
 
+/**
+ * 新增区的分组既可下拉选已有项，也可直接输入名字（n-select tag 模式）：
+ * 命中的是分组 id 就直接用；命中的是名字就换成 id；都没命中就当场建一个分组。
+ */
+async function resolveGroupId(): Promise<string | null> {
+  const raw = newGroup.value
+  if (!raw) return null
+  const text = String(raw).trim()
+  if (!text) return null
+  const byId = groups.value.find((g) => g.id === text)
+  if (byId) return byId.id
+  const byName = groups.value.find((g) => g.name === text)
+  if (byName) return byName.id
+  const rows = await call(() => bridge().feed.addGroup(plain({ name: text })), [] as Array<{ id: string; name: string }>)
+  groups.value = rows
+  const created = rows.find((g) => g.name === text)
+  return created ? created.id : null
+}
+
 async function addSource() {
   const url = newUrl.value.trim()
   if (!url) { message.warning('请填写 RSS / Atom 地址'); return }
   busy.value = 'add'
   try {
+    const groupId = await resolveGroupId()
     // 主进程契约返回「订阅源列表」，直接用返回值覆盖即可
     await call(
-      () => bridge().feed.addSource(plain({ url, title: newTitle.value.trim() || undefined, groupId: newGroup.value, intervalMin: newInterval.value || settings.value.feed.defaultInterval })),
+      () => bridge().feed.addSource(plain({ url, title: newTitle.value.trim() || undefined, groupId, intervalMin: newInterval.value || settings.value.feed.defaultInterval })),
       [] as FeedSource[]
     )
     newUrl.value = ''
     newTitle.value = ''
+    newGroup.value = null
     await load()
     emit('changed')
     message.success('订阅源已添加')
   } catch (e) {
     log.exception('settings.feed.add', e)
     message.error('添加失败：' + ((e as Error).message || '未知错误'))
-  } finally {
-    busy.value = ''
-  }
-}
-
-/** 新建分组：订阅源的分类也从设置页统一维护 */
-async function addGroup() {
-  const name = newGroupName.value.trim()
-  if (!name) { message.warning('请输入分组名称'); return }
-  busy.value = 'group'
-  try {
-    await call(() => bridge().feed.addGroup(plain({ name })), [] as Array<{ id: string; name: string }>)
-    newGroupName.value = ''
-    await load()
-    emit('changed')
-    message.success('分组已创建')
-  } catch (e) {
-    log.exception('settings.feed.addGroup', e)
-    message.error('创建分组失败：' + ((e as Error).message || '未知错误'))
   } finally {
     busy.value = ''
   }
@@ -274,8 +277,6 @@ onMounted(load)
 
 <template>
   <n-card size="small" :title="props.embedded ? undefined : '订阅源'">
-    <template #header-extra><n-tag size="small">{{ sources.length }} 个来源</n-tag></template>
-
     <n-alert type="info" :bordered="false">
       通过 RSS / Atom 抓取，订阅与文章缓存保存在本机，联网仅用于拉取 feed。
     </n-alert>
@@ -295,15 +296,11 @@ onMounted(load)
       <n-switch :value="settings.feed.keepContent" @update:value="(v: boolean) => saveFeed({ keepContent: v })" />
     </div>
 
-    <SectionTitle title="分组管理" />
-    <div class="set-field">
-      <span class="set-field-key">新建分组</span>
-      <div class="set-inline">
-        <n-input v-model:value="newGroupName" class="set-input" size="small" placeholder="例如：科技 / 设计 / 独立博客" />
-        <n-button size="small" :loading="busy === 'group'" @click="addGroup">创建分组</n-button>
-      </div>
+    <!-- 订阅源数量与「添加订阅」入口：NCard 在无标题时不渲染 header-extra，所以放进内容区 -->
+    <div class="set-actions">
+      <n-tag size="small">{{ sources.length }} 个来源</n-tag>
+      <n-button size="small" type="primary" @click="showAdd = !showAdd">{{ showAdd ? '收起' : '+ 添加订阅' }}</n-button>
     </div>
-    <p class="set-muted">已有分组：{{ groups.length ? groups.map((g) => g.name).join(' / ') : '暂无' }}</p>
 
     <SectionTitle title="已订阅" />
     <n-spin :show="loading">
@@ -319,31 +316,47 @@ onMounted(load)
       />
     </n-spin>
 
-    <SectionTitle title="添加订阅源" />
-    <div class="set-field">
-      <span class="set-field-key">名称</span>
-      <n-input class="set-input-wide" size="small" v-model:value="newTitle" placeholder="例如：少数派 / 设计周刊（留空则用源站标题）" />
-    </div>
-    <div class="set-field">
-      <span class="set-field-key">RSS / Atom 地址</span>
-      <n-input class="set-input-wide" size="small" v-model:value="newUrl" placeholder="https://example.com/feed.xml" />
-    </div>
-    <div class="set-field">
-      <span class="set-field-key">分组</span>
-      <n-select class="set-select" size="small" v-model:value="newGroup" :options="groupOptions" clearable placeholder="未分组" />
-    </div>
-    <div class="set-field">
-      <span class="set-field-key">抓取频率</span>
-      <n-select class="set-select" size="small" v-model:value="newInterval" :options="sourceIntervalOptions" placeholder="跟随默认" />
-    </div>
     <div class="set-actions">
-      <n-button size="small" type="primary" :loading="busy === 'add'" @click="addSource">+ 添加订阅源</n-button>
       <n-upload :show-file-list="false" :default-upload="false" accept=".opml,.xml" @change="importOPML">
         <n-button size="small" :loading="busy === 'opml'">OPML 导入</n-button>
       </n-upload>
       <n-button size="small" :loading="busy === 'export'" @click="exportOPML">OPML 导出</n-button>
       <n-button size="small" :loading="busy === 'refresh'" @click="refreshAll">立即抓取</n-button>
     </div>
+
+    <!-- 新增区域默认收起，点右上角「添加订阅」展开 -->
+    <template v-if="showAdd">
+      <SectionTitle title="添加订阅源" />
+      <div class="set-field">
+        <span class="set-field-key">名称</span>
+        <n-input class="set-input-wide" size="small" v-model:value="newTitle" placeholder="例如：少数派 / 设计周刊（留空则用源站标题）" />
+      </div>
+      <div class="set-field">
+        <span class="set-field-key">RSS / Atom 地址</span>
+        <n-input class="set-input-wide" size="small" v-model:value="newUrl" placeholder="https://example.com/feed.xml" />
+      </div>
+      <div class="set-field">
+        <span class="set-field-key">分组</span>
+        <!-- 可选已有分组，也可直接输入新名字：保存时没命中的名字会当场建档 -->
+        <n-select
+          class="set-select"
+          size="small"
+          v-model:value="newGroup"
+          :options="groupOptions"
+          filterable
+          tag
+          clearable
+          placeholder="选择或输入新分组，回车创建"
+        />
+      </div>
+      <div class="set-field">
+        <span class="set-field-key">抓取频率</span>
+        <n-select class="set-select" size="small" v-model:value="newInterval" :options="sourceIntervalOptions" placeholder="跟随默认" />
+      </div>
+      <div class="set-actions">
+        <n-button size="small" type="primary" :loading="busy === 'add'" @click="addSource">+ 添加订阅源</n-button>
+      </div>
+    </template>
 
     <n-modal v-model:show="showEdit" preset="card" class="set-modal" title="修改订阅源" :bordered="false">
       <n-form label-placement="left" :label-width="64" size="small">

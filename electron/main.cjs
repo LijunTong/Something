@@ -381,6 +381,7 @@ function registerIpc() {
     toggleSubtask: todoSvc.toggleSubtask,
     lists: todoSvc.lists,
     createList: todoSvc.createList,
+    updateList: todoSvc.updateList,
     removeList: todoSvc.removeList,
     stats: todoSvc.stats
   })
@@ -389,7 +390,8 @@ function registerIpc() {
     update: scheduleSvc.update, remove: scheduleSvc.remove,
     checkConflict: scheduleSvc.checkConflict,
     calendars: scheduleSvc.calendars, toggleCalendar: scheduleSvc.toggleCalendar,
-    createCalendar: scheduleSvc.createCalendar, removeCalendar: scheduleSvc.removeCalendar,
+    createCalendar: scheduleSvc.createCalendar, updateCalendar: scheduleSvc.updateCalendar,
+    removeCalendar: scheduleSvc.removeCalendar,
     exportICS: scheduleSvc.exportICS, importICS: scheduleSvc.importICS
   })
   registry.register('pomodoro', {

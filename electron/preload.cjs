@@ -11,14 +11,16 @@ const api = {
     update: call('todo:update'), toggle: call('todo:toggle'), remove: call('todo:remove'),
     reorder: call('todo:reorder'), addSubtask: call('todo:addSubtask'),
     toggleSubtask: call('todo:toggleSubtask'), lists: call('todo:lists'), stats: call('todo:stats'),
-    createList: call('todo:createList'), removeList: call('todo:removeList')
+    createList: call('todo:createList'), updateList: call('todo:updateList'),
+    removeList: call('todo:removeList')
   },
   schedule: {
     range: call('schedule:range'), get: call('schedule:get'), create: call('schedule:create'),
     update: call('schedule:update'), remove: call('schedule:remove'),
     checkConflict: call('schedule:checkConflict'),
     calendars: call('schedule:calendars'), toggleCalendar: call('schedule:toggleCalendar'),
-    createCalendar: call('schedule:createCalendar'), removeCalendar: call('schedule:removeCalendar'),
+    createCalendar: call('schedule:createCalendar'), updateCalendar: call('schedule:updateCalendar'),
+    removeCalendar: call('schedule:removeCalendar'),
     exportICS: call('schedule:exportICS'), importICS: call('schedule:importICS')
   },
   pomodoro: {
