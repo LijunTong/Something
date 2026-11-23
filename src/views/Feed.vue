@@ -3,8 +3,8 @@ import { nextTick, ref, computed, onMounted, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import {
   NButton, NInput, NTag, NText,
-  NBlockquote, NEmpty, NSpin, NUpload, NAvatar, NScrollbar, NTooltip, NAlert,
-  useMessage, useDialog
+  NBlockquote, NEmpty, NSpin, NUpload, NScrollbar, NAlert,
+  NModal, NDrawer, NDrawerContent, useMessage, useDialog
 } from 'naive-ui'
 import type { UploadCustomRequestOptions } from 'naive-ui'
 import Shell from '@/components/Shell.vue'
@@ -14,7 +14,7 @@ import { call, bridge, plain } from '@/lib/ipc'
 import { log } from '@/lib/logger'
 import { useAppStore } from '@/stores/app'
 import { useFocusQuery } from '@/composables/useFocusQuery'
-import type { FeedApi, FeedItem, FeedSource } from '@/types/api'
+import type { FeedApi, FeedGroupRow, FeedItem, FeedSource } from '@/types/api'
 import '@/styles/feed.css'
 
 type FeedKind = 'unread' | 'all' | 'starred' | 'later'
@@ -30,13 +30,14 @@ function openManagePanel() { showFeedPanel.value = true }
 const feedBridge = (): FeedApi => (bridge() as unknown as { feed: FeedApi }).feed
 
 /** 页面状态：筛选条件、选中文章、加载与弹窗开关均为 UI 态，不进 Pinia */
-const groups = ref<Array<{ id: string; name: string }>>([])
+const groups = ref<FeedGroupRow[]>([])
 const sources = ref<FeedSource[]>([])
 const allItems = ref<FeedItem[]>([])
 const kind = ref<FeedKind | ''>('unread')
-const sourceId = ref('')
 const groupId = ref('')
 const selectedId = ref('')
+/** 阅读器默认不显示：点开文章才从右侧滑出，列表因此能占满整行宽度 */
+const showReader = ref(false)
 const route = useRoute()
 // 深链定位：仪表盘点某篇文章 → /feed?focus=<id>（兼容旧 ?item=<id>）
 const {
@@ -56,9 +57,7 @@ const showRemoteImages = ref(false)
 const htmlLoading = ref(false)
 /** 详情缓存：列表接口不返回 content_html（正文太大），点开文章时按需取 */
 const detailCache = ref<Record<string, { contentHtml: string | null; content: string | null }>>({})
-/** 单源刷新中：只让被点的那个源转圈，不整页 spin */
-const refreshingId = ref('')
-// 订阅源与分组的增删改统一在「设置 › 订阅源」维护，本页只负责阅读
+// 订阅源统一在「管理订阅」抽屉维护；分类（feed_group）在本页「分类管理」弹窗维护
 
 /** 无 IPC 时的浏览器降级数据：字段名与 FeedItem / FeedSource 契约一致 */
 // 无 IPC 时的浏览器降级：一律返回空数组，不再内置示例订阅与文章
@@ -80,16 +79,16 @@ const lastFetchText = computed(() => {
   const latest = sources.value.reduce((max, s) => Math.max(max, s.lastFetchAt ?? 0), 0)
   return latest ? fmtAgo(latest) : '尚未抓取'
 })
-/** 按分组整理订阅源，供左侧导航按原型顺序渲染 */
-const grouped = computed(() => groups.value.map((g) => ({
-  ...g,
-  sources: sources.value.filter((s) => s.groupId === g.id)
-})))
-const ungrouped = computed(() => sources.value.filter((s) => !s.groupId || !groups.value.some((g) => g.id === s.groupId)))
-const groupOptions = computed(() => [
-  { label: '未分组', value: '' },
-  ...groups.value.map((g) => ({ label: g.name, value: g.id }))
-])
+/** 默认分类：可改名、不可删除；删别的分类时它承接订阅 */
+const defaultCat = computed(() => groups.value.find((g) => g.isDefault) ?? null)
+/** 订阅归哪个分类：分类已经被删的源视为未分类，不计入任何一行 */
+function groupOfSource(id: string): string | null {
+  return sources.value.find((s) => s.id === id)?.groupId ?? null
+}
+/** 分类右侧数字：跟随上方选中的智能分类统计（选「未读」时显示该分类下的未读数） */
+function groupCount(id: string): number {
+  return allItems.value.filter((i) => groupOfSource(i.sourceId) === id && matchesKind(i, kind.value)).length
+}
 /** 分类口径：未读 / 收藏 / 稍后读；空值表示不过滤 */
 function matchesKind(it: FeedItem, k: FeedKind | ''): boolean {
   if (k === 'unread') return !it.read
@@ -97,10 +96,9 @@ function matchesKind(it: FeedItem, k: FeedKind | ''): boolean {
   if (k === 'later') return it.readLater
   return true
 }
-/** 列表筛选：上方分类（kind）与下方订阅源（sourceId）各自独立，同时命中才显示 */
+/** 列表筛选：智能分类（kind）与我的分类（groupId）同时命中才显示 */
 const visibleItems = computed(() => allItems.value
   .filter((it) => {
-    if (sourceId.value && it.sourceId !== sourceId.value) return false
     if (groupId.value) {
       const s = sources.value.find((x) => x.id === it.sourceId)
       if (!s || s.groupId !== groupId.value) return false
@@ -149,37 +147,16 @@ function onListScroll(e: Event): void {
   if (el.scrollTop + el.clientHeight >= el.scrollHeight - 80) loadMore()
 }
 watch(keyword, () => { page.value = 1 })
-/** 切换分类/订阅源：页码回到第一页，并清空阅读器，避免右侧还停在上一个分类的文章 */
-watch([sourceId, groupId, kind], () => {
+/** 切换分类：页码回到第一页并收起阅读器，避免还停在上一个分类的文章 */
+watch([groupId, kind], () => {
   page.value = 1
-  selectedId.value = ''
+  showReader.value = false
 })
+/** 抽屉关闭后清掉选中项，下次点开别的文章不会先闪一下上一篇 */
+watch(showReader, (v) => { if (!v) selectedId.value = '' })
 
 function sourceName(it: FeedItem): string {
   return it.sourceTitle || sources.value.find((s) => s.id === it.sourceId)?.title || '未知来源'
-}
-/** 订阅源图标：按源站常见路径依次尝试 favicon，全部失败回退首字头像，保证离线也有可辨识标记 */
-const ICON_PATHS = ['/favicon.ico', '/apple-touch-icon.png']
-const iconStep = ref<Record<string, number>>({})
-function iconCandidates(s: FeedSource): string[] {
-  try {
-    const origin = new URL(s.url).origin
-    return ICON_PATHS.map((p) => origin + p)
-  } catch {
-    return []
-  }
-}
-function iconSrc(s: FeedSource): string {
-  return iconCandidates(s)[iconStep.value[s.id] ?? 0] ?? ''
-}
-/** 当前候选加载失败时换下一个；候选耗尽后回退首字头像 */
-function nextIcon(s: FeedSource): void {
-  iconStep.value = { ...iconStep.value, [s.id]: (iconStep.value[s.id] ?? 0) + 1 }
-}
-function sourceInitial(s: FeedSource): string {
-  const name = (s.title || s.url || '').trim()
-  const ch = name.replace(/^https?:\/\//i, '').charAt(0)
-  return ch ? ch.toUpperCase() : '·'
 }
 function fmtAgo(ts: number | null): string {
   if (!ts) return '—'
@@ -220,10 +197,6 @@ function smartCount(k: FeedKind): number {
   if (k === 'starred') return allItems.value.filter((i) => i.starred).length
   return allItems.value.filter((i) => i.readLater).length
 }
-/** 订阅源右侧数字：跟随上方选中的分类统计——选「未读」显示该源未读数，选「全部文章」显示总数 */
-function countOfSource(id: string): number {
-  return allItems.value.filter((i) => i.sourceId === id && matchesKind(i, kind.value)).length
-}
 function smartActive(k: FeedKind): boolean {
   return kind.value === k
 }
@@ -235,16 +208,12 @@ function setSmart(k: FeedKind): void {
 function toggleSmart(k: FeedKind): void {
   kind.value = smartActive(k) ? '' : k
 }
-function setSource(s: FeedSource): void {
-  sourceId.value = s.id
-}
-/** 再次点击已选中的订阅源即取消订阅源，分类选择保持不变 */
-function toggleSource(s: FeedSource): void {
-  sourceId.value = sourceId.value === s.id ? '' : s.id
-}
-function setGroup(g: { id: string }): void {
+function setGroup(g: FeedGroupRow): void {
   groupId.value = g.id
-  sourceId.value = ''
+}
+/** 再次点击已选中的分类即取消分类筛选 */
+function toggleGroup(g: FeedGroupRow): void {
+  groupId.value = groupId.value === g.id ? '' : g.id
 }
 
 /** 统一加载：全部数据经 IPC，调用失败由 call 的 fallback 兜底，异常统一记录 */
@@ -252,7 +221,7 @@ async function loadAll(): Promise<void> {
   busy.value = true
   try {
     const [g, s, all] = await Promise.all([
-      call(() => feedBridge().groups(), [] as Array<{ id: string; name: string }>),
+      call(() => feedBridge().groups(), [] as FeedGroupRow[]),
       call(() => feedBridge().sources(), [] as FeedSource[]),
       call(() => feedBridge().items({ kind: 'all' }), [] as FeedItem[])
     ])
@@ -300,6 +269,7 @@ function resetDetails(): void {
 /** 打开文章即标记已读；乐观更新失败时回滚本地状态 */
 async function openArticle(item: FeedItem): Promise<void> {
   selectedId.value = item.id
+  showReader.value = true
   // 每篇文章的远程图片单独授权，切换即复位（与邮件阅读器一致）
   showRemoteImages.value = false
   void loadDetail(item.id)
@@ -364,21 +334,90 @@ async function refreshAll(): Promise<void> {
   }
 }
 
-/** 单源刷新：只抓这一个源，成功后顺带刷新该源的「最后抓取」 */
-async function refreshSource(s: FeedSource): Promise<void> {
-  if (refreshingId.value || busy.value) return
-  refreshingId.value = s.id
+// —— 分类管理：默认分类可改名不可删；删其它分类时订阅迁到默认分类 ——
+const showCatManage = ref(false)
+const newCatName = ref('')
+const editingCatId = ref('')
+const catDraftName = ref('')
+
+function openCatManage(): void {
+  showCatManage.value = true
+  editingCatId.value = ''
+  newCatName.value = ''
+}
+function startEditCat(g: FeedGroupRow): void {
+  editingCatId.value = g.id
+  catDraftName.value = g.name
+}
+function cancelEditCat(): void {
+  editingCatId.value = ''
+  catDraftName.value = ''
+}
+/** 服务端错误码转成可读文案：重复名、空名、默认分类不可删 */
+function catError(e: unknown): string {
+  const code = String((e as Error)?.message || '')
+  if (code.includes('GROUP_NAME_REQUIRED')) return '请输入分类名称'
+  if (code.includes('GROUP_NAME_EXISTS')) return '已有同名分类'
+  if (code.includes('GROUP_IS_DEFAULT')) return '默认分类不能删除'
+  return '操作失败'
+}
+async function saveCatName(g: FeedGroupRow): Promise<void> {
+  const name = catDraftName.value.trim()
+  if (!name) { message.warning('请输入分类名称'); return }
+  if (name === g.name) { cancelEditCat(); return }
   try {
-    const r = await call(() => feedBridge().refresh(plain({ sourceId: s.id })), { added: 0, updated: 0, skipped: 0, failed: 0 })
-    refreshSummary(r, (s.title || s.url) + ' 刷新完成')
-    resetDetails()
-    await loadAll()
+    const rows = await call(() => feedBridge().updateGroup(plain({ id: g.id, name })), null as FeedGroupRow[] | null)
+    if (rows) groups.value = rows
+    cancelEditCat()
+    message.success('已重命名分类')
   } catch (e) {
-    log.exception('feed.refreshSource', e)
-    message.error('刷新失败：' + (s.title || s.url))
-  } finally {
-    refreshingId.value = ''
+    log.exception('feed.updateGroup', e)
+    message.error(catError(e))
   }
+}
+async function addCat(): Promise<void> {
+  const name = newCatName.value.trim()
+  if (!name) { message.warning('请输入分类名称'); return }
+  try {
+    const rows = await call(() => feedBridge().addGroup(plain({ name })), null as FeedGroupRow[] | null)
+    if (rows) groups.value = rows
+    newCatName.value = ''
+    message.success('已新增分类')
+  } catch (e) {
+    log.exception('feed.addGroup', e)
+    message.error(catError(e))
+  }
+}
+/** 删除分类前先告知影响面：多少订阅会被移到默认分类（订阅与文章都不会删） */
+function confirmRemoveCat(g: FeedGroupRow): void {
+  const affected = sources.value.filter((s) => s.groupId === g.id).length
+  const dest = defaultCat.value
+  const destName = dest ? dest.name : '默认分类'
+  const content = affected > 0
+    ? '「' + g.name + '」下有 ' + affected + ' 个订阅，删除分类后这些订阅会移到「' + destName + '」，订阅和文章都不会被删除。确定删除？'
+    : '「' + g.name + '」下没有订阅，确定删除这个分类？'
+  dialog.warning({
+    title: '删除分类',
+    content,
+    positiveText: '删除',
+    negativeText: '取消',
+    onPositiveClick: async () => {
+      try {
+        const r = await call(() => feedBridge().removeGroup(g.id), null as { groups: FeedGroupRow[]; count: number; defaultGroup: FeedGroupRow | null } | null)
+        if (r) {
+          groups.value = r.groups
+          // 当前正筛着被删分类时，视图落到默认分类，避免停在空列表上
+          if (groupId.value === g.id) groupId.value = r.defaultGroup ? r.defaultGroup.id : ''
+        }
+        message.success(affected > 0
+          ? '已删除分类，' + affected + ' 个订阅已移到「' + destName + '」'
+          : '已删除分类')
+      } catch (e) {
+        log.exception('feed.removeGroup', e)
+        message.error(catError(e))
+      }
+    }
+  })
 }
 
 /** n-upload 自定义请求：读取 OPML 文本后交给 IPC 导入 */
@@ -473,7 +512,6 @@ async function openFromQuery(id: string): Promise<void> {
   if (!item) { missFocus(); return }
   // 目标可能是已读的：分类固定到「全部文章」，并清掉订阅源/分组/关键词，
   // 保证它一定在当前列表里，而不是落在「未读」筛选下看不见。
-  sourceId.value = ''
   groupId.value = ''
   keyword.value = ''
   kind.value = 'all'
@@ -501,7 +539,6 @@ watch(unreadCount, (n) => store.setFeedUnread(n), { immediate: true })
   <Shell>
     <template #subtitle>{{ unreadCount }} 篇未读 · 共 {{ sources.length }} 个订阅源 · 最后抓取 {{ lastFetchText }}</template>
     <template #actions>
-      <n-button size="medium" :loading="busy" @click="refreshAll">刷新全部</n-button>
       <n-button size="medium" type="primary" @click="openManagePanel">管理订阅</n-button>
       <n-button size="medium" quaternary @click="exportOpml">导出 OPML</n-button>
       <n-upload :custom-request="onImportOpml" :show-file-list="false" :multiple="false">
@@ -524,42 +561,15 @@ watch(unreadCount, (n) => store.setFeedUnread(n), { immediate: true })
             <svg><use :href="'#' + nav.icon" /></svg><span class="fd-nav-label">{{ nav.label }}</span><span class="fd-nav-count">{{ smartCount(nav.kind) }}</span>
           </a>
 
-          <template v-for="g in grouped" :key="g.id">
-            <div class="fd-group">{{ g.name }}</div>
-            <div v-for="s in g.sources" :key="s.id" class="fd-nav-row">
-              <a class="fd-nav" :class="{ on: sourceId === s.id }" href="#" @click.prevent="toggleSource(s)">
-                <span class="fd-nav-ico">
-                  <img v-if="iconSrc(s)" :src="iconSrc(s)" alt="" @error="nextIcon(s)" />
-                  <n-avatar v-else :size="16" round>{{ sourceInitial(s) }}</n-avatar>
-                </span>
-                <span class="fd-nav-label">{{ s.title || s.url }}</span><span class="fd-nav-count">{{ countOfSource(s.id) }}</span>
-              </a>
-              <n-tooltip trigger="hover" placement="right">
-                <template #trigger>
-                  <n-button class="fd-refresh" size="tiny" quaternary :loading="refreshingId === s.id" :disabled="busy" title="获取最新文章" @click.stop="refreshSource(s)">↻</n-button>
-                </template>
-                只抓取「{{ s.title || s.url }}」的最新文章
-              </n-tooltip>
-            </div>
-          </template>
-
-          <div v-if="ungrouped.length" class="fd-group">未分组</div>
-          <div v-for="s in ungrouped" :key="s.id" class="fd-nav-row">
-            <a class="fd-nav" :class="{ on: sourceId === s.id }" href="#" @click.prevent="toggleSource(s)">
-              <span class="fd-nav-ico">
-                <img v-if="iconSrc(s)" :src="iconSrc(s)" alt="" @error="nextIcon(s)" />
-                <n-avatar v-else :size="16" round>{{ sourceInitial(s) }}</n-avatar>
-              </span>
-              <span class="fd-nav-label">{{ s.title || s.url }}</span><span class="fd-nav-count">{{ countOfSource(s.id) }}</span>
-            </a>
-            <n-tooltip trigger="hover" placement="right">
-              <template #trigger>
-                <n-button class="fd-refresh" size="tiny" quaternary :loading="refreshingId === s.id" :disabled="busy" title="获取最新文章" @click.stop="refreshSource(s)">↻</n-button>
-              </template>
-              只抓取「{{ s.title || s.url }}」的最新文章
-            </n-tooltip>
+          <!-- 我的分类：与待办页「我的清单」同构，管理入口在标题右侧 -->
+          <div class="fd-group fd-group-head">
+            <span>我的分类</span>
+            <n-button text size="tiny" @click="openCatManage">分类管理</n-button>
           </div>
-
+          <a v-for="g in groups" :key="g.id" class="fd-nav" :class="{ on: groupId === g.id }" href="#" @click.prevent="toggleGroup(g)">
+            <span class="dotc" :style="{ background: g.color || 'var(--muted-2)' }"></span><span class="fd-nav-label">{{ g.name }}</span><span class="fd-nav-count">{{ groupCount(g.id) }}</span>
+          </a>
+          <div v-if="!groups.length" class="fd-group">还没有分类，点「分类管理」新增</div>
         </aside>
 
         <section class="card fd-list">
@@ -567,6 +577,7 @@ watch(unreadCount, (n) => store.setFeedUnread(n), { immediate: true })
             <n-input v-model:value="keyword" size="small" clearable placeholder="搜索标题…">
               <template #prefix><svg class="fd-search-ico"><use href="#i-search" /></svg></template>
             </n-input>
+            <n-button size="small" :loading="busy" :disabled="busy" title="抓取全部订阅" @click="refreshAll">刷新</n-button>
           </div>
           <n-scrollbar class="fd-items" @scroll="onListScroll">
             <n-list v-if="pagedItems.length || pinnedItem" hoverable clickable>
@@ -616,9 +627,19 @@ watch(unreadCount, (n) => store.setFeedUnread(n), { immediate: true })
           </n-scrollbar>
         </section>
 
-        <section class="card fd-reader">
+      </div>
+    </n-spin>
+
+
+
+
+    <!-- 阅读器：默认不显示，点文章后从右侧滑出，列表因此可用满整行宽度；
+         正文排版属产品独占视觉，HTML 由 HtmlBodyFrame 的沙箱 iframe 承载，纯文本走段落样式 -->
+    <n-drawer v-model:show="showReader" :width="640" placement="right">
+      <n-drawer-content :native-scrollbar="false" closable>
+        <template #header>{{ selectedItem ? selectedItem.title : '阅读' }}</template>
+        <div class="fd-reader-body">
           <div class="fd-tools">
-            <n-button size="tiny" quaternary title="收起阅读器" @click="selectedId = ''">‹</n-button>
             <n-button-group size="tiny">
               <n-button quaternary @click="fontScale = Math.max(0.8, fontScale - 0.1)">A-</n-button>
               <n-button quaternary @click="fontScale = Math.min(1.6, fontScale + 0.1)">A+</n-button>
@@ -638,8 +659,6 @@ watch(unreadCount, (n) => store.setFeedUnread(n), { immediate: true })
           <n-scrollbar class="fd-article" :class="{ 'fd-night': darkArticle }" :style="{ '--fd-reader-font': (13 * fontScale).toFixed(0) + 'px' }">
             <div class="fd-article-inner">
               <template v-if="selectedItem">
-                <!-- 阅读器正文排版属产品独占视觉：HTML 由 HtmlBodyFrame 的沙箱 iframe 承载，纯文本走段落样式 -->
-                <h2 class="fd-article-title">{{ selectedItem.title }}</h2>
                 <div class="fd-byline"><n-text depth="3">{{ sourceName(selectedItem) }} · {{ selectedItem.author || '未知作者' }} · {{ fmtAgo(selectedItem.publishedAt) }}</n-text></div>
                 <HtmlBodyFrame
                   v-if="showHtml && selectedHtml"
@@ -658,15 +677,40 @@ watch(unreadCount, (n) => store.setFeedUnread(n), { immediate: true })
                   <n-button v-if="selectedItem.link" size="small" type="primary" @click="openOriginal">打开原文</n-button>
                 </div>
               </template>
-              <div v-else class="fd-reader-empty"><n-empty description="选择左侧文章开始阅读" /></div>
+              <div v-else class="fd-reader-empty"><n-empty description="选择文章开始阅读" /></div>
             </div>
           </n-scrollbar>
-        </section>
+        </div>
+      </n-drawer-content>
+    </n-drawer>
+
+    <!-- 分类管理：改名 / 新增 / 删除；默认分类只能改名，删除时订阅迁到默认分类 -->
+    <n-modal v-model:show="showCatManage" preset="card" title="分类管理" style="width:420px">
+      <div class="lm-rows">
+        <div v-for="g in groups" :key="g.id" class="lm-row">
+          <template v-if="editingCatId === g.id">
+            <n-input v-model:value="catDraftName" size="small" placeholder="分类名称" @keyup.enter="saveCatName(g)" />
+            <div class="lm-row-actions">
+              <n-button size="tiny" type="primary" @click="saveCatName(g)">保存</n-button>
+              <n-button size="tiny" @click="cancelEditCat">取消</n-button>
+            </div>
+          </template>
+          <template v-else>
+            <span class="dotc" :style="{ background: g.color || 'var(--muted-2)' }"></span>
+            <span class="lm-name">{{ g.name }}</span>
+            <n-tag v-if="g.isDefault" size="tiny" round>默认</n-tag>
+            <div class="lm-row-actions">
+              <n-button text size="tiny" @click="startEditCat(g)">改名</n-button>
+              <n-button v-if="!g.isDefault" text size="tiny" @click="confirmRemoveCat(g)">删除</n-button>
+            </div>
+          </template>
+        </div>
       </div>
-    </n-spin>
-
-
-
+      <div class="lm-add">
+        <n-input v-model:value="newCatName" size="small" placeholder="新分类名称，回车新增" @keyup.enter="addCat" />
+        <n-button size="small" type="primary" :disabled="!newCatName.trim()" @click="addCat">新增分类</n-button>
+      </div>
+    </n-modal>
 
     <!-- 订阅源抽屉：新增/修改/分组/OPML 都在这里，不再跳设置页 -->
     <n-drawer v-model:show="showFeedPanel" :width="720" placement="right">

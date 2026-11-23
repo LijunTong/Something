@@ -34,17 +34,61 @@ function escapeXml(s) {
 function getItemRaw(id) {
   return camel(get().prepare('SELECT * FROM feed_item WHERE id = ?').get(id))
 }
-// —— 分组 ——
+// —— 分类（feed_group）——
+// 新分类按顺序取色：与待办清单保持一致，同一个分类在侧栏和弹窗里颜色固定
+const GROUP_COLORS = ['#0f766e', '#2563eb', '#7c3aed', '#c2410c', '#0891b2', '#db2777', '#65a30d']
+
 function groups() {
   return camelAll(get().prepare('SELECT * FROM feed_group ORDER BY name ASC').all())
 }
 
+// 默认分类：is_default=1 的那条；档案缺失时退回名字最前的一条，保证删除时总有迁移目标
+function defaultGroup() {
+  const row = get().prepare('SELECT * FROM feed_group WHERE is_default = 1 LIMIT 1').get()
+    || get().prepare('SELECT * FROM feed_group ORDER BY name ASC, id ASC LIMIT 1').get()
+  return row ? camel(row) : null
+}
+
 function addGroup(dto) {
+  const name = String((dto && dto.name) || '').trim()
+  if (!name) throw new Error('GROUP_NAME_REQUIRED')
   return withTx(function () {
+    const dup = get().prepare('SELECT id FROM feed_group WHERE lower(name) = lower(?)').get(name)
+    if (dup) throw new Error('GROUP_NAME_EXISTS')
+    const n = get().prepare('SELECT COUNT(*) AS n FROM feed_group').get().n || 0
     const id = uid('grp')
-    get().prepare('INSERT INTO feed_group (id,name) VALUES (?,?)').run(id, dto.name)
-    // 返回最新分组列表，调用方（添加订阅时输入了新分组名）可直接取到新 id
+    get().prepare('INSERT INTO feed_group (id,name,color,is_default) VALUES (?,?,?,0)')
+      .run(id, name, GROUP_COLORS[n % GROUP_COLORS.length])
+    // 返回最新分类列表，调用方（添加订阅时输入了新分类名）可直接取到新 id
     return groups()
+  })
+}
+
+/** 改分类名：默认分类同样允许改，改名不影响其下订阅 */
+function updateGroup(dto) {
+  return withTx(function () {
+    const cur = get().prepare('SELECT * FROM feed_group WHERE id = ?').get(String((dto && dto.id) || ''))
+    if (!cur) throw new Error('GROUP_NOT_FOUND')
+    const name = String((dto && dto.name) || '').trim()
+    if (!name) throw new Error('GROUP_NAME_REQUIRED')
+    const dup = get().prepare('SELECT id FROM feed_group WHERE lower(name) = lower(?) AND id <> ?').get(name, dto.id)
+    if (dup) throw new Error('GROUP_NAME_EXISTS')
+    get().prepare('UPDATE feed_group SET name = ? WHERE id = ?').run(name, dto.id)
+    return groups()
+  })
+}
+
+/** 删除分类：分类下的订阅（及其文章）不删，整体迁到默认分类；默认分类禁止删除 */
+function removeGroup(id) {
+  return withTx(function () {
+    const cur = get().prepare('SELECT * FROM feed_group WHERE id = ?').get(String(id || ''))
+    if (!cur) throw new Error('GROUP_NOT_FOUND')
+    if (cur.is_default) throw new Error('GROUP_IS_DEFAULT')
+    const def = defaultGroup()
+    if (!def) throw new Error('GROUP_DEFAULT_MISSING')
+    const moved = get().prepare('UPDATE feed_source SET group_id = ? WHERE group_id = ?').run(def.id, id)
+    get().prepare('DELETE FROM feed_group WHERE id = ?').run(id)
+    return { groups: groups(), count: moved.changes, defaultGroup: def }
   })
 }
 
@@ -61,8 +105,11 @@ function addSourceRaw(dto) {
   const exists = get().prepare('SELECT id FROM feed_source WHERE url = ?').get(url)
   if (exists) throw new Error('SOURCE_EXISTS')
   const id = uid('src')
+  // 没指定分类就落到默认分类，避免出现不属于任何分类的订阅（侧栏按分类浏览时看不到）
+  const fallback = defaultGroup()
+  const groupId = dto.groupId || (fallback ? fallback.id : null)
   get().prepare('INSERT INTO feed_source (id,url,title,group_id,interval_min,enabled,last_fetch_at,etag) VALUES (?,?,?,?,?,?,?,?)')
-    .run(id, url, dto.title || url, dto.groupId || null, dto.intervalMin || 60, 1, null, null)
+    .run(id, url, dto.title || url, groupId, dto.intervalMin || 60, 1, null, null)
   return camel(get().prepare('SELECT * FROM feed_source WHERE id = ?').get(id))
 }
 
@@ -450,7 +497,7 @@ function exportOPML() {
 }
 
 module.exports = {
-  groups: groups, addGroup: addGroup, sources: sources, addSource: addSource,
+  groups: groups, addGroup: addGroup, updateGroup: updateGroup, removeGroup: removeGroup, sources: sources, addSource: addSource,
   removeSource: removeSource, toggleSource: toggleSource, updateSource: updateSource, items: items, detail: detail,
   markRead: markRead, toggleStar: toggleStar, toggleLater: toggleLater,
   refresh: refresh, importOPML: importOPML, exportOPML: exportOPML

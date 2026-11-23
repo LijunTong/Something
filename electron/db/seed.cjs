@@ -8,6 +8,10 @@ function countOf(db, table) {
 }
 
 function seed(db) {
+  // 信息流默认分类：迁移 009 已兜底，这里再保证一次（极端情况下有人手工清空过分类表）
+  if (countOf(db, 'feed_group') === 0) {
+    db.prepare('INSERT INTO feed_group (id,name,color,is_default) VALUES (?,?,?,?)').run(uid('grp'), '默认分类', '#0f766e', 1)
+  }
   if (countOf(db, 'todo_list') > 0) return false
   // is_default=1：种子清单/分组是默认项，可改名但不可删除
   db.prepare('INSERT INTO todo_list (id,name,color,sort,is_default) VALUES (?,?,?,?,?)').run(uid('list'), '默认清单', '#0f766e', 0, 1)

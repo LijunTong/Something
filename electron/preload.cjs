@@ -40,6 +40,7 @@ const api = {
   },
   feed: {
     groups: call('feed:groups'), addGroup: call('feed:addGroup'),
+    updateGroup: call('feed:updateGroup'), removeGroup: call('feed:removeGroup'),
     sources: call('feed:sources'), addSource: call('feed:addSource'),
     removeSource: call('feed:removeSource'), toggleSource: call('feed:toggleSource'),
     updateSource: call('feed:updateSource'),

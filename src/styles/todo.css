@@ -1,5 +1,5 @@
 /* 待办页布局：仅布局属性，外观走 src/theme/naive.ts */
-.td-layout { display: grid; grid-template-columns: 190px minmax(0,1fr); gap: 16px; align-items: start; }
+.td-layout { display: grid; grid-template-columns: 288px minmax(0,1fr); gap: 16px; align-items: start; }
 
 /* 左栏清单导航 */
 .td-side { padding: 12px; }
@@ -49,5 +49,5 @@
 .td-note { margin-top: 12px; font-size: var(--fs-12); }
 
 @media (max-width: 1180px) {
-  .td-layout { grid-template-columns: 170px minmax(0,1fr); }
+  .td-layout { grid-template-columns: 240px minmax(0,1fr); }
 }

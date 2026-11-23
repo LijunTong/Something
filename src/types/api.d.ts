@@ -349,9 +349,13 @@ export interface WeatherApi {
 
 export interface FeedItem { id: string; sourceId: string; title: string; link: string | null; author: string | null; summary: string | null; content: string | null; /** 正文 HTML：仅 detail() 返回，列表接口不带 */ contentHtml?: string | null; publishedAt: number | null; read: boolean; starred: boolean; readLater: boolean; sourceTitle?: string; group?: string | null }
 export interface FeedSource { id: string; url: string; title: string | null; groupId: string | null; intervalMin: number; enabled: boolean; lastFetchAt: number | null }
+/** 订阅分类：color 用于侧栏色点；isDefault 的分类可改名、不可删除 */
+export interface FeedGroupRow { id: string; name: string; color: string; isDefault?: boolean }
 export interface FeedApi {
-  groups(): Promise<IpcResult<Array<{ id: string; name: string }>>>
-  addGroup(dto: { name: string }): Promise<IpcResult<Array<{ id: string; name: string }>>>
+  groups(): Promise<IpcResult<FeedGroupRow[]>>
+  addGroup(dto: { name: string }): Promise<IpcResult<FeedGroupRow[]>>
+  updateGroup(dto: { id: string; name: string }): Promise<IpcResult<FeedGroupRow[]>>
+  removeGroup(id: string): Promise<IpcResult<{ groups: FeedGroupRow[]; count: number; defaultGroup: FeedGroupRow | null }>>
   sources(): Promise<IpcResult<FeedSource[]>>
   addSource(dto: { url: string; title?: string; groupId?: string | null; intervalMin?: number }): Promise<IpcResult<FeedSource[]>>
   removeSource(id: string): Promise<IpcResult<FeedSource[]>>

@@ -1,31 +1,25 @@
 /* 信息流页样式：只写布局；阅读器正文排版属产品独占视觉，字号统一走变量 */
-.fd-layout { display: grid; grid-template-columns: 200px 320px minmax(0,1fr); gap: 16px; align-items: start; }
+.fd-layout { display: grid; grid-template-columns: 288px minmax(0,1fr); gap: 16px; align-items: start; }
 .fd-side { display: flex; flex-direction: column; padding: 12px; }
 /* 分组标题字号与 todo.css 的 .td-group 同步（11px），左右两栏清单保持一致 */
 .fd-group { padding: 6px 8px; font-size: var(--fs-11); }
+/* 我的分类标题右侧放「分类管理」入口，与待办页「我的清单」一致 */
+.fd-group-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
 /* 左栏清单：结构与 todo.css 的 .td-nav 对齐（同一套清单外形：选中反白、悬停轻微减弱、数字贴右） */
-.fd-nav-row { display: flex; align-items: center; gap: 2px; min-width: 0; }
 .fd-nav { display: flex; align-items: center; gap: 8px; width: 100%; min-width: 0; min-height: 32px; padding: 0 9px; border-radius: 8px; font-size: var(--fs-12); }
-/* 侧栏是纵向 flex，.fd-nav 不能吃 flex:1（会纵向拉伸）；只有包在行里的订阅源才需要横向占满 */
-.fd-nav-row .fd-nav { flex: 1; width: auto; }
 .fd-nav svg { width: 15px; height: 15px; flex: 0 0 auto; }
 .fd-nav-label { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-align: left; }
 .fd-nav-count { margin-left: auto; }
-/* 单源刷新按钮：固定宽度不参与 flex 收缩，行内靠右 */
-.fd-refresh { flex: 0 0 auto; width: 22px; min-width: 22px; }
 /* 选中态：颜色取主题变量（App.vue 注入 --app-primary），与待办页一致 */
 .fd-nav.on { background: var(--app-primary, #0f766e); color: var(--on-primary); font-weight: 600; }
 .fd-nav.on svg { color: inherit; }
 .fd-nav.on .fd-nav-count { color: inherit; }
 /* 悬停反馈：仅减弱不透明度，不改色值 */
 .fd-nav:hover { opacity: .85; }
-/* 订阅源图标：16px 定宽方框，favicon 撑满，加载失败回退首字占位 */
-.fd-nav-ico { display: flex; align-items: center; justify-content: center; width: 16px; height: 16px; flex: 0 0 16px; overflow: hidden; }
-.fd-nav-ico img { width: 16px; height: 16px; object-fit: contain; }
-.fd-side-foot { display: flex; flex-direction: column; gap: 4px; margin-top: 10px; }
 .fd-list { min-width: 0; padding: 12px; }
-/* 列表顶部搜索框与底部加载提示（纯布局） */
-.fd-search { padding-bottom: 8px; }
+/* 列表顶部：搜索框占满，刷新按钮固定在右侧 */
+.fd-search { display: flex; align-items: center; gap: 8px; padding-bottom: 8px; }
+.fd-search > :first-child { flex: 1; min-width: 0; }
 .fd-search-ico { width: 14px; height: 14px; }
 .fd-more { display: flex; align-items: center; justify-content: center; gap: 6px; padding: 10px 0; }
 /* 纵向滚动交给 n-scrollbar，滚动高度上限仍由这里给出 */
@@ -40,10 +34,11 @@
 .fd-item-sum { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; overflow-wrap: anywhere; margin-top: 3px; }
 /* 列表/阅读窗格里的空态居中 */
 .fd-list-empty { display: grid; place-items: center; min-height: calc(100vh - 300px); padding: 20px 0; }
-.fd-reader { padding: 0; overflow: hidden; }
-.fd-tools { display: flex; align-items: center; gap: 4px; padding: 10px 14px; }
+/* 阅读器抽屉：工具条固定，正文区自己滚动，避免整页跟着滚 */
+.fd-reader-body { display: flex; flex-direction: column; gap: 8px; height: calc(100vh - 130px); min-height: 0; }
+.fd-tools { display: flex; align-items: center; flex-wrap: wrap; gap: 4px; }
 .fd-tools-spacer { flex: 1; }
-.fd-article { max-height: calc(100vh - 170px); }
+.fd-article { flex: 1; min-height: 0; }
 .fd-article-inner { padding: 20px 26px; font-size: var(--fd-reader-font, var(--fs-13)); line-height: 1.8; }
 .fd-article-title { margin: 0 0 8px; font-size: var(--fs-title); }
 .fd-byline { margin-bottom: 18px; }
@@ -53,7 +48,13 @@
 .fd-origin-link { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 /* 阅读器夜间排版：产品独占视觉，颜色取自设计令牌而非硬编码 */
 .fd-article.fd-night { background: var(--bg); }
-.fd-reader-empty { display: grid; place-items: center; min-height: calc(100vh - 240px); padding: 24px 0; }
+.fd-reader-empty { display: grid; place-items: center; min-height: 60vh; padding: 24px 0; }
+/* 分类管理弹窗：行布局（仅布局，外观交给 Naive UI），与待办页清单管理同形 */
+.lm-rows { display: flex; flex-direction: column; gap: 4px; max-height: 320px; overflow-y: auto; }
+.lm-row { display: flex; align-items: center; gap: 8px; min-height: 36px; }
+.lm-name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--fs-12); }
+.lm-row-actions { display: flex; align-items: center; gap: 6px; flex: 0 0 auto; }
+.lm-add { display: flex; gap: 8px; margin-top: 12px; }
 .fd-modal-foot { display: flex; align-items: center; gap: 8px; width: 100%; }
 .fd-foot-spacer { flex: 1; }
 /* 管理订阅弹窗：新增区 + 已有订阅清单（纵向滚动交给 n-scrollbar） */
@@ -67,4 +68,4 @@
 .fd-edit { display: flex; flex-direction: column; gap: 8px; width: 100%; }
 .fd-edit-row { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
 .fd-edit-foot { display: flex; justify-content: flex-end; gap: 6px; }
-@media (max-width: 1180px) { .fd-layout { grid-template-columns: 180px minmax(0,1fr); } .fd-reader { display: none; } }
+@media (max-width: 1180px) { .fd-layout { grid-template-columns: 240px minmax(0,1fr); } }

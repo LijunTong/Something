@@ -413,6 +413,12 @@ function registerIpc() {
   })
   registry.register('feed', {
     groups: feedSvc.groups, addGroup: feedSvc.addGroup,
+    // 分类改名 / 删除分类（删除时服务内部把订阅迁到默认分类）
+    updateGroup: {
+      schema: z.object({ id: z.string().min(1), name: z.string().min(1) }),
+      handler: feedSvc.updateGroup
+    },
+    removeGroup: { schema: z.string().min(1), handler: feedSvc.removeGroup },
     sources: feedSvc.sources, addSource: feedSvc.addSource,
     removeSource: feedSvc.removeSource, toggleSource: feedSvc.toggleSource,
     // 修改订阅源：入参经 zod 校验，只接受可编辑字段
