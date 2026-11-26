@@ -168,6 +168,8 @@ function removeAccount(dto) {
   return withLog('删除账户', { id: id }, function () {
     return withTx(function () {
       get().prepare('DELETE FROM mail_account WHERE id = ?').run(id)
+      // 账户没了，墓碑也没有意义；留着会在重新添加同一账户时把旧邮件挡掉
+      get().prepare('DELETE FROM mail_deleted WHERE account_id = ?').run(id)
       return accounts()
     })
   })
@@ -294,6 +296,8 @@ async function sync(dto) {
     olds.forEach(function (o) { delMail.run(o.id) })
 
     const findOne = get().prepare('SELECT id FROM mail WHERE account_id = ? AND msg_id = ?')
+    // 用户删过的邮件：同步按墓碑跳过，避免删完又出现
+    const findDeleted = get().prepare('SELECT 1 AS hit FROM mail_deleted WHERE account_id = ? AND msg_id = ?')
     const ins = get().prepare('INSERT INTO mail (id,account_id,folder_id,uid,msg_id,from_name,from_addr,to_addrs,cc_addrs,subject,snippet,body_html,body_text,has_attach,sent_at,read,starred,important,labels) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)')
     // 已读/未读一律以本地库为准：同步只刷新内容与星标，绝不动 read。
     // 否则本地读过的邮件会被服务器 FLAGS 覆盖回未读，左栏计数就永远对不上。
@@ -312,6 +316,7 @@ async function sync(dto) {
         updated += 1
         return
       }
+      if (findDeleted.get(accountId, m.msgId)) return
       ins.run(
         uid('mail'), accountId, inboxId, m.uid, m.msgId,
         m.fromName, m.fromAddr, toJsonString(m.toAddrs), toJsonString(m.ccAddrs),
@@ -489,7 +494,12 @@ function toggleStar(id) {
 function remove(id) {
   return withLog('删除邮件', { id: id }, function () {
     return withTx(function () {
-      const row = get().prepare('SELECT folder_id FROM mail WHERE id = ?').get(id)
+      const row = get().prepare('SELECT folder_id, account_id, msg_id FROM mail WHERE id = ?').get(id)
+      // 先记墓碑再删：同步按 msg_id 查重，没有墓碑就会把同一封邮件重新拉回来
+      if (row && row.msg_id) {
+        get().prepare('INSERT OR REPLACE INTO mail_deleted (account_id, msg_id, deleted_at) VALUES (?, ?, ?)')
+          .run(row.account_id, row.msg_id, now())
+      }
       get().prepare('DELETE FROM mail WHERE id = ?').run(id)
       recountFolder(row && row.folder_id)
       return true

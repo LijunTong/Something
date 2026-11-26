@@ -62,8 +62,6 @@
 .fd-origin { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-top: 8px; }
 /* 原文链接单行省略，按钮始终在右侧 */
 .fd-origin-link { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-/* 阅读器夜间排版：产品独占视觉，颜色取自设计令牌而非硬编码 */
-.fd-article.fd-night { background: var(--bg); }
 .fd-reader-empty { display: grid; place-items: center; min-height: 60vh; padding: 24px 0; }
 /* 分类管理弹窗：行布局（仅布局，外观交给 Naive UI），与待办页清单管理同形 */
 .lm-rows { display: flex; flex-direction: column; gap: 4px; max-height: 320px; overflow-y: auto; }

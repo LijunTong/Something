@@ -122,6 +122,8 @@ function removeSource(id) {
   return withTx(function () {
     // feed_item 的外键声明为 ON DELETE CASCADE，文章随源一并清理，无需手动删除。
     get().prepare('DELETE FROM feed_source WHERE id = ?').run(id)
+    // 源没了，墓碑也没有意义；留着会在重新添加同一源时把旧文章挡掉
+    get().prepare('DELETE FROM feed_deleted WHERE source_id = ?').run(id)
     return true
   })
 }
@@ -243,6 +245,9 @@ function removeItems(ids) {
   if (!list.length) return 0
   return withTx(function () {
     const marks = list.map(function () { return '?' }).join(',')
+    // 先记墓碑再删：下次刷新时按 (source_id, guid) 跳过，否则同一篇会被重新插回来
+    get().prepare('INSERT OR REPLACE INTO feed_deleted (source_id, guid, deleted_at) SELECT source_id, guid, ? FROM feed_item WHERE id IN (' + marks + ')')
+      .run(now(), ...list)
     return get().prepare('DELETE FROM feed_item WHERE id IN (' + marks + ')').run(...list).changes
   })
 }
@@ -554,13 +559,15 @@ async function refresh(dto) {
   // 落库阶段：同步事务内完成，guid 幂等 + content_hash 判断是否需要更新
   return withTx(function () {
     const find = get().prepare('SELECT id, link, content_hash, full_fetch_ok, length(content) AS content_len FROM feed_item WHERE source_id = ? AND guid = ?')
+    // 用户删过的条目：刷新时按墓碑跳过，避免删完又出现
+    const findDeleted = get().prepare('SELECT 1 AS hit FROM feed_deleted WHERE source_id = ? AND guid = ?')
     const ins = get().prepare('INSERT INTO feed_item (id,source_id,guid,title,link,author,summary,content,content_html,published_at,read,starred,read_later,content_hash) VALUES (?,?,?,?,?,?,?,?,?,?,0,0,0,?)')
     const upd = get().prepare('UPDATE feed_item SET title = ?, link = ?, author = ?, summary = ?, content = ?, content_html = ?, published_at = ?, content_hash = ?, full_fetch_at = NULL, full_fetch_ok = 0 WHERE id = ?')
     // 已补全全文的文章，RSS 再给摘要时只更新元数据，不动正文（否则全文会被摘要覆盖）
     const updMeta = get().prepare('UPDATE feed_item SET title = ?, link = ?, author = ?, summary = ?, published_at = ?, content_hash = ? WHERE id = ?')
     const touch = get().prepare('UPDATE feed_source SET last_fetch_at = ?, etag = ? WHERE id = ?')
     const at = now()
-    let added = 0, updated = 0, skipped = 0, failed = 0
+    let added = 0, updated = 0, skipped = 0, deleted = 0, failed = 0
     fetched.forEach(function (r) {
       if (!r.ok) { failed += 1; return }
       if (r.notModified) { skipped += 1; touch.run(at, r.etag, r.source.id); return }
@@ -578,6 +585,7 @@ async function refresh(dto) {
         const contentHash = hash(a.html || a.content || a.title || '')
         const hit = find.get(r.source.id, guid)
         if (!hit) {
+          if (findDeleted.get(r.source.id, guid)) { deleted += 1; return }
           ins.run(uid('item'), r.source.id, guid, a.title, a.link, a.author, a.summary, a.content, a.html, a.publishedAt, contentHash)
           added += 1
         } else if (hit.content_hash !== contentHash) {
@@ -590,7 +598,7 @@ async function refresh(dto) {
       })
       touch.run(at, r.etag, r.source.id)
     })
-    return { added: added, updated: updated, skipped: skipped, failed: failed }
+    return { added: added, updated: updated, skipped: skipped, deleted: deleted, failed: failed }
   })
 }
 

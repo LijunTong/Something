@@ -55,7 +55,6 @@ const {
 } = useFocusQuery()
 const busy = ref(false)
 const fontScale = ref(1)
-const darkArticle = ref(false)
 /** 阅读器视图：HTML 版优先，只有详情里没有 HTML 时才落回纯文本 */
 const showHtml = ref(true)
 /** 远程图片默认加载：正文里的配图是阅读体验的一部分，需要时再手动隐藏 */
@@ -379,11 +378,13 @@ async function toggleLater(item: FeedItem): Promise<void> {
     message.error('稍后读操作失败')
   }
 }
-type RefreshResult = { added: number; updated: number; skipped: number; failed: number }
+type RefreshResult = { added: number; updated: number; skipped: number; deleted?: number; failed: number }
 /** 刷新结果提示：全部刷新与单源刷新共用一套文案 */
 function refreshSummary(r: RefreshResult, label: string): void {
   const parts = ['新增 ' + r.added, '更新 ' + r.updated]
   if (r.skipped) parts.push('未变更 ' + r.skipped)
+  // 用户删过的条目按墓碑跳过，单独说，避免混进「未变更」让人以为源没更新
+  if (r.deleted) parts.push('已删 ' + r.deleted + ' 条不再收录')
   if (r.failed) parts.push('失败 ' + r.failed)
   const text = label + '：' + parts.join(' · ')
   if (r.failed && !r.added && !r.updated) message.warning(text)
@@ -829,7 +830,6 @@ watch(unreadCount, (n) => store.setFeedUnread(n), { immediate: true })
               <n-button quaternary @click="fontScale = Math.max(0.8, fontScale - 0.1)">A-</n-button>
               <n-button quaternary @click="fontScale = Math.min(1.6, fontScale + 0.1)">A+</n-button>
             </n-button-group>
-            <n-button size="tiny" quaternary title="夜间模式" @click="darkArticle = !darkArticle">◐</n-button>
             <n-button v-if="selectedHtml" size="tiny" quaternary :type="showHtml ? 'primary' : 'default'" title="切换正文格式" @click="showHtml = !showHtml">
               {{ showHtml ? 'HTML' : '纯文本' }}
             </n-button>
@@ -842,7 +842,7 @@ watch(unreadCount, (n) => store.setFeedUnread(n), { immediate: true })
             <span class="fd-tools-spacer"></span>
             <n-button size="tiny" quaternary @click="toTodo">转为待办</n-button>
           </div>
-          <n-scrollbar class="fd-article" :class="{ 'fd-night': darkArticle }" :style="{ '--fd-reader-font': (13 * fontScale).toFixed(0) + 'px' }">
+          <n-scrollbar class="fd-article" :style="{ '--fd-reader-font': (13 * fontScale).toFixed(0) + 'px' }">
             <div class="fd-article-inner">
               <template v-if="selectedItem">
                 <div class="fd-byline"><n-text depth="3">{{ sourceName(selectedItem) }} · {{ selectedItem.author || '未知作者' }} · {{ fmtAgo(selectedItem.publishedAt) }}</n-text></div>
@@ -855,7 +855,6 @@ watch(unreadCount, (n) => store.setFeedUnread(n), { immediate: true })
                   :html="selectedHtml"
                   :allow-remote-images="showRemoteImages"
                   :font-size="(13 * fontScale).toFixed(0) + 'px'"
-                  :night="darkArticle"
                   title="文章正文"
                 />
                 <n-spin v-else-if="showHtml && htmlLoading" size="small" />

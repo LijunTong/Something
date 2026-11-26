@@ -8,7 +8,6 @@
  * AGENTS.md 1.2「组件库无对应组件」允许自写，此处即属该例外。
  */
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
-import { darkOverrides } from '@/theme/naive'
 import '@/styles/html-frame.css'
 
 const props = defineProps<{
@@ -18,8 +17,6 @@ const props = defineProps<{
   baseHref?: string
   /** 覆盖正文字号（阅读器 A+/A-） */
   fontSize?: string
-  /** 阅读器本地夜间模式：取主题文件里的深色令牌，不新造色值 */
-  night?: boolean
   title?: string
 }>()
 
@@ -43,21 +40,6 @@ function readTheme(): Theme {
 }
 
 const theme = ref<Theme>(readTheme())
-
-/** 夜间正文字色统一从 theme/naive.ts 的 darkOverrides 取，组件里不出现新色值 */
-function nightTheme(base: Theme): Theme {
-  const common = (darkOverrides as { common?: Record<string, string> }).common || {}
-  return {
-    text: common.textColor1 || '#e2e8f0',
-    muted: common.textColor2 || '#94a3b8',
-    border: common.borderColor || '#334155',
-    primary: common.primaryColorSuppl || common.primaryColor || '#14b8a6',
-    size: base.size,
-    font: base.font
-  }
-}
-
-const effectiveTheme = computed(() => (props.night ? nightTheme(theme.value) : theme.value))
 
 /** 事件属性与可执行标签先摘掉：CSP 与 sandbox 已兜底，这里只减少脏数据 */
 function sanitize(html: string): string {
@@ -94,7 +76,7 @@ function buildDoc(html: string, allowRemote: boolean, t: Theme, baseHref: string
 }
 
 const sandbox = 'allow-same-origin allow-popups allow-popups-to-escape-sandbox'
-const srcdoc = computed(() => buildDoc(props.html, props.allowRemoteImages, effectiveTheme.value, props.baseHref || '', props.fontSize || ''))
+const srcdoc = computed(() => buildDoc(props.html, props.allowRemoteImages, theme.value, props.baseHref || '', props.fontSize || ''))
 
 const frame = ref<HTMLIFrameElement | null>(null)
 const height = ref(240)
