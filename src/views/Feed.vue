@@ -58,7 +58,8 @@ const fontScale = ref(1)
 const darkArticle = ref(false)
 /** 阅读器视图：HTML 版优先，只有详情里没有 HTML 时才落回纯文本 */
 const showHtml = ref(true)
-const showRemoteImages = ref(false)
+/** 远程图片默认加载：正文里的配图是阅读体验的一部分，需要时再手动隐藏 */
+const showRemoteImages = ref(true)
 const htmlLoading = ref(false)
 /** 详情缓存：列表接口不返回 content_html（正文太大），点开文章时按需取 */
 type FeedDetail = {
@@ -340,8 +341,8 @@ function resetDetails(): void {
 async function openArticle(item: FeedItem): Promise<void> {
   selectedId.value = item.id
   showReader.value = true
-  // 每篇文章的远程图片单独授权，切换即复位（与邮件阅读器一致）
-  showRemoteImages.value = false
+  // 每篇文章的图片开关单独复位：默认显示，切到下一篇仍是默认显示
+  showRemoteImages.value = true
   void loadDetail(item.id)
   if (item.read) return
   const prev = item.read
@@ -832,7 +833,7 @@ watch(unreadCount, (n) => store.setFeedUnread(n), { immediate: true })
             <n-button v-if="selectedHtml" size="tiny" quaternary :type="showHtml ? 'primary' : 'default'" title="切换正文格式" @click="showHtml = !showHtml">
               {{ showHtml ? 'HTML' : '纯文本' }}
             </n-button>
-            <n-button v-if="showHtml && selectedHtml" size="tiny" quaternary :type="showRemoteImages ? 'primary' : 'default'" title="远程图片默认拦截" @click="showRemoteImages = !showRemoteImages">
+            <n-button v-if="showHtml && selectedHtml" size="tiny" quaternary :type="showRemoteImages ? 'primary' : 'default'" title="远程图片默认显示" @click="showRemoteImages = !showRemoteImages">
               {{ showRemoteImages ? '隐藏图片' : '显示图片' }}
             </n-button>
             <n-button v-if="selectedItem && selectedItem.link" size="tiny" quaternary :loading="htmlLoading" title="重新抓取原文全文" @click="refetchFull(selectedItem)">补全全文</n-button>

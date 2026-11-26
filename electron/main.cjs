@@ -137,7 +137,8 @@ if (process.env.TK_NO_SANDBOX === '1') {
 }
 
 /* ---------- 单例启动：第二个实例只唤起已存在的窗口 ---------- */
-const singleLock = app.requestSingleInstanceLock()
+// 无头自测（TK_HEADLESS=1）跳过单例锁：否则用户开着应用时，CDP 断言脚本连第二个实例都起不来
+const singleLock = HEADLESS ? true : app.requestSingleInstanceLock()
 if (!singleLock) {
   app.quit()
 }
