@@ -1,12 +1,12 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { NDropdown, NEmpty, type DropdownOption } from 'naive-ui'
+import { NDropdown, NEmpty, NTag, type DropdownOption } from 'naive-ui'
 import { cardView, isCardKey } from '@/composables/useCardViews'
 import { provideWidgetContext, type WidgetContext } from '@/lib/widgetContext'
 import { call, hasBridge } from '@/lib/ipc'
 import { useSettings } from '@/composables/useSettings'
-import type { WidgetItem, WidgetListResult } from '@/types/api'
+import type { WidgetBoundsResult, WidgetItem, WidgetListResult } from '@/types/api'
 import '@/styles/widget.css'
 
 /**
@@ -29,6 +29,9 @@ const cardOk = computed(() => isCardKey(card.value))
 const widgetId = computed(() => String(route.query.id || 'w-' + card.value))
 const item = ref<WidgetItem | null>(null)
 const dragging = ref(false)
+/** 正在拖右下角/边缩放：这段时间给整窗铺一层不透明底，压掉透明窗口改尺寸时的黑边 */
+const sizing = ref(false)
+let sizeTimer = 0
 const menuShow = ref(false)
 const menuX = ref(0)
 const menuY = ref(0)
@@ -69,8 +72,50 @@ function flushRect() {
   winRect.value = { ...next }
   void call(
     () => window.api.widget.setBounds({ id: widgetId.value, x: next.x, y: next.y, w: next.w, h: next.h }),
-    false
+    null as WidgetBoundsResult | null
   )
+    .then((res) => {
+      if (!res) return
+      noteClamp(res)
+      // 手势结束了就以主进程实际生效的几何为准：贴边被夹住时本地值不能继续漂
+      if (!dragBase && !sizeBase) {
+        winRect.value = { x: res.x, y: res.y, w: res.width, h: res.height }
+      }
+    })
+    .catch(() => {})
+}
+
+/**
+ * 贴边提示：窗口被屏幕边界夹住时给一句话，别让用户以为卡死了。
+ * 同一次拖动里同一个方向只提示一次，换到另一边才再提示。
+ */
+const edgeHint = ref('')
+let hintTimer = 0
+let lastHintKey = ''
+let lastHintAt = 0
+
+function noteClamp(res: WidgetBoundsResult) {
+  const c = res.clamped
+  if (!c || (!c.x && !c.y && !c.w && !c.h)) return
+  const key = (c.x ? 'x' : '') + (c.y ? 'y' : '') + (c.w ? 'w' : '') + (c.h ? 'h' : '')
+  if (key === lastHintKey && Date.now() - lastHintAt < 2500) return
+  lastHintKey = key
+  lastHintAt = Date.now()
+  edgeHint.value = c.w || c.h ? '已经到屏幕放得下的最大尺寸' : '已经贴到屏幕边缘'
+  if (hintTimer) clearTimeout(hintTimer)
+  hintTimer = window.setTimeout(() => {
+    edgeHint.value = ''
+    hintTimer = 0
+  }, 1600)
+}
+
+/** 手势结束后把本地几何对齐到主进程：贴边被夹过时本地值会偏 */
+async function syncBounds() {
+  const b = await call(
+    () => window.api.widget.bounds({ id: widgetId.value }),
+    null as { x: number; y: number; width: number; height: number } | null
+  )
+  if (b) winRect.value = { x: b.x, y: b.y, w: b.width, h: b.height }
 }
 
 function scheduleRect(rect: { x: number; y: number; w: number; h: number }) {
@@ -119,6 +164,7 @@ function onShellPointerUp(e: PointerEvent) {
   dragging.value = false
   const host = e.currentTarget as HTMLElement | null
   if (host && host.hasPointerCapture(e.pointerId)) host.releasePointerCapture(e.pointerId)
+  void syncBounds()
 }
 
 /* ---------- 缩放：四边 + 四角 ---------- */
@@ -132,6 +178,7 @@ function onHandleDown(e: PointerEvent, dir: string) {
   const r = winRect.value
   sizeBase = { px: e.screenX, py: e.screenY, rect: { x: r.x, y: r.y, w: r.w, h: r.h }, dir }
   ;(e.currentTarget as HTMLElement).setPointerCapture(e.pointerId)
+  sizing.value = true
 }
 
 function onHandleMove(e: PointerEvent) {
@@ -169,6 +216,13 @@ function onHandleUp(e: PointerEvent) {
   if (!sizeBase) return
   sizeBase = null
   sizeFrameCleanup(e)
+  // 缩放手势结束后再留 160ms 不透明底：最后几帧的重绘最容易露出黑边
+  if (sizeTimer) clearTimeout(sizeTimer)
+  sizeTimer = window.setTimeout(() => {
+    sizing.value = false
+    sizeTimer = 0
+  }, 160)
+  void syncBounds()
 }
 
 function sizeFrameCleanup(e: PointerEvent) {
@@ -316,13 +370,15 @@ onBeforeUnmount(() => {
   if (removeGuard) removeGuard()
   if (unsubscribe) unsubscribe()
   if (rectFrame) cancelAnimationFrame(rectFrame)
+  if (hintTimer) clearTimeout(hintTimer)
+  if (sizeTimer) clearTimeout(sizeTimer)
 })
 </script>
 
 <template>
   <div
     class="widget-shell"
-    :class="{ 'is-dragging': dragging, 'is-locked': locked, 'is-opaque': opaque }"
+    :class="{ 'is-dragging': dragging, 'is-sized': sizing, 'is-locked': locked, 'is-opaque': opaque }"
     @pointerdown="onShellPointerDown"
     @pointermove="onShellPointerMove"
     @pointerup="onShellPointerUp"
@@ -332,6 +388,11 @@ onBeforeUnmount(() => {
     <div class="widget-body">
       <component :is="cardView(card)" v-if="cardOk" />
       <n-empty v-else description="这张卡片不认识" />
+    </div>
+
+    <!-- 贴边/到尺寸上限提示：只给一句话，不打断拖动 -->
+    <div v-if="edgeHint" class="widget-hint">
+      <n-tag size="small" type="warning" :bordered="false">{{ edgeHint }}</n-tag>
     </div>
 
     <!-- 缩放手柄：锁定时不出现，避免误拉 -->

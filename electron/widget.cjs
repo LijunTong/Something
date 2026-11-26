@@ -33,6 +33,15 @@ const OUTSIDE_HOLD_MS = 100
 // 渲染层万一没来解除，20 秒后自动停
 const DRAG_WATCH_MS = 20000
 
+/**
+ * 判定「窗口被收回去」的阈值：差这么多像素才算被合成器动了
+ */
+const HEAL_SHRINK_PX = 8
+/** 只处理刚设过几何的 1.5 秒内发生的变化 */
+const HEAL_WINDOW_MS = 1500
+/** 同一次异常最多每秒补一次，防止和用户手势互相拉扯 */
+const HEAL_COOLDOWN_MS = 1000
+
 function badRequest(message) {
   const err = new Error(message)
   err.code = 'WIDGET_INVALID'
@@ -116,14 +125,15 @@ function createWidgetService(deps) {
     return normalizeItems(cfg && cfg.items)
   }
 
-  function writeItems(items) {
+  function writeItems(items, silent) {
     try {
       settings.set({ widgets: { items: items } })
     } catch (e) {
       logger.warn('widget', 'persist_failed', { message: e && e.message })
       return false
     }
-    notify()
+    // 纯几何变化没必要惊动所有窗口：挂件会被无谓 reload，首页也会重排提示
+    if (silent !== true) notify()
     return true
   }
 
@@ -174,6 +184,37 @@ function createWidgetService(deps) {
     }
   }
 
+  /**
+   * 把渲染层要的几何夹进当前显示器工作区，并告回「哪一边被夹了」。
+   * 拖动/缩放逐帧走这里：贴到屏幕边缘时窗口停住，渲染层据此给一次提示，
+   * 而不是让用户以为卡死了。至少留 KEEP_VISIBLE 像素在屏内，避免窗口被拖到抓不回来。
+   */
+  function clampToArea(req) {
+    const area = pickArea(req.x + Math.round(req.w / 2), req.y + Math.round(req.h / 2))
+    const maxW = Math.min(MAX_W, area.width)
+    const maxH = Math.min(MAX_H, area.height)
+    const w = Math.round(clampNum(req.w, MIN_W, maxW))
+    const h = Math.round(clampNum(req.h, MIN_H, maxH))
+    const minX = area.x - w + KEEP_VISIBLE
+    const maxX = area.x + area.width - KEEP_VISIBLE
+    const minY = area.y
+    const maxY = area.y + area.height - 64
+    const x = Math.round(clampNum(req.x, Math.min(minX, maxX), maxX))
+    const y = Math.round(clampNum(req.y, Math.min(minY, maxY), maxY))
+    return {
+      x: x,
+      y: y,
+      w: w,
+      h: h,
+      clamped: {
+        x: x !== Math.round(req.x),
+        y: y !== Math.round(req.y),
+        w: w !== Math.round(req.w),
+        h: h !== Math.round(req.h)
+      }
+    }
+  }
+
   function defaultPosition(index) {
     let area = null
     try {
@@ -193,28 +234,84 @@ function createWidgetService(deps) {
     if (st.saveTimer) clearTimeout(st.saveTimer)
     st.saveTimer = setTimeout(function () {
       st.saveTimer = null
-      persistBounds(id)
+      persistPending(id)
     }, SAVE_DELAY_MS)
   }
 
+  /**
+   * 几何落库的唯一来源是渲染层刚上报的 rect（st.pending），**不读 getBounds()**：
+   * 1. setBounds 之后立刻 getBounds 拿到的经常是上一帧的中间态，会把「正在放大」存成旧尺寸，
+   *    存完再广播回来，窗口看起来就是「等一会儿又缩回去」；
+   * 2. 几何变化不广播（silent），挂件窗口不需要因为自己被挪了一下就整页 reload。
+   */
+  function persistPending(id) {
+    const st = live.get(id)
+    if (!st) return false
+    const p = st.pending
+    if (!p) return false
+    const items = readItems()
+    const it = items.find(function (i) { return i.id === id })
+    if (!it) return false
+    if (it.x === p.x && it.y === p.y && it.w === p.w && it.h === p.h) return false
+    it.x = p.x
+    it.y = p.y
+    it.w = p.w
+    it.h = p.h
+    return writeItems(items, true)
+  }
+
+  /** 关窗/退出前最后落一次：有 pending 用 pending，否则以窗口真实 bounds 为准 */
   function persistBounds(id) {
     const st = live.get(id)
-    if (!st || st.win.isDestroyed()) return
+    if (!st) return false
+    if (st.pending) return persistPending(id)
+    if (st.win.isDestroyed()) return false
+    let b = null
+    try {
+      b = st.win.getBounds()
+    } catch (e) {
+      return false
+    }
+    const items = readItems()
+    const it = items.find(function (i) { return i.id === id })
+    if (!it) return false
+    if (it.x === b.x && it.y === b.y && it.w === b.width && it.h === b.height) return false
+    it.x = b.x
+    it.y = b.y
+    it.w = b.width
+    it.h = b.height
+    return writeItems(items, true)
+  }
+
+  /**
+   * 透明窗口在 Windows 上偶发「被合成器收回一截」：setBounds 之后一秒内窗口比要求的小了。
+   * 只在刚设过几何之后、只治「变小」、每秒最多补一次，避免和用户正在做的手势打架。
+   */
+  function healIfShrunk(id) {
+    const st = live.get(id)
+    if (!st || st.win.isDestroyed() || closingAll) return
+    const p = st.pending
+    if (!p) return
     let b = null
     try {
       b = st.win.getBounds()
     } catch (e) {
       return
     }
-    const items = readItems()
-    const it = items.find(function (i) { return i.id === id })
-    if (!it) return
-    if (it.x === b.x && it.y === b.y && it.w === b.width && it.h === b.height) return
-    it.x = b.x
-    it.y = b.y
-    it.w = b.width
-    it.h = b.height
-    writeItems(items)
+    if (!(p.w - b.width > HEAL_SHRINK_PX || p.h - b.height > HEAL_SHRINK_PX)) return
+    if (Date.now() - st.appliedAt > HEAL_WINDOW_MS) return
+    if (Date.now() - st.lastHeal < HEAL_COOLDOWN_MS) return
+    st.lastHeal = Date.now()
+    logger.warn('widget', 'bounds_shrank_healed', {
+      id: id,
+      want: p,
+      got: { w: b.width, h: b.height }
+    })
+    try {
+      st.win.setBounds({ x: p.x, y: p.y, width: p.w, height: p.h })
+    } catch (e) {
+      logger.warn('widget', 'heal_failed', { id: id, message: e && e.message })
+    }
   }
 
   function createWindowFor(item) {
@@ -250,14 +347,25 @@ function createWidgetService(deps) {
       }
     })
     if (item.alwaysOnTop) win.setAlwaysOnTop(true, 'floating')
-    const state = { id: item.id, win: win, saveTimer: null, silentClose: false }
+    const state = {
+      id: item.id,
+      win: win,
+      saveTimer: null,
+      silentClose: false,
+      /** 渲染层最后一次要求的几何（已夹取），落库只用它 */
+      pending: { x: geo.x, y: geo.y, w: geo.w, h: geo.h },
+      appliedAt: 0,
+      lastHeal: 0
+    }
     live.set(item.id, state)
 
     win.once('ready-to-show', function () {
       if (!headless && !win.isDestroyed()) win.showInactive()
     })
-    win.on('moved', function () { scheduleSave(item.id) })
-    win.on('resize', function () { scheduleSave(item.id) })
+    // 不用 moved/resize 落库：这两个事件在 setBounds 之后还会异步补发，
+    // 拿来落库会把中间态写进配置。这里只做一件事——发现窗口被「收回去」就补一次。
+    win.on('moved', function () { healIfShrunk(item.id) })
+    win.on('resize', function () { healIfShrunk(item.id) })
     win.on('closed', function () {
       const st = live.get(item.id)
       if (st && st.saveTimer) clearTimeout(st.saveTimer)
@@ -469,17 +577,25 @@ function createWidgetService(deps) {
   /**
    * 拖动只改位置，缩放要同时改位置（从左边/上边拉时左上角也在动），
    * 所以缩放统一走 setBounds，避免两次 IPC 之间出现中间态。
+   *
+   * 返回**实际生效**的几何 + 哪一边被屏幕边界夹住，渲染层据此给「已到边缘」的提示。
    */
   function setBounds(payload) {
     const st = live.get(String((payload && payload.id) || ''))
-    if (!st || st.win.isDestroyed()) return false
-    st.win.setBounds({
-      x: Math.round(payload.x),
-      y: Math.round(payload.y),
-      width: clampNum(Math.round(payload.w), MIN_W, MAX_W),
-      height: clampNum(Math.round(payload.h), MIN_H, MAX_H)
+    if (!st || st.win.isDestroyed()) return null
+    const prev = st.pending || { x: 0, y: 0, w: DEFAULT_W, h: DEFAULT_H }
+    const fit = clampToArea({
+      x: intOr(payload.x, prev.x),
+      y: intOr(payload.y, prev.y),
+      // 尺寸不要在这里先夹一遍：clampToArea 里夹完才知道哪边被夹了，提前夹会把它记成「没夹」
+      w: intOr(payload.w, prev.w),
+      h: intOr(payload.h, prev.h)
     })
-    return true
+    st.pending = { x: fit.x, y: fit.y, w: fit.w, h: fit.h }
+    st.appliedAt = Date.now()
+    st.win.setBounds({ x: fit.x, y: fit.y, width: fit.w, height: fit.h })
+    scheduleSave(st.id)
+    return { x: fit.x, y: fit.y, width: fit.w, height: fit.h, clamped: fit.clamped }
   }
 
   function bounds(payload) {
@@ -533,6 +649,8 @@ function createWidgetService(deps) {
     for (const it of fixed) {
       const st = live.get(it.id)
       if (st && !st.win.isDestroyed()) {
+        st.pending = { x: it.x, y: it.y, w: it.w, h: it.h }
+        st.appliedAt = Date.now()
         try {
           st.win.setBounds({ x: it.x, y: it.y, width: it.w, height: it.h })
         } catch (e) {

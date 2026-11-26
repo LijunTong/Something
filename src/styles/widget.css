@@ -30,6 +30,13 @@ html.is-widget #app { background: transparent; }
 /* 不透明模式：透明窗口在某些显卡/远程桌面上合成异常时，用整块 surface 兜底 */
 .widget-shell.is-opaque { background: var(--surface); }
 
+/* 缩放手势期间临时铺底：透明窗口放大时新暴露的那几像素在页面重排前是黑的
+   （同样是窗口合成问题，属 2.2.1 例外，颜色只取主题变量） */
+.widget-shell.is-sized { background: var(--surface); }
+
+/* 贴边提示：右下角浮一条，不挡鼠标也不挡手柄 */
+.widget-hint { position: absolute; right: 8px; bottom: 8px; z-index: 3; pointer-events: none; }
+
 /* 缩放手柄：贴在窗口四边与四角，视觉上不可见，靠光标形状提示 */
 .widget-handle { position: absolute; z-index: 2; }
 .widget-handle-n,

@@ -136,6 +136,14 @@ export interface WidgetListResult {
   /** 当前活着的挂件窗口数（无头自测时用它断言） */
   live: number
 }
+/** setBounds 的回执：clamped 标出哪几个方向被屏幕边界夹住了（窗口据此提示） */
+export interface WidgetBoundsResult {
+  x: number
+  y: number
+  width: number
+  height: number
+  clamped: { x: boolean; y: boolean; w: boolean; h: boolean }
+}
 export interface WindowSetting {
   /** 关闭窗口时隐藏到托盘（不退出进程） */
   closeToTray: boolean
@@ -324,7 +332,7 @@ export interface Api {
     armDrag(dto: { card: WidgetItem['card'] }): Promise<IpcResult<boolean>>
     disarmDrag(): Promise<IpcResult<boolean>>
     /** 缩放：左上角也在动（从左边/上边拉），位置与尺寸一起给，避免中间态 */
-    setBounds(dto: { id: string; x: number; y: number; w: number; h: number }): Promise<IpcResult<boolean>>
+    setBounds(dto: { id: string; x: number; y: number; w: number; h: number }): Promise<IpcResult<WidgetBoundsResult | null>>
     bounds(dto: { id: string }): Promise<IpcResult<{ x: number; y: number; width: number; height: number } | null>>
     focus(dto: { id: string }): Promise<IpcResult<boolean>>
     /** 挂件里点内容时把主窗口叫到前台并导航（挂件是独立渲染进程，不能就地跳转） */

@@ -28,7 +28,7 @@ const projectSvc = require('./services/project.cjs')
 const mcpServer = require('./mcp/server.cjs')
 const mcpTools = require('./mcp/tools.cjs')
 // 桌面挂件：独立透明浮窗的创建/几何/持久化都在这里，渲染层只读不整段写
-const { createWidgetService, WIDGET_MIN_W, WIDGET_MIN_H, WIDGET_MAX_W, WIDGET_MAX_H } = require('./widget.cjs')
+const { createWidgetService } = require('./widget.cjs')
 
 // 开发/生产方式只由 VITE_URL 决定：只有 scripts/dev.cjs 会注入它（同时拉起 Vite）。
 // 未注入时即使未打包也只加载 dist，避免 npm start 去连一个没启动的 5173。
@@ -717,8 +717,9 @@ function registerIpc() {
         id: widgetId,
         x: z.number().int().min(-40000).max(40000),
         y: z.number().int().min(-40000).max(40000),
-        w: z.number().int().min(WIDGET_MIN_W).max(WIDGET_MAX_W),
-        h: z.number().int().min(WIDGET_MIN_H).max(WIDGET_MAX_H)
+        // 尺寸只做粗校验：真正的上下限由 widget.cjs 按工作区夹，夹住后回执 clamped 给窗口提示
+        w: z.number().int().min(1).max(40000),
+        h: z.number().int().min(1).max(40000)
       }),
       handler: function (dto) { return widgetSvc.setBounds(dto) }
     },
