@@ -51,7 +51,8 @@ const search = ref('')
 const loading = ref(false)
 const selectedIds = ref<string[]>([])
 const checkedAll = ref(false)
-const showRemoteImages = ref(false)
+/** 远程图片默认加载：邮件里的配图与排版图是阅读体验的一部分，需要时再手动隐藏 */
+const showRemoteImages = ref(true)
 const showHtml = ref(true)
 // 深链定位：仪表盘点某封邮件 → /mail?focus=<id>，落地后打开阅读器并把列表行滚到中间
 const {
@@ -237,7 +238,8 @@ async function openMail(row: MailRow) {
     const detail = await call(() => mailApi().read(plain(row.id)), { ...row })
     selected.value = detail
     showReader.value = true
-    showRemoteImages.value = false
+    // 每封邮件都从默认值开始：默认显示远程图片
+    showRemoteImages.value = true
     // 有 MIME HTML 就直接按 HTML 阅读；纯文本邮件自动落到纯文本分支
     showHtml.value = Boolean(detail.bodyHtml)
     await loadMails()
@@ -267,7 +269,7 @@ async function applyFocus(id: string): Promise<void> {
   if (!detail) { missFocus(); return }
   selected.value = detail
   showReader.value = true
-  showRemoteImages.value = false
+  showRemoteImages.value = true
   showHtml.value = Boolean(detail.bodyHtml)
   await loadFolders()
   await locateFocus(key, '来自仪表盘：' + (detail.subject || '（无主题）') + ' · 不在当前列表，已直接打开')
@@ -707,7 +709,7 @@ async function reloadAll() {
 
               <div v-if="selected.bodyHtml" class="ml-safe">
                 <svg class="mi" aria-hidden="true"><use href="#i-lock" /></svg>
-                <span>远程图片默认拦截，以保护隐私</span>
+                <span>{{ showRemoteImages ? '远程图片已显示，可能含发件方的追踪像素' : '远程图片已隐藏' }}</span>
                 <n-button size="tiny" quaternary @click="showRemoteImages = !showRemoteImages">
                   {{ showRemoteImages ? '隐藏图片' : '显示图片' }}
                 </n-button>
@@ -717,7 +719,7 @@ async function reloadAll() {
               </div>
 
               <!-- 正文用沙箱 iframe 渲染：邮件自带的 style/表格不会泄漏到应用外壳，
-                   沙箱不给 allow-scripts，CSP 再兜一层；远程图片未授权时不发请求 -->
+                   沙箱不给 allow-scripts，CSP 再兜一层；远程图片默认放行，隐藏后 CSP 直接拦掉 -->
               <HtmlBodyFrame
                 v-if="showHtml && selected.bodyHtml"
                 :html="selected.bodyHtml"
