@@ -349,11 +349,16 @@ function createWidgetService(deps) {
       }
     })
     if (item.alwaysOnTop) win.setAlwaysOnTop(true, 'floating')
+    // 锁定要落到窗口样式上：只让渲染层不响应拖动是不够的，
+    // 透明无边框窗口在 Windows 上仍能从边缘拉伸，用户就会觉得「锁了还能改」。
+    win.setResizable(item.locked !== true)
+    win.setMovable(item.locked !== true)
     const state = {
       id: item.id,
       win: win,
       saveTimer: null,
       silentClose: false,
+      locked: item.locked === true,
       /** 渲染层最后一次要求的几何（已夹取），落库只用它 */
       pending: { x: geo.x, y: geo.y, w: geo.w, h: geo.h },
       appliedAt: 0,
@@ -567,6 +572,24 @@ function createWidgetService(deps) {
     closingAll = false
   }
 
+  /** 锁定态同步到窗口：锁定时连系统层的拉伸/拖动一起关掉 */
+  function applyLock(st, locked) {
+    st.locked = locked === true
+    if (!st.win || st.win.isDestroyed()) return
+    try {
+      st.win.setResizable(!st.locked)
+      st.win.setMovable(!st.locked)
+    } catch (e) {
+      logger.warn('widget', 'lock_apply_failed', { message: e && e.message })
+    }
+  }
+
+  /** 锁定时渲染层发来的几何一律不落库，回真实几何让它自己对齐 */
+  function frozenBounds(st) {
+    const b = st.win.getBounds()
+    return { x: b.x, y: b.y, width: b.width, height: b.height, clamped: { x: false, y: false, w: false, h: false } }
+  }
+
   function patch(payload) {
     const id = String((payload && payload.id) || '')
     const p = (payload && payload.patch) || {}
@@ -576,9 +599,12 @@ function createWidgetService(deps) {
     if (typeof p.alwaysOnTop === 'boolean') it.alwaysOnTop = p.alwaysOnTop
     if (typeof p.locked === 'boolean') it.locked = p.locked
     const st = live.get(id)
-    if (st && !st.win.isDestroyed() && typeof p.alwaysOnTop === 'boolean') {
-      st.win.setAlwaysOnTop(it.alwaysOnTop, 'floating')
-      if (it.alwaysOnTop) raise(id)
+    if (st && !st.win.isDestroyed()) {
+      if (typeof p.alwaysOnTop === 'boolean') {
+        st.win.setAlwaysOnTop(it.alwaysOnTop, 'floating')
+        if (it.alwaysOnTop) raise(id)
+      }
+      if (typeof p.locked === 'boolean') applyLock(st, it.locked)
     }
     writeItems(items)
     return it
@@ -644,6 +670,7 @@ function createWidgetService(deps) {
   function move(payload) {
     const st = live.get(String((payload && payload.id) || ''))
     if (!st || st.win.isDestroyed()) return null
+    if (st.locked) return frozenBounds(st)
     const prev = st.pending || { x: 0, y: 0, w: DEFAULT_W, h: DEFAULT_H }
     const fit = clampToArea({
       x: intOr(payload.x, prev.x),
@@ -661,6 +688,7 @@ function createWidgetService(deps) {
   function setBounds(payload) {
     const st = live.get(String((payload && payload.id) || ''))
     if (!st || st.win.isDestroyed()) return null
+    if (st.locked) return frozenBounds(st)
     const prev = st.pending || { x: 0, y: 0, w: DEFAULT_W, h: DEFAULT_H }
     const fit = clampToArea({
       x: intOr(payload.x, prev.x),

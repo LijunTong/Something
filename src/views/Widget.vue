@@ -94,6 +94,16 @@ let hintTimer = 0
 let lastHintKey = ''
 let lastHintAt = 0
 
+/** 一句轻提示，1.6 秒后自己消失；共用同一条气泡，不叠着弹 */
+function flashHint(text: string) {
+  edgeHint.value = text
+  if (hintTimer) clearTimeout(hintTimer)
+  hintTimer = window.setTimeout(() => {
+    edgeHint.value = ''
+    hintTimer = 0
+  }, 1600)
+}
+
 function noteClamp(res: WidgetBoundsResult) {
   const c = res.clamped
   if (!c || (!c.x && !c.y && !c.w && !c.h)) return
@@ -101,12 +111,7 @@ function noteClamp(res: WidgetBoundsResult) {
   if (key === lastHintKey && Date.now() - lastHintAt < 2500) return
   lastHintKey = key
   lastHintAt = Date.now()
-  edgeHint.value = c.w || c.h ? '已经到屏幕放得下的最大尺寸' : '已经贴到屏幕边缘'
-  if (hintTimer) clearTimeout(hintTimer)
-  hintTimer = window.setTimeout(() => {
-    edgeHint.value = ''
-    hintTimer = 0
-  }, 1600)
+  flashHint(c.w || c.h ? '已经到屏幕放得下的最大尺寸' : '已经贴到屏幕边缘')
 }
 
 /** 手势结束后把本地几何对齐到主进程：贴边被夹过时本地值会偏 */
@@ -380,8 +385,15 @@ watch(menuShow, (on) => {
 
 function onMenuSelect(key: string) {
   if (key === 'top') void applyPatch({ alwaysOnTop: !(item.value?.alwaysOnTop === true) })
-  if (key === 'lock') void applyPatch({ locked: !locked.value })
-  if (key === 'size') void resetSize()
+  if (key === 'lock') {
+    void applyPatch({ locked: !locked.value }).then(() => {
+      flashHint(locked.value ? '已锁定：位置和大小都不会被误动' : '已解锁：可以拖动和改大小')
+    })
+  }
+  if (key === 'size') {
+    if (locked.value) flashHint('先解锁再改大小')
+    else void resetSize()
+  }
   if (key === 'refresh') { if (isCardKey(card.value)) triggerHomeRefresh(card.value) }
   if (key === 'open') void openInApp(CARD_PATH[card.value])
   if (key === 'close') void closeWidget()
