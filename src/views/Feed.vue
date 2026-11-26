@@ -323,13 +323,11 @@ async function refetchFull(it: FeedItem): Promise<void> {
   else message.warning('没能抓到全文，继续显示摘要')
 }
 
-/** 当前文章的正文来源状态：只在已取过详情、且没抓到全文时提示 */
+/** 当前文章的正文来源状态：只在已取过详情、且没拿到全文时提示 */
 const detailState = computed(() => {
   const it = selectedItem.value
-  if (!it) return { onlySummary: false, tried: false }
-  const d = detailCache.value[it.id]
-  if (!d) return { onlySummary: false, tried: false }
-  return { onlySummary: !d.fullText, tried: !!d.fullFetchAt }
+  const d = it ? detailCache.value[it.id] : null
+  return { onlySummary: !!d && !d.fullText }
 })
 
 /** 刷新后正文可能变了：清空详情缓存，并把正在读的那篇重新取一次 */
@@ -849,7 +847,7 @@ watch(unreadCount, (n) => store.setFeedUnread(n), { immediate: true })
                 <div class="fd-byline"><n-text depth="3">{{ sourceName(selectedItem) }} · {{ selectedItem.author || '未知作者' }} · {{ fmtAgo(selectedItem.publishedAt) }}</n-text></div>
                 <!-- 源只给摘要时的说明：阅读器不能让人误以为整篇就这么长 -->
                 <n-alert v-if="detailState.onlySummary && !htmlLoading" type="info" :bordered="false" size="small" class="fd-fulltext-tip">
-                  {{ detailState.tried ? '该源只提供摘要，未能抓取到原文全文。可点右上「补全全文」重试。' : '该源只提供摘要，没有抓到原文全文。' }}
+                  该源只提供摘要，未能获取原文全文。可点上方「补全全文」重试，或「打开原文」查看。
                 </n-alert>
                 <HtmlBodyFrame
                   v-if="showHtml && selectedHtml"

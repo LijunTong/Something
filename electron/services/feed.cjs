@@ -192,10 +192,13 @@ async function detail(id, opts) {
     out.content = plainToParagraphs(out.content)
     if (out.contentHtml && !usableHtml(out.contentHtml)) out.contentHtml = null
   }
-  // fullText 供阅读器区分「全文 / 仅摘要」；本次抓取失败时回退到库里的历史结果
-  out.fullText = gotFull ? true : !!row.full_fetch_ok
+  // fullText 供阅读器区分「全文 / 仅摘要」：
+  //   本次抓到更长的正文 → 全文；RSS 内容本身够长（源没截断）→ 也是全文；
+  //   只有 RSS 明显偏短、又没抓到原文时才标成摘要。
+  const rssComplete = !needsFullText(row)
+  out.fullText = gotFull ? true : (rssComplete ? true : !!row.full_fetch_ok)
   out.fullFetchAt = filled && filled.at ? filled.at : (row.full_fetch_at ? Number(row.full_fetch_at) : null)
-  out.fullFetchOk = gotFull ? true : !!row.full_fetch_ok
+  out.fullFetchOk = out.fullText
   return out
 }
 
