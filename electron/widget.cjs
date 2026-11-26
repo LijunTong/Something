@@ -360,7 +360,11 @@ function createWidgetService(deps) {
     live.set(item.id, state)
 
     win.once('ready-to-show', function () {
-      if (!headless && !win.isDestroyed()) win.showInactive()
+      if (headless || win.isDestroyed()) return
+      // showInactive 不抢焦点，但会排到应用 z 序尾部——被主窗体压住。
+      // 挂件是用户刚从仪表盘拖出来的，先抬到主窗体之上，别让人以为没落成。
+      win.showInactive()
+      win.moveTop()
     })
     // 不用 moved/resize 落库：这两个事件在 setBounds 之后还会异步补发，
     // 拿来落库会把中间态写进配置。这里只做一件事——发现窗口被「收回去」就补一次。
@@ -381,12 +385,28 @@ function createWidgetService(deps) {
     return win
   }
 
+  /**
+   * 把挂件抬到主窗体之上（不改变「总在最前」设置）。
+   * 只是应用内 z 序：用户点回仪表盘时它仍会正常退到后面。
+   */
+  function raise(id) {
+    const st = live.get(id)
+    if (!st || st.win.isDestroyed() || headless) return false
+    try {
+      st.win.moveTop()
+    } catch (e) {
+      return false
+    }
+    return true
+  }
+
   function focus(id) {
     const st = live.get(id)
     if (!st || st.win.isDestroyed()) return false
     if (!headless) {
       if (st.win.isMinimized()) st.win.restore()
       st.win.show()
+      st.win.moveTop()
     }
     st.win.focus()
     return true
@@ -415,7 +435,9 @@ function createWidgetService(deps) {
       y: intOr(payload && payload.y, seed.y),
       w: DEFAULT_W,
       h: DEFAULT_H,
-      alwaysOnTop: (payload && payload.alwaysOnTop) === true,
+      // 默认总在最前：挂件常驻在桌面上，被仪表盘或别的窗口压住就等于白钉了。
+      // 想要「跟着桌面走」可以在挂件右键菜单或设置页关掉。
+      alwaysOnTop: !(payload && payload.alwaysOnTop === false),
       locked: false
     }
     const geo = fitToDisplay(draft)
@@ -430,6 +452,7 @@ function createWidgetService(deps) {
       locked: false
     }
     if (!live.has(item.id)) createWindowFor(item)
+    raise(item.id)
     const items = readItems()
     items.push(item)
     writeItems(items)
@@ -523,6 +546,7 @@ function createWidgetService(deps) {
     const st = live.get(id)
     if (st && !st.win.isDestroyed() && typeof p.alwaysOnTop === 'boolean') {
       st.win.setAlwaysOnTop(it.alwaysOnTop, 'floating')
+      if (it.alwaysOnTop) raise(id)
     }
     writeItems(items)
     return it
