@@ -413,6 +413,30 @@ npx electron-builder --win --config.npmRebuild=false
 
 打包配置在 `package.json` 的 `build` 字段：`appId com.something.jijianshi`、`productName Something`，打包内容为 `dist/` + `electron/` + `package.json`，原生模块与 `electron/assets` 通过 `asarUnpack` 解包。
 
+### 一键发布：`npm run release`
+
+```bash
+npm run release              # 类型检查 -> 构建 -> 打包 -> 打标签 -> 推送 -> 上传 Release
+npm run release -- --status  # 只看每一步的状态，不动任何文件
+```
+
+七步按顺序执行：`typecheck -> build -> package -> tag -> pushBranch -> pushTag -> release`。任何一步失败或按了 Ctrl+C 之后，进度按版本号存进 `release/.release-state/v<version>.json`，再跑一次会从第一个没完成的步骤继续：已经打好的安装包、已经写好的 tag 消息都不会重来。打包、推送、上传都有行内进度（已传输字节 / 百分比 / 速度 / 预计剩余），每一步开始和结束各有一行状态。
+
+几个实用开关：
+
+| 开关 | 作用 |
+| --- | --- |
+| `--status` | 打印每步状态与下一步，不执行 |
+| `--reset` | 丢掉存档，七步全部重跑 |
+| `--skip-build` | 沿用 `dist/` 与 `release/` 里现有的安装包 |
+| `--skip-push` | 只打包 + 打本地标签，不推送 |
+| `--skip-upload` | 不创建、不更新 GitHub Release |
+| `--edit` | 用 `$EDITOR` 改 tag 消息（会重打标签并重传 Release） |
+| `--notes-file <file>` | 用自己写好的发布说明 |
+| `--yes` | 跳过交互确认 |
+
+`--skip-*` 跳过的步骤仍然记作 `pending`，所以命令末尾会写 `pending: ...` 和下次从哪一步继续；这种「故意没发完」的退出码仍是 0。上传 Release 需要 `GITHUB_TOKEN` / `GH_TOKEN`，两个都没有时复用 git 里已存的 github.com 凭据。
+
 ## 数据与日志位置
 
 - 数据库：`%APPDATA%\Something\toolkit.db`（WAL 模式）
