@@ -12,8 +12,7 @@
     "preview": "vite preview",
     "start": "node scripts/start.cjs",
     "electron:dev": "node scripts/start.cjs",
-    "rebuild": "electron-rebuild -f -w better-sqlite3",
-    "release": "node scripts/release.cjs"
+    "rebuild": "electron-rebuild -f -w better-sqlite3"
   },
   "dependencies": {
     "better-sqlite3": "^11.8.1",
