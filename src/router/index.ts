@@ -9,6 +9,7 @@ import Parcel from '@/views/Parcel.vue'
 import Mail from '@/views/Mail.vue'
 import Settings from '@/views/Settings.vue'
 import Notice from '@/views/Notice.vue'
+import Widget from '@/views/Widget.vue'
 
 const routes = [
   { path: '/', name: 'home', component: Home, meta: { title: '仪表盘' } },
@@ -20,7 +21,9 @@ const routes = [
   { path: '/parcel', name: 'parcel', component: Parcel, meta: { title: '快递' } },
   { path: '/mail', name: 'mail', component: Mail, meta: { title: '邮件' } },
   { path: '/notice', name: 'notice', component: Notice, meta: { title: '通知' } },
-  { path: '/settings', name: 'settings', component: Settings, meta: { title: '设置' } }
+  { path: '/settings', name: 'settings', component: Settings, meta: { title: '设置' } },
+  // 桌面挂件窗口：独立 BrowserWindow 载入同一个 dist，靠 hash 进这条路由（见 electron/widget.cjs）
+  { path: '/widget/:card', name: 'widget', component: Widget, meta: { title: '桌面挂件' } }
 ]
 
 export default createRouter({ history: createWebHashHistory(), routes })

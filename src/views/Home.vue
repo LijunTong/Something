@@ -1,18 +1,11 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
-import type { Component } from 'vue'
 import { NTag, NButton, NEmpty, NDrawer, NDrawerContent, useMessage } from 'naive-ui'
 import { GridLayout, GridItem } from 'grid-layout-plus'
 import Shell from '@/components/Shell.vue'
-import WeatherCard from '@/components/home/WeatherCard.vue'
-import ScheduleCard from '@/components/home/ScheduleCard.vue'
-import TodoCard from '@/components/home/TodoCard.vue'
-import PomodoroCard from '@/components/home/PomodoroCard.vue'
-import ParcelCard from '@/components/home/ParcelCard.vue'
-import FeedCard from '@/components/home/FeedCard.vue'
-import MailCard from '@/components/home/MailCard.vue'
-import NoticeCard from '@/components/home/NoticeCard.vue'
-import { bridge, hasBridge } from '@/lib/ipc'
+import { bridge, call, hasBridge } from '@/lib/ipc'
+import { cardView } from '@/composables/useCardViews'
+import { useWidgets } from '@/composables/useWidgets'
 import { CARD_META, ENABLED_CARD_KEYS, useHomeCards, type CardKey } from '@/composables/useHomeCards'
 import { CARD_SIZE, GAP_PX, MAX_H, ROW_PX, useHomeLayout } from '@/composables/useHomeLayout'
 import { triggerHomeRefresh } from '@/composables/useHomeRefresh'
@@ -26,7 +19,7 @@ const { shown, hiddenCount } = useHomeCards()
  * 卡片坐标与尺寸（见 useHomeLayout）：拖动与缩放交给 grid-layout-plus，
  * 它只在拖动/缩放结束时发 layout-updated，我们据此回写设置。
  */
-const { cols, gridItems, locked, onGridLayoutUpdated, moveBy, resizeBy, commit, scheduleCommit } = useHomeLayout(shown)
+const { cols, gridItems, locked, onGridLayoutUpdated, moveBy, resizeBy, commit, scheduleCommit, revert } = useHomeLayout(shown)
 const showCards = ref(false)
 const anyCard = computed(() => hiddenCount.value < ENABLED_CARD_KEYS.length)
 
@@ -34,24 +27,8 @@ const anyCard = computed(() => hiddenCount.value < ENABLED_CARD_KEYS.length)
  * 拖动只从卡片标题区开始，且避开标题里的按钮、开关、输入框，避免误触。
  * 传给 GridItem 的 drag-ignore-from / resize-ignore-from，语义与库的 dragIgnoreFrom 一致。
  */
-const NO_DRAG = 'button, a, input, textarea, select, [role="button"], .n-switch, .n-base-selection, .n-checkbox'
+const NO_DRAG = 'button, a, input, textarea, select, [role="button"], .n-switch, .n-base-selection, .n-checkbox, .hc-pin-tag'
 
-/** 卡片组件映射：卡片组件本身不改，尺寸与坐标全由 GridItem 决定 */
-const CARD_VIEWS: Record<CardKey, Component> = {
-  weather: WeatherCard,
-  schedule: ScheduleCard,
-  todo: TodoCard,
-  pomodoro: PomodoroCard,
-  parcel: ParcelCard,
-  feed: FeedCard,
-  mail: MailCard,
-  notice: NoticeCard
-}
-
-// 模板里 LayoutItem.i 的类型是 number | string，取值统一在这里收敛成 CardKey
-function cardView(key: string | number): Component {
-  return CARD_VIEWS[key as CardKey]
-}
 function minH(key: string | number): number {
   return CARD_SIZE[key as CardKey].minH
 }
@@ -64,6 +41,7 @@ const now = ref(new Date())
 const updatedAt = ref('')
 let clock: ReturnType<typeof setInterval> | null = null
 let unsubscribe: (() => void) | null = null
+let unsubscribeDragOut: (() => void) | null = null
 
 const dateText = computed(() => {
   const d = now.value
@@ -121,14 +99,51 @@ function refreshCard(domain: string) {
  */
 let pressAt: { x: number; y: number } | null = null
 let pressedMoved = false
+/** 最近一次指针位置：拖出窗口后要合成一记 pointerup 把库的拖动收尾 */
+let lastPt = { x: 0, y: 0, sx: 0, sy: 0 }
+/** 拖动中的卡片是否已经交给主进程监视光标越界 */
+let dragArmed = false
+
+const widgets = useWidgets()
+
+function closestKey(target: EventTarget | null): CardKey | null {
+  const node = target as HTMLElement | null
+  const host = node && typeof node.closest === 'function' ? node.closest('[data-key]') : null
+  const raw = host ? host.getAttribute('data-key') : ''
+  return raw ? (raw as CardKey) : null
+}
+
+/** 按下的位置是否在卡片标题区（库只允许从 .n-card-header 起拖） */
+function headerCard(target: EventTarget | null): CardKey | null {
+  const node = target as HTMLElement | null
+  if (!node || typeof node.closest !== 'function') return null
+  if (node.closest(NO_DRAG)) return null
+  const header = node.closest('.n-card-header')
+  return header ? closestKey(header) : null
+}
+
+function disarmDragWatch() {
+  if (!dragArmed) return
+  dragArmed = false
+  void call(() => window.api.widget.disarmDrag(), false)
+}
+
 function onGridPointerDown(e: PointerEvent) {
   if (e.button !== 0) return
   pressAt = { x: e.clientX, y: e.clientY }
+  lastPt = { x: e.clientX, y: e.clientY, sx: e.screenX, sy: e.screenY }
   pressedMoved = false
+  // 窗口外的 pointermove/pointerup 到不了页面，交给主进程盯真实光标，越界后回推
+  const card = locked.value ? null : headerCard(e.target)
+  if (card) {
+    dragArmed = true
+    void call(() => window.api.widget.armDrag({ card }), false)
+  }
 }
 function onGridPointerMove(e: PointerEvent) {
+  lastPt = { x: e.clientX, y: e.clientY, sx: e.screenX, sy: e.screenY }
   if (!pressAt) return
-  if (Math.abs(e.clientX - pressAt.x) > 6 || Math.abs(e.clientY - pressAt.y) > 6) pressedMoved = true
+  if (!pressedMoved && (Math.abs(e.clientX - pressAt.x) > 6 || Math.abs(e.clientY - pressAt.y) > 6)) pressedMoved = true
 }
 function onGridClick(e: MouseEvent) {
   if (!pressedMoved) return
@@ -139,6 +154,57 @@ function onGridClick(e: MouseEvent) {
 }
 function onGridPointerUp() {
   pressAt = null
+  disarmDragWatch()
+}
+
+/**
+ * 补一记 pointerup：光标在窗口外松手时库收不到事件，拖动会一直挂着（卡片粘在边上）。
+ * 库的 up 处理在 document 上，bubbles 后的合成事件能正常收尾。
+ */
+function endStuckDrag() {
+  const init: PointerEventInit = {
+    bubbles: true,
+    cancelable: true,
+    clientX: lastPt.x,
+    clientY: lastPt.y,
+    screenX: lastPt.sx,
+    screenY: lastPt.sy,
+    button: 0,
+    buttons: 0,
+    pointerId: 1,
+    pointerType: 'mouse',
+    isPrimary: true
+  }
+  try {
+    document.dispatchEvent(new PointerEvent('pointerup', init))
+  } catch (e) {
+    document.dispatchEvent(new MouseEvent('mouseup', init))
+  }
+}
+
+/**
+ * 卡片被拖出主窗口（主进程轮询真实光标后回推）。
+ *
+ * 语义是「复制」不是「搬走」：首页这张保持显示、位置回原位，
+ * 桌面那份独立存在（widgets 与 modules 两套设置互不影响），所以这里要 revert 掉库改过的坐标。
+ */
+async function onWidgetDragOut(payload: { card: CardKey }) {
+  disarmDragWatch()
+  endStuckDrag()
+  pressedMoved = false
+  // 等库把 dragend 的补发事件处理完，再撤销它算出来的坐标
+  await new Promise((resolve) => requestAnimationFrame(() => resolve(null)))
+  const key = payload && payload.card
+  if (!key) return
+  const label = CARD_META[key] ? CARD_META[key].label : '卡片'
+  const res = await widgets.dropAtCursor(key)
+  revert()
+  if (!res) return
+  if (res.reason === 'ok') {
+    message.success(label + '已钉到桌面：可以直接拖动它，右键可置顶或收回')
+    return
+  }
+  if (res.reason === 'exists') message.info('「' + label + '」已经在桌面了，直接拖桌面上那份挪位置就行')
 }
 
 /* ---------- 布局：键盘可达（库没有键盘支持，位移仍由这里算） ---------- */
@@ -178,11 +244,17 @@ onMounted(() => {
       if (!p || p.domain === 'settings') return
       refreshCard(p.domain)
     })
+    // 光标越过窗口边缘 = 这张卡要落到桌面（窗口外收不到 DOM 事件，只能由主进程判定）
+    unsubscribeDragOut = bridge().onWidgetDragOut((p) => {
+      void onWidgetDragOut(p)
+    })
   }
 })
 onBeforeUnmount(() => {
   if (clock) clearInterval(clock)
+  disarmDragWatch()
   if (unsubscribe) { unsubscribe(); unsubscribe = null }
+  if (unsubscribeDragOut) { unsubscribeDragOut(); unsubscribeDragOut = null }
 })
 </script>
 

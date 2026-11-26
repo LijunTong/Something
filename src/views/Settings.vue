@@ -7,6 +7,7 @@ import Shell from '@/components/Shell.vue'
 import AppearancePanel from '@/components/settings/AppearancePanel.vue'
 import NotifyPanel from '@/components/settings/NotifyPanel.vue'
 import WindowPanel from '@/components/settings/WindowPanel.vue'
+import WidgetPanel from '@/components/settings/WidgetPanel.vue'
 import DataPanel from '@/components/settings/DataPanel.vue'
 import ShortcutPanel from '@/components/settings/ShortcutPanel.vue'
 import AboutPanel from '@/components/settings/AboutPanel.vue'
@@ -23,6 +24,7 @@ const PANELS: Record<string, { label: string; comp: unknown }> = {
   appearance: { label: '外观', comp: AppearancePanel },
   notify: { label: '通知', comp: NotifyPanel },
   window: { label: '窗口与启动', comp: WindowPanel },
+  widgets: { label: '桌面挂件', comp: WidgetPanel },
   data: { label: '数据与存储', comp: DataPanel },
   shortcut: { label: '快捷键', comp: ShortcutPanel },
   mcp: { label: 'Agent 接入', comp: McpPanel },
@@ -65,6 +67,7 @@ const menuOptions = computed<MenuOption[]>(() => [
       { label: '外观', key: 'appearance', icon: icon('i-palette') },
       { label: '通知', key: 'notify', icon: icon('i-bell') },
       { label: '窗口与启动', key: 'window', icon: icon('i-gear') },
+      { label: '桌面挂件', key: 'widgets', icon: icon('i-pin') },
       { label: '数据与存储', key: 'data', icon: icon('i-database') },
       { label: '快捷键', key: 'shortcut', icon: icon('i-key') },
       { label: 'Agent 接入', key: 'mcp', icon: icon('i-board') },
@@ -113,6 +116,7 @@ onMounted(async () => {
         <AppearancePanel v-if="active === 'appearance'" />
         <NotifyPanel v-else-if="active === 'notify'" />
         <WindowPanel v-else-if="active === 'window'" />
+        <WidgetPanel v-else-if="active === 'widgets'" />
         <DataPanel v-else-if="active === 'data'" />
         <ShortcutPanel v-else-if="active === 'shortcut'" />
         <McpPanel v-else-if="active === 'mcp'" />

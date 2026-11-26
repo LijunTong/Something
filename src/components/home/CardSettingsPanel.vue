@@ -1,13 +1,16 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import { NCard, NSwitch, NButton, useMessage, useDialog } from 'naive-ui'
-import { CARD_META, ENABLED_CARD_KEYS, useHomeCards } from '@/composables/useHomeCards'
+import { CARD_META, ENABLED_CARD_KEYS, useHomeCards, type CardKey } from '@/composables/useHomeCards'
 import { defaultLayout, normalizeLayout } from '@/composables/useHomeLayout'
 import { useSettings } from '@/composables/useSettings'
+import { useWidgets } from '@/composables/useWidgets'
+import type { WidgetItem } from '@/types/api'
 import '@/styles/settings.css'
 
 const { shown, setVisible, hiddenCount } = useHomeCards()
 const { settings, save } = useSettings()
+const widgets = useWidgets()
 const message = useMessage()
 const dialog = useDialog()
 
@@ -36,6 +39,33 @@ async function setLocked(v: boolean) {
   } catch (e) {
     message.error('保存失败：' + ((e as Error).message || '未知错误'))
   }
+}
+
+/* ---------- 桌面挂件：只列已钉的，没钉时给一行入口说明 ---------- */
+
+function cardLabel(key: string): string {
+  return CARD_META[key as CardKey] ? CARD_META[key as CardKey].label : key
+}
+
+async function setOnTop(it: WidgetItem, v: boolean) {
+  try {
+    await widgets.patchWidget(it.id, { alwaysOnTop: v })
+    message.success(v ? '「' + cardLabel(it.card) + '」已固定在最前层' : '「' + cardLabel(it.card) + '」已跟随窗口层叠')
+  } catch (e) {
+    message.error('保存失败：' + ((e as Error).message || '未知错误'))
+  }
+}
+
+async function removeOne(it: WidgetItem) {
+  const ok = await widgets.unpin(it.card as CardKey)
+  if (ok) message.info('已收回「' + cardLabel(it.card) + '」')
+  else message.error('收回失败，请重试')
+}
+
+async function removeAll() {
+  const ok = await widgets.unpinAll()
+  if (ok) message.info('已收回全部桌面卡片')
+  else message.error('收回失败，请重试')
 }
 
 function resetLayout() {
@@ -83,6 +113,32 @@ function resetLayout() {
         </span>
         <n-switch :value="shown(key)" @update:value="(v: boolean) => toggle(key, v)" />
       </div>
+    </div>
+
+    <div class="set-section">桌面挂件</div>
+    <div v-if="!widgets.count.value" class="set-list">
+      <div class="set-list-row">
+        <span class="set-list-main">
+          <strong>还没有卡片在桌面</strong>
+          <small>把首页卡片拖到窗口外松手，或点卡片右上角菜单里的「钉到桌面」</small>
+        </span>
+      </div>
+    </div>
+    <div v-else class="set-list">
+      <div v-for="it in widgets.items.value" :key="it.id" class="set-list-row">
+        <span class="set-list-main">
+          <strong>{{ cardLabel(it.card) }}</strong>
+          <small>{{ it.alwaysOnTop ? '固定在最前层，切到别的应用也看得见' : '跟随窗口层叠，所有窗口最小化时一起隐藏' }}</small>
+        </span>
+        <div class="set-inline">
+          <n-switch :value="it.alwaysOnTop" @update:value="(v: boolean) => setOnTop(it, v)" />
+          <n-button size="tiny" @click="removeOne(it)">收回</n-button>
+        </div>
+      </div>
+    </div>
+    <div v-if="widgets.count.value" class="set-actions">
+      <n-button size="small" @click="removeAll">全部收回</n-button>
+      <span class="set-muted">最多同时钉 {{ widgets.maxCount.value }} 张。隐藏首页卡片不会收回桌面那份。</span>
     </div>
 
     <div class="set-actions">

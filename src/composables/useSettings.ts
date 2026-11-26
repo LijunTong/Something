@@ -29,6 +29,11 @@ const FALLBACK: AllSettings = {
       { key: 'mail', x: 1, y: 13, w: 2, h: 6 },
       { key: 'notice', x: 0, y: 18, w: 1, h: 5 }
     ]
+  },
+  // 桌面挂件：真正落库由主进程 electron/widget.cjs 负责，这里只保证无桥预览时不炸
+  widgets: {
+    items: [],
+    useTransparent: true
   }
 }
 

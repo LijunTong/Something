@@ -125,6 +125,25 @@ const api = {
     isMinimized: call('window:isMinimized'),
     setFullScreen: call('window:setFullScreen'), isFullScreen: call('window:isFullScreen')
   },
+  // 桌面挂件：一张卡一个独立透明浮窗，几何/置顶的写入都经主进程串行化
+  widget: {
+    list: call('widget:list'), create: call('widget:create'),
+    dropAtCursor: call('widget:dropAtCursor'),
+    remove: call('widget:remove'), removeAll: call('widget:removeAll'),
+    patch: call('widget:patch'),
+    setBounds: call('widget:setBounds'),
+    bounds: call('widget:bounds'), focus: call('widget:focus'),
+    navigateMain: call('widget:navigateMain'),
+    showAll: call('widget:showAll'), hideAll: call('widget:hideAll'),
+    // 拖出窗口：渲染层按下卡片标题时开监视，光标真越界由主进程回推 widget:dragOut
+    armDrag: call('widget:armDrag'), disarmDrag: call('widget:disarmDrag')
+  },
+  // 光标越过主窗口边缘（拖动中的卡片要落到桌面）：主进程轮询真实光标后通知
+  onWidgetDragOut: function (cb) {
+    const handler = function (_e, payload) { cb(payload) }
+    ipcRenderer.on('widget:dragOut', handler)
+    return function () { ipcRenderer.removeListener('widget:dragOut', handler) }
+  },
   onWindowMaximized: function (cb) {
     const handler = function (_e, value) { cb(!!value) }
     ipcRenderer.on('window:maximized', handler)

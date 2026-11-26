@@ -104,6 +104,38 @@ export interface HomeSetting {
   /** 锁定后首页卡片不能拖动、不能缩放 */
   locked: boolean
 }
+/** 桌面挂件：首页卡片「复制」到桌面的独立透明浮窗，一卡一件（id 固定为 w-<card>） */
+export interface WidgetItem {
+  id: string
+  card: 'weather' | 'schedule' | 'todo' | 'pomodoro' | 'feed' | 'parcel' | 'mail' | 'notice'
+  /** 屏幕坐标（CSS px，主进程按显示器 workArea 夹取） */
+  x: number
+  y: number
+  w: number
+  h: number
+  /** 总在最前（浮在浏览器/编辑器之上） */
+  alwaysOnTop: boolean
+  /** 锁定后挂件上不显示拖动/缩放把手 */
+  locked: boolean
+}
+export interface WidgetsSetting {
+  items: WidgetItem[]
+  /** false 时挂件卡片画不透明底（窗口本身始终透明，避免 Windows 合成失败） */
+  useTransparent: boolean
+}
+/** 一次挂件写入的结果：created=false 表示这张卡已经在桌面上了 */
+export interface WidgetDropResult {
+  id?: string
+  created: boolean
+  reason: 'ok' | 'exists' | 'inside'
+}
+export interface WidgetListResult {
+  items: WidgetItem[]
+  /** 同时最多能钉几张卡到桌面 */
+  max: number
+  /** 当前活着的挂件窗口数（无头自测时用它断言） */
+  live: number
+}
 export interface WindowSetting {
   /** 关闭窗口时隐藏到托盘（不退出进程） */
   closeToTray: boolean
@@ -143,6 +175,7 @@ export interface AllSettings {
   mcp: McpSetting
   parcel: ParcelSetting
   home: HomeSetting
+  widgets: WidgetsSetting
 }
 export interface StorageSegment { key: string; label: string; color: string; bytes: number }
 export interface StorageUsage {
@@ -278,6 +311,29 @@ export interface Api {
     setFullScreen(dto: { on: boolean }): Promise<IpcResult<boolean>>
     isFullScreen(): Promise<IpcResult<boolean>>
   }
+  widget: {
+    list(): Promise<IpcResult<WidgetListResult>>
+    /** 直接在某处创建（坐标缺省时落在主屏右上角） */
+    create(dto: { card: WidgetItem['card']; x?: number; y?: number; alwaysOnTop?: boolean }): Promise<IpcResult<WidgetDropResult>>
+    /** 首页松手时调：光标仍在主窗口内则返回 reason='inside'，由首页布局自己落库 */
+    dropAtCursor(dto: { card: WidgetItem['card'] }): Promise<IpcResult<WidgetDropResult>>
+    remove(dto: { id: string }): Promise<IpcResult<boolean>>
+    removeAll(): Promise<IpcResult<boolean>>
+    patch(dto: { id: string; patch: { alwaysOnTop?: boolean; locked?: boolean } }): Promise<IpcResult<WidgetItem>>
+    /** 首页按下卡片标题时开监视：窗口外收不到 DOM 事件，越界由主进程轮询光标判定 */
+    armDrag(dto: { card: WidgetItem['card'] }): Promise<IpcResult<boolean>>
+    disarmDrag(): Promise<IpcResult<boolean>>
+    /** 缩放：左上角也在动（从左边/上边拉），位置与尺寸一起给，避免中间态 */
+    setBounds(dto: { id: string; x: number; y: number; w: number; h: number }): Promise<IpcResult<boolean>>
+    bounds(dto: { id: string }): Promise<IpcResult<{ x: number; y: number; width: number; height: number } | null>>
+    focus(dto: { id: string }): Promise<IpcResult<boolean>>
+    /** 挂件里点内容时把主窗口叫到前台并导航（挂件是独立渲染进程，不能就地跳转） */
+    navigateMain(dto: { to: string }): Promise<IpcResult<boolean>>
+    showAll(): Promise<IpcResult<number>>
+    hideAll(): Promise<IpcResult<number>>
+  }
+  /** 拖动中的卡片被拖出主窗口：回推一次，渲染层负责收尾与创建 */
+  onWidgetDragOut(cb: (payload: { card: WidgetItem['card'] }) => void): () => void
   system: {
     info(): Promise<IpcResult<{ version: string; userData: string; defaultUserData: string; dataSource: string; db: string }>>
     /** 检查更新：读 GitHub 最新正式发布并与当前版本比对 */

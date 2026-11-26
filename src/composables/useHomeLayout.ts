@@ -160,6 +160,8 @@ export function useHomeLayout(isVisible: (key: CardKey) => boolean) {
   /** 列数刚变化后的静默期截止时间：这段时间里库的回写是响应式重排，不是用户拖动 */
   let suppressUntil = 0
   const RESIZE_SUPPRESS_MS = 600
+/** 拖出窗口后撤销布局的静默期：等库把补发的 layout-updated 吐完 */
+const DROP_SUPPRESS_MS = 900
 
   function readCols() {
     const w = window.innerWidth
@@ -273,5 +275,24 @@ export function useHomeLayout(isVisible: (key: CardKey) => boolean) {
     }
   }
 
-  return { cols, layout, locked, gridItems, onGridLayoutUpdated, moveBy, resizeBy, commit, scheduleCommit }
+  /**
+   * 把布局恢复到上次落库的状态。
+   * 用于「拖出窗口 = 复制一份到桌面，首页这张回原位」：库已经把坐标改掉了，
+   * 这里连同静默期一起撤销，避免随后的 layout-updated 把旧意图写回设置。
+   */
+  function revert(): void {
+    suppressUntil = Date.now() + DROP_SUPPRESS_MS
+    layout.value = clone(persisted)
+  }
+
+  /** 临时不接受 layout-updated 回写（拖出场景手动调用，单位毫秒） */
+  function suppress(ms: number): void {
+    suppressUntil = Math.max(suppressUntil, Date.now() + ms)
+  }
+
+  return {
+    cols, layout, locked, gridItems,
+    onGridLayoutUpdated, moveBy, resizeBy, commit, scheduleCommit,
+    revert, suppress
+  }
 }

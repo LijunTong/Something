@@ -49,6 +49,9 @@
 /* 卡片头部：标题区与右上角操作区（原有入口 + 卡片菜单） */
 .hc-head { display: flex; align-items: center; gap: 8px; min-width: 0; }
 .hc-head-actions { display: flex; align-items: center; gap: 6px; }
+/* 卡片菜单容器：标题右侧的「桌面」标记与菜单按钮排在一行，点它不触发卡片拖动 */
+.hc-menu-wrap { display: inline-flex; align-items: center; gap: 6px; }
+.hc-pin-tag { cursor: pointer; }
 /* 元信息档（四档层级里的 Meta）：时间/来源/计数一律 12px + --muted。
    颜色取 App.vue 注入的主题变量，深浅色与强调色切换自动跟随；
    同时压掉 <small> 默认的 0.833em（会算出 11.67px 这种非令牌字号）。 */

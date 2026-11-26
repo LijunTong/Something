@@ -1,5 +1,5 @@
 // Electron 主进程：窗口、数据库生命周期、IPC 注册。
-const { app, BrowserWindow, shell, dialog, Tray, Menu, nativeImage, session } = require('electron')
+const { app, BrowserWindow, shell, dialog, Tray, Menu, nativeImage, session, screen } = require('electron')
 const path = require('node:path')
 const fs = require('node:fs')
 const { z } = require('zod')
@@ -27,6 +27,8 @@ const updateSvc = require('./services/update.cjs')
 const projectSvc = require('./services/project.cjs')
 const mcpServer = require('./mcp/server.cjs')
 const mcpTools = require('./mcp/tools.cjs')
+// 桌面挂件：独立透明浮窗的创建/几何/持久化都在这里，渲染层只读不整段写
+const { createWidgetService, WIDGET_MIN_W, WIDGET_MIN_H, WIDGET_MAX_W, WIDGET_MAX_H } = require('./widget.cjs')
 
 // 开发/生产方式只由 VITE_URL 决定：只有 scripts/dev.cjs 会注入它（同时拉起 Vite）。
 // 未注入时即使未打包也只加载 dist，避免 npm start 去连一个没启动的 5173。
@@ -38,6 +40,24 @@ const DIST_INDEX = path.join(__dirname, '..', 'dist', 'index.html')
 const HEADLESS = process.env.TK_HEADLESS === '1'
 let win = null
 let registry = null
+
+// 挂件的窗口句柄与几何归主进程独占：settings.set 是按 section 浅合并，
+// 渲染层多窗口各写一次 widgets.items 会互相覆盖，所以写入口全部收在这个服务里。
+const widgetSvc = createWidgetService({
+  settings: settingsSvc,
+  getMainWindow: function () { return win },
+  preload: path.join(__dirname, 'preload.cjs'),
+  distIndex: DIST_INDEX,
+  devUrl: DEV_URL,
+  headless: HEADLESS,
+  // 挂件增删/改置顶后通知所有窗口（首页角标、设置页列表据此刷新）
+  notify: function () {
+    if (!registry) return
+    BrowserWindow.getAllWindows().forEach(function (w) {
+      if (!w.isDestroyed()) registry.broadcast(w.webContents, 'widget', 'changed')
+    })
+  }
+})
 
 // 数据目录解析（必须在 app ready 之前完成）：
 // 默认用 userData；若它不可写（受限沙箱 / 只读配置目录 / 安全软件拦截），
@@ -250,6 +270,15 @@ function buildTrayMenu() {
     { label: '待办', icon: menuIcon('todo'), click: function () { showMainWindow(); win && win.webContents.send('app:navigate', '/todo') } },
     { label: '天气', icon: menuIcon('weather'), click: function () { showMainWindow(); win && win.webContents.send('app:navigate', '/weather') } },
     { label: '设置', icon: menuIcon('settings'), click: function () { showMainWindow(); win && win.webContents.send('app:navigate', '/settings') } },
+    {
+      // 挂件没有任务栏入口，托盘是唯一「全局」开关
+      label: '桌面挂件',
+      submenu: [
+        { label: '全部显示', click: function () { widgetSvc.showAll() } },
+        { label: '全部隐藏', click: function () { widgetSvc.hideAll() } },
+        { label: '收回全部到仪表盘', click: function () { widgetSvc.removeAll() } }
+      ]
+    },
     { type: 'separator' },
     { label: '退出', icon: menuIcon('quit'), click: function () { quitting = true; app.quit() } }
   ])
@@ -630,6 +659,8 @@ function registerIpc() {
       if (!win) return true
       if (windowPrefs().closeToTray) { win.hide(); return true }
       quitting = true
+      // 挂件窗口存活时 window-all-closed 永不触发，真退出前必须先把它们收掉
+      widgetSvc.closeAll()
       win.close()
       return true
     },
@@ -645,6 +676,66 @@ function registerIpc() {
       }
     },
     isFullScreen: function () { return !!(win && win.isFullScreen()) }
+  })
+  // 桌面挂件：list 只读；geometry 类写操作全部经主进程 read-modify-write
+  const widgetCard = z.enum(['weather', 'schedule', 'todo', 'pomodoro', 'feed', 'parcel', 'mail', 'notice'])
+  const widgetId = z.string().min(1).max(64)
+  registry.register('widget', {
+    list: function () { return widgetSvc.list() },
+    create: {
+      schema: z.object({
+        card: widgetCard,
+        x: z.number().int().min(-20000).max(20000).optional(),
+        y: z.number().int().min(-20000).max(20000).optional(),
+        alwaysOnTop: z.boolean().optional()
+      }),
+      handler: function (dto) { return widgetSvc.create(dto) }
+    },
+    // 首页把卡片拖到窗口外松手时调：光标还在主窗口内就返回 inside，交给首页布局落库
+    dropAtCursor: {
+      schema: z.object({ card: widgetCard }),
+      handler: function (dto) { return widgetSvc.dropAtCursor(dto) }
+    },
+    remove: { schema: z.object({ id: widgetId }), handler: function (dto) { return widgetSvc.remove(dto) } },
+    removeAll: function () { return widgetSvc.removeAll() },
+    patch: {
+      schema: z.object({
+        id: widgetId,
+        patch: z.object({ alwaysOnTop: z.boolean().optional(), locked: z.boolean().optional() })
+      }),
+      handler: function (dto) { return widgetSvc.patch(dto) }
+    },
+    // 首页按下卡片标题时开监视，光标真越界由主进程回推 widget:dragOut（窗口外收不到 DOM 事件）
+    armDrag: {
+      schema: z.object({ card: widgetCard }),
+      handler: function (dto) { return widgetSvc.armDrag(dto) }
+    },
+    disarmDrag: function () { return widgetSvc.disarmDrag() },
+    // 缩放：左上角也在动（从左边/上边拉），位置与尺寸一起给，避免中间态
+    setBounds: {
+      schema: z.object({
+        id: widgetId,
+        x: z.number().int().min(-40000).max(40000),
+        y: z.number().int().min(-40000).max(40000),
+        w: z.number().int().min(WIDGET_MIN_W).max(WIDGET_MAX_W),
+        h: z.number().int().min(WIDGET_MIN_H).max(WIDGET_MAX_H)
+      }),
+      handler: function (dto) { return widgetSvc.setBounds(dto) }
+    },
+    bounds: { schema: z.object({ id: widgetId }), handler: function (dto) { return widgetSvc.bounds(dto) } },
+    focus: { schema: z.object({ id: widgetId }), handler: function (dto) { return widgetSvc.focus(dto.id) } },
+    // 挂件里点待办行/邮件这类内容不在挂件窗口里跳转（那是独立渲染进程），
+    // 而是把主窗口叫到前台再导航过去，点一下就能接着干活
+    navigateMain: {
+      schema: z.object({ to: z.string().min(1).max(200) }),
+      handler: function (dto) {
+        showMainWindow()
+        if (win && !win.isDestroyed()) win.webContents.send('app:navigate', dto.to)
+        return true
+      }
+    },
+    showAll: function () { return widgetSvc.showAll() },
+    hideAll: function () { return widgetSvc.hideAll() }
   })
   registry.register('settings', {
     all: settingsSvc.all,
@@ -1125,6 +1216,12 @@ app.whenReady().then(function () {
   createWindow()
   // 按官方示例：ready 阶段就创建托盘（不依赖窗口 ready-to-show）
   createTray()
+  // 恢复上次钉在桌面的挂件；越界坐标由服务夹回可见区域
+  widgetSvc.restoreAll()
+  // 拔插显示器/改缩放后重新夹一遍，避免挂件跑到屏幕外再也抓不回来
+  screen.on('display-metrics-changed', function () { widgetSvc.reclampAll() })
+  screen.on('display-added', function () { widgetSvc.reclampAll() })
+  screen.on('display-removed', function () { widgetSvc.reclampAll() })
   // 邮件自动同步：频率读设置里的 mail.autoSyncMin，改动后下一个 tick 就按新值走
   startMailAutoSync()
   // 快递自动刷新：频率读设置里的 parcel.autoRefreshMin，换数据源后下一个 tick 生效
@@ -1159,6 +1256,8 @@ app.on('before-quit', function () {
   // 「每次退出」在这里落盘；quitting 兼作重复触发保护，避免连按关闭生成多份
   if (!quitting) runAutoBackup('quit')
   quitting = true
+  // 先收挂件再销毁其它资源：退出途中挂件的 moved/resize 不该再触发落库
+  widgetSvc.closeAll()
   notifySvc.stop()
   stopMcp()
   // Windows 下进程退出后托盘图标可能残留在通知区直到鼠标划过，主动销毁

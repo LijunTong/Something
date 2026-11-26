@@ -68,6 +68,14 @@ const DEFAULTS = {
       { key: 'mail', x: 1, y: 13, w: 2, h: 6 },
       { key: 'notice', x: 0, y: 18, w: 1, h: 5 }
     ]
+  },
+  // 桌面挂件：首页卡片复制到桌面的独立透明浮窗（一卡一件，id 固定为 w-<card>）。
+  // 与 home/modules 的显隐互不影响；几何写操作只能走主进程 electron/widget.cjs
+  // 的 read-modify-write——这里 set() 是按 section 浅合并，数组会整段覆盖。
+  // useTransparent=false 时由渲染层把卡片画成不透明底（窗口本身始终透明）
+  widgets: {
+    items: [],
+    useTransparent: true
   }
 }
 
