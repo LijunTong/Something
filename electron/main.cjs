@@ -711,6 +711,15 @@ function registerIpc() {
       handler: function (dto) { return widgetSvc.armDrag(dto) }
     },
     disarmDrag: function () { return widgetSvc.disarmDrag() },
+    // 只挪位置：尺寸由主进程自己的 pending 决定，避免拖动时把旧尺寸写回去
+    move: {
+      schema: z.object({
+        id: widgetId,
+        x: z.number().int().min(-40000).max(40000),
+        y: z.number().int().min(-40000).max(40000)
+      }),
+      handler: function (dto) { return widgetSvc.move(dto) }
+    },
     // 缩放：左上角也在动（从左边/上边拉），位置与尺寸一起给，避免中间态
     setBounds: {
       schema: z.object({

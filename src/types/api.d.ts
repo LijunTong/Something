@@ -332,6 +332,8 @@ export interface Api {
     armDrag(dto: { card: WidgetItem['card'] }): Promise<IpcResult<boolean>>
     disarmDrag(): Promise<IpcResult<boolean>>
     /** 缩放：左上角也在动（从左边/上边拉），位置与尺寸一起给，避免中间态 */
+    /** 只挪位置：尺寸沿用主进程记录的，不会被渲染层手里的旧尺寸覆盖 */
+    move(dto: { id: string; x: number; y: number }): Promise<IpcResult<WidgetBoundsResult | null>>
     setBounds(dto: { id: string; x: number; y: number; w: number; h: number }): Promise<IpcResult<WidgetBoundsResult | null>>
     bounds(dto: { id: string }): Promise<IpcResult<{ x: number; y: number; width: number; height: number } | null>>
     focus(dto: { id: string }): Promise<IpcResult<boolean>>

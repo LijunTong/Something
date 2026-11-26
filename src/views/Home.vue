@@ -183,6 +183,61 @@ function endStuckDrag() {
 }
 
 /**
+ * 拖出窗口后让桌面那份跟着光标走：主窗口外的 pointermove 只有窗口还握着鼠标捕获时
+ * 才回到页面（此时 clientX 可能是负数，但 screenX 仍是绝对坐标，正好拿来摆窗口）。
+ * 收不到事件也不会坏——那就停在落地位置。
+ */
+let followId: string | null = null
+let followFrame = 0
+let followAt: { x: number; y: number } | null = null
+let followTeardown: (() => void) | null = null
+let followTimer = 0
+
+function stopFollow() {
+  if (followTeardown) {
+    followTeardown()
+    followTeardown = null
+  }
+  followId = null
+  followAt = null
+  if (followFrame) cancelAnimationFrame(followFrame)
+  followFrame = 0
+  if (followTimer) {
+    clearTimeout(followTimer)
+    followTimer = 0
+  }
+}
+
+function startFollow(id: string) {
+  stopFollow()
+  followId = id
+  const onMove = (ev: PointerEvent) => {
+    if (!followId) return
+    followAt = { x: ev.screenX - 40, y: ev.screenY - 24 }
+    if (followFrame) return
+    followFrame = requestAnimationFrame(() => {
+      followFrame = 0
+      const cur = followId
+      const pt = followAt
+      if (!cur || !pt) return
+      void call(() => window.api.widget.move({ id: cur, x: pt.x, y: pt.y }), null)
+    })
+  }
+  const onUp = () => stopFollow()
+  document.addEventListener('pointermove', onMove, true)
+  document.addEventListener('pointerup', onUp, true)
+  document.addEventListener('pointercancel', onUp, true)
+  window.addEventListener('blur', onUp)
+  followTeardown = () => {
+    document.removeEventListener('pointermove', onMove, true)
+    document.removeEventListener('pointerup', onUp, true)
+    document.removeEventListener('pointercancel', onUp, true)
+    window.removeEventListener('blur', onUp)
+  }
+  followTimer = window.setTimeout(stopFollow, 4000)
+}
+
+/**
  * 卡片被拖出主窗口（主进程轮询真实光标后回推）。
  *
  * 语义是「复制」不是「搬走」：首页这张保持显示、位置回原位，
@@ -201,6 +256,7 @@ async function onWidgetDragOut(payload: { card: CardKey }) {
   revert()
   if (!res) return
   if (res.reason === 'ok') {
+    if (res.id) startFollow(res.id)
     message.success(label + '已钉到桌面：可以直接拖动它，右键可置顶或收回')
     return
   }
@@ -253,6 +309,7 @@ onMounted(() => {
 onBeforeUnmount(() => {
   if (clock) clearInterval(clock)
   disarmDragWatch()
+  stopFollow()
   if (unsubscribe) { unsubscribe(); unsubscribe = null }
   if (unsubscribeDragOut) { unsubscribeDragOut(); unsubscribeDragOut = null }
 })

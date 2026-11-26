@@ -41,6 +41,8 @@ const HEAL_SHRINK_PX = 8
 const HEAL_WINDOW_MS = 1500
 /** 同一次异常最多每秒补一次，防止和用户手势互相拉扯 */
 const HEAL_COOLDOWN_MS = 1000
+/** 拖出窗口落地后临时置顶的时长：够看清落点，又不会长期压住别的窗口 */
+const DROP_TOP_MS = 1200
 
 function badRequest(message) {
   const err = new Error(message)
@@ -435,9 +437,10 @@ function createWidgetService(deps) {
       y: intOr(payload && payload.y, seed.y),
       w: DEFAULT_W,
       h: DEFAULT_H,
-      // 默认总在最前：挂件常驻在桌面上，被仪表盘或别的窗口压住就等于白钉了。
-      // 想要「跟着桌面走」可以在挂件右键菜单或设置页关掉。
-      alwaysOnTop: !(payload && payload.alwaysOnTop === false),
+      // 默认不置顶：置顶的卡片会压住所有窗口（包括仪表盘），只适合少数场景，
+      // 所以做成右键/设置页里的显式开关。落地时会 moveTop 抬到主窗体之上，
+      // 拖出来那一下不会被仪表盘挡住，之后仍按普通窗口的层级走。
+      alwaysOnTop: (payload && payload.alwaysOnTop) === true,
       locked: false
     }
     const geo = fitToDisplay(draft)
@@ -464,6 +467,34 @@ function createWidgetService(deps) {
    * 首页松手时调用：由主进程判断光标是否落在主窗口外，避免渲染层坐标系误差。
    * 落在窗口内 → 交给首页布局落库，什么也不做。
    */
+  /**
+   * 落地瞬间临时置顶一小会儿：拖出窗口时新窗口排到应用 z 序后面，
+   * 会被仪表盘压住一截，看起来像「拖不出来」。等用户松手、看清位置之后
+   * 再回到这张卡自己的置顶设置，避免长期压住别的窗口。
+   */
+  function pinTopFor(id, ms) {
+    const st = live.get(id)
+    if (!st || st.win.isDestroyed() || headless) return false
+    try {
+      st.win.setAlwaysOnTop(true, 'floating')
+      st.win.moveTop()
+    } catch (e) {
+      return false
+    }
+    const timer = setTimeout(function () {
+      const cur = live.get(id)
+      if (!cur || cur.win.isDestroyed()) return
+      const item = readItems().find(function (i) { return i.id === id })
+      try {
+        cur.win.setAlwaysOnTop(!!(item && item.alwaysOnTop), 'floating')
+      } catch (e) {
+        /* 窗口刚好关掉了，忽略 */
+      }
+    }, ms || DROP_TOP_MS)
+    if (timer.unref) timer.unref()
+    return true
+  }
+
   function dropAtCursor(payload) {
     const card = String((payload && payload.card) || '')
     if (!isCard(card)) throw badRequest('未知卡片：' + card)
@@ -483,6 +514,7 @@ function createWidgetService(deps) {
       return { id: existing.id, created: false, reason: 'exists' }
     }
     const r = create({ card: card, x: pt.x - 40, y: pt.y - 24 })
+    if (r.created && r.id) pinTopFor(r.id)
     return { id: r.id, created: r.created, reason: r.reason }
   }
 
@@ -604,6 +636,28 @@ function createWidgetService(deps) {
    *
    * 返回**实际生效**的几何 + 哪一边被屏幕边界夹住，渲染层据此给「已到边缘」的提示。
    */
+  /**
+   * 只挪位置，尺寸原样保留。
+   * 单独一条而不是复用 setBounds：拖动时渲染层手里的尺寸可能比真实窗口旧一帧，
+   * 一起传过去就会把卡片「弹回」旧尺寸——这正是移动后尺寸丢失的根因。
+   */
+  function move(payload) {
+    const st = live.get(String((payload && payload.id) || ''))
+    if (!st || st.win.isDestroyed()) return null
+    const prev = st.pending || { x: 0, y: 0, w: DEFAULT_W, h: DEFAULT_H }
+    const fit = clampToArea({
+      x: intOr(payload.x, prev.x),
+      y: intOr(payload.y, prev.y),
+      w: prev.w,
+      h: prev.h
+    })
+    st.pending = { x: fit.x, y: fit.y, w: fit.w, h: fit.h }
+    st.appliedAt = Date.now()
+    st.win.setPosition(fit.x, fit.y)
+    scheduleSave(st.id)
+    return { x: fit.x, y: fit.y, width: fit.w, height: fit.h, clamped: fit.clamped }
+  }
+
   function setBounds(payload) {
     const st = live.get(String((payload && payload.id) || ''))
     if (!st || st.win.isDestroyed()) return null
@@ -701,6 +755,7 @@ function createWidgetService(deps) {
     armDrag: armDrag,
     disarmDrag: disarmDrag,
     setBounds: setBounds,
+    move: move,
     bounds: bounds,
     focus: focus,
     showAll: showAll,

@@ -77,10 +77,9 @@ function flushRect() {
     .then((res) => {
       if (!res) return
       noteClamp(res)
-      // 手势结束了就以主进程实际生效的几何为准：贴边被夹住时本地值不能继续漂
-      if (!dragBase && !sizeBase) {
-        winRect.value = { x: res.x, y: res.y, w: res.width, h: res.height }
-      }
+      // 以主进程实际生效的几何为准：贴边被夹住时本地值不能继续漂，
+      // 也保证下一次手势的起点是最新尺寸（手势基准已单独取，不会被它带偏）
+      winRect.value = { x: res.x, y: res.y, w: res.width, h: res.height }
     })
     .catch(() => {})
 }
@@ -134,7 +133,21 @@ function scheduleRect(rect: { x: number; y: number; w: number; h: number }) {
 /** 与首页 Home.vue 的 NO_DRAG 同一份名单：按在这些上面不启动窗口拖动 */
 const NO_DRAG = 'button, a, input, textarea, select, [role="button"], .n-switch, .n-base-selection, .n-checkbox, .widget-handle'
 
+/** 问主进程要一份准数：本地 winRect 可能比真实窗口旧一帧 */
+async function freshRect() {
+  const b = await call(
+    () => window.api.widget.bounds({ id: widgetId.value }),
+    null as { x: number; y: number; width: number; height: number } | null
+  )
+  if (b) winRect.value = { x: b.x, y: b.y, w: b.width, h: b.height }
+  return winRect.value
+}
+
 let dragBase: { px: number; py: number; x: number; y: number } | null = null
+let moveFrame = 0
+let pendingMove: { x: number; y: number } | null = null
+/** 每次手势自增：异步拿到的基准数如果已经过期就丢掉，别把上一次的值当本次基准 */
+let gestureSeq = 0
 
 function onShellPointerDown(e: PointerEvent) {
   if (e.button !== 0 || locked.value) return
@@ -142,24 +155,27 @@ function onShellPointerDown(e: PointerEvent) {
   if (!el || el.closest(NO_DRAG)) return
   // 只有卡片标题区可以起拖，和首页 drag-allow-from=".n-card-header" 保持一致
   if (!el.closest('.n-card-header')) return
-  dragBase = { px: e.screenX, py: e.screenY, x: winRect.value.x, y: winRect.value.y }
-  dragging.value = true
-  ;(e.currentTarget as HTMLElement).setPointerCapture(e.pointerId)
   e.preventDefault()
+  dragBase = null
+  dragging.value = true
+  const seq = ++gestureSeq
+  const px = e.screenX
+  const py = e.screenY
+  ;(e.currentTarget as HTMLElement).setPointerCapture(e.pointerId)
+  void freshRect().then((r) => {
+    if (seq !== gestureSeq || !dragging.value) return
+    dragBase = { px: px, py: py, x: r.x, y: r.y }
+  })
 }
 
 function onShellPointerMove(e: PointerEvent) {
   if (!dragBase) return
-  scheduleRect({
-    x: dragBase.x + (e.screenX - dragBase.px),
-    y: dragBase.y + (e.screenY - dragBase.py),
-    w: winRect.value.w,
-    h: winRect.value.h
-  })
+  scheduleMove(dragBase.x + (e.screenX - dragBase.px), dragBase.y + (e.screenY - dragBase.py))
 }
 
 function onShellPointerUp(e: PointerEvent) {
-  if (!dragBase) return
+  if (!dragging.value) return
+  gestureSeq++
   dragBase = null
   dragging.value = false
   const host = e.currentTarget as HTMLElement | null
@@ -167,18 +183,51 @@ function onShellPointerUp(e: PointerEvent) {
   void syncBounds()
 }
 
+/** 拖动只发位置：尺寸留在主进程，别拿本地可能过期的尺寸去覆盖它 */
+function scheduleMove(x: number, y: number) {
+  pendingMove = { x: Math.round(x), y: Math.round(y) }
+  if (moveFrame) return
+  moveFrame = requestAnimationFrame(flushMove)
+}
+
+function flushMove() {
+  moveFrame = 0
+  const next = pendingMove
+  pendingMove = null
+  if (!next) return
+  void call(
+    () => window.api.widget.move({ id: widgetId.value, x: next.x, y: next.y }),
+    null as WidgetBoundsResult | null
+  )
+    .then((res) => {
+      if (!res) return
+      noteClamp(res)
+      winRect.value = { x: res.x, y: res.y, w: res.width, h: res.height }
+    })
+    .catch(() => {})
+}
+
 /* ---------- 缩放：四边 + 四角 ---------- */
 
 let sizeBase: { px: number; py: number; rect: { x: number; y: number; w: number; h: number }; dir: string } | null = null
+let handleActive = false
 
 function onHandleDown(e: PointerEvent, dir: string) {
   if (e.button !== 0 || locked.value) return
   e.stopPropagation()
   e.preventDefault()
-  const r = winRect.value
-  sizeBase = { px: e.screenX, py: e.screenY, rect: { x: r.x, y: r.y, w: r.w, h: r.h }, dir }
-  ;(e.currentTarget as HTMLElement).setPointerCapture(e.pointerId)
+  const seq = ++gestureSeq
+  const px = e.screenX
+  const py = e.screenY
+  sizeBase = null
+  handleActive = true
   sizing.value = true
+  ;(e.currentTarget as HTMLElement).setPointerCapture(e.pointerId)
+  // 基准矩形同样以主进程为准，避免本地缓存把上一次的尺寸当起点
+  void freshRect().then((r) => {
+    if (seq !== gestureSeq || !handleActive) return
+    sizeBase = { px: px, py: py, rect: { x: r.x, y: r.y, w: r.w, h: r.h }, dir: dir }
+  })
 }
 
 function onHandleMove(e: PointerEvent) {
@@ -213,7 +262,9 @@ function onHandleMove(e: PointerEvent) {
 }
 
 function onHandleUp(e: PointerEvent) {
-  if (!sizeBase) return
+  if (!handleActive) return
+  gestureSeq++
+  handleActive = false
   sizeBase = null
   sizeFrameCleanup(e)
   // 缩放手势结束后再留 160ms 不透明底：最后几帧的重绘最容易露出黑边

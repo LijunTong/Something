@@ -132,6 +132,7 @@ const api = {
     remove: call('widget:remove'), removeAll: call('widget:removeAll'),
     patch: call('widget:patch'),
     setBounds: call('widget:setBounds'),
+    move: call('widget:move'),
     bounds: call('widget:bounds'), focus: call('widget:focus'),
     navigateMain: call('widget:navigateMain'),
     showAll: call('widget:showAll'), hideAll: call('widget:hideAll'),
