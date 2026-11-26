@@ -19,10 +19,6 @@ const pinned = computed(() => widgets.isPinned(props.module))
 
 const options = computed(() => {
   const items: any[] = []
-  if (inWidgetView) {
-    items.push({ label: '刷新', key: 'refresh' }, { label: '收回桌面卡片', key: 'unpin' })
-    return items
-  }
   if (props.actions && props.actions.length) {
     items.push(...props.actions)
     items.push({ type: 'divider', key: 'd-card-actions' })
@@ -40,7 +36,7 @@ function handle(key: string) {
   if (key === 'refresh') { triggerHomeRefresh(props.module); return }
   if (key === 'pin') {
     void widgets.pin(props.module).then((ok) => {
-      if (ok) message.success(CARD_META[props.module].label + '已钉到桌面，位置可以用右键菜单里的「总在最前」调整')
+      if (ok) message.success(CARD_META[props.module].label + '已钉到桌面：可以直接拖动它，右键可置顶或收回')
     })
     return
   }
@@ -61,10 +57,10 @@ function handle(key: string) {
 </script>
 
 <template>
-  <!-- 外层 span 阻断冒泡：菜单点击不能把用户带走 -->
-  <span class="hc-menu-wrap" @click.stop>
-    <!-- 已钉到桌面：常驻标记，点一下收回（挂件本身不用这个标记） -->
-    <n-tooltip v-if="pinned && !inWidgetView" trigger="hover">
+  <!-- 挂件窗口只留窗口级右键菜单，卡片角上的「更多」不再出现：同一个窗口不要两个菜单入口 -->
+  <span v-if="!inWidgetView" class="hc-menu-wrap" @click.stop>
+    <!-- 已钉到桌面：常驻标记，点一下收回 -->
+    <n-tooltip v-if="pinned" trigger="hover">
       <template #trigger>
         <n-tag class="hc-pin-tag" size="tiny" type="success" :bordered="false" @click="handle('unpin')">桌面</n-tag>
       </template>

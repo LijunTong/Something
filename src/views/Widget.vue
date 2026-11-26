@@ -6,6 +6,7 @@ import { cardView, isCardKey } from '@/composables/useCardViews'
 import { provideWidgetContext, type WidgetContext } from '@/lib/widgetContext'
 import { call, hasBridge } from '@/lib/ipc'
 import { useSettings } from '@/composables/useSettings'
+import { triggerHomeRefresh } from '@/composables/useHomeRefresh'
 import type { WidgetBoundsResult, WidgetItem, WidgetListResult } from '@/types/api'
 import '@/styles/widget.css'
 
@@ -333,6 +334,7 @@ const menuOptions = computed<DropdownOption[]>(() => [
     label: locked.value ? '解锁位置与大小' : '锁定位置与大小'
   },
   { key: 'size', label: '恢复默认大小' },
+  { key: 'refresh', label: '刷新数据' },
   { key: 'd1', type: 'divider' },
   {
     key: 'open',
@@ -350,10 +352,37 @@ function onContextMenu(e: MouseEvent) {
   menuShow.value = true
 }
 
+/**
+ * 点菜单以外的任何地方都收起：manual 触发的 n-dropdown 不接管 click-outside，
+ * 不自己兜一层的话菜单会一直挂在那里。菜单本身被 teleport 到 body，按选择器放行。
+ */
+function onDocPointerDown(e: PointerEvent) {
+  if (!menuShow.value) return
+  const t = e.target as HTMLElement | null
+  if (t && typeof t.closest === 'function' && t.closest('.n-dropdown-menu, .v-binder-follower-container, .n-popover')) return
+  menuShow.value = false
+}
+
+/** 窗口失焦（点了别的应用）也要收起，别留一个悬空的菜单 */
+function onWindowBlur() {
+  menuShow.value = false
+}
+
+watch(menuShow, (on) => {
+  if (on) {
+    document.addEventListener('pointerdown', onDocPointerDown, true)
+    window.addEventListener('blur', onWindowBlur)
+  } else {
+    document.removeEventListener('pointerdown', onDocPointerDown, true)
+    window.removeEventListener('blur', onWindowBlur)
+  }
+})
+
 function onMenuSelect(key: string) {
   if (key === 'top') void applyPatch({ alwaysOnTop: !(item.value?.alwaysOnTop === true) })
   if (key === 'lock') void applyPatch({ locked: !locked.value })
   if (key === 'size') void resetSize()
+  if (key === 'refresh') { if (isCardKey(card.value)) triggerHomeRefresh(card.value) }
   if (key === 'open') void openInApp(CARD_PATH[card.value])
   if (key === 'close') void closeWidget()
   menuShow.value = false
@@ -418,6 +447,8 @@ onMounted(() => {
 
 onBeforeUnmount(() => {
   document.documentElement.classList.remove('is-widget')
+  document.removeEventListener('pointerdown', onDocPointerDown, true)
+  window.removeEventListener('blur', onWindowBlur)
   if (removeGuard) removeGuard()
   if (unsubscribe) unsubscribe()
   if (rectFrame) cancelAnimationFrame(rectFrame)
