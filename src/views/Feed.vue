@@ -61,7 +61,15 @@ const showHtml = ref(true)
 const showRemoteImages = ref(false)
 const htmlLoading = ref(false)
 /** 详情缓存：列表接口不返回 content_html（正文太大），点开文章时按需取 */
-const detailCache = ref<Record<string, { contentHtml: string | null; content: string | null }>>({})
+type FeedDetail = {
+  contentHtml: string | null
+  content: string | null
+  /** 正文是否为抓原文补全的全文；false 表示源只给了摘要 */
+  fullText: boolean
+  /** 最近一次抓原文的时间戳；null = 还没抓过 */
+  fullFetchAt: number | null
+}
+const detailCache = ref<Record<string, FeedDetail>>({})
 // 订阅源统一在「管理订阅」抽屉维护；分类（feed_group）在本页「分类管理」弹窗维护
 
 /** 无 IPC 时的浏览器降级数据：字段名与 FeedItem / FeedSource 契约一致 */
@@ -270,7 +278,7 @@ async function loadAll(): Promise<void> {
     const alive = new Set(all.map((i) => i.id))
     const keptIds = Object.keys(detailCache.value).filter((id) => alive.has(id))
     if (keptIds.length !== Object.keys(detailCache.value).length) {
-      const next: Record<string, { contentHtml: string | null; content: string | null }> = {}
+      const next: Record<string, FeedDetail> = {}
       for (const id of keptIds) next[id] = detailCache.value[id]
       detailCache.value = next
     }
@@ -281,19 +289,48 @@ async function loadAll(): Promise<void> {
   }
 }
 
-/** 详情按需加载：正文 HTML 只在点开时取，避免列表把全库 HTML 拉进渲染进程 */
-async function loadDetail(id: string): Promise<void> {
-  if (detailCache.value[id]) return
+/** 详情按需加载：正文 HTML 只在点开时取，避免列表把全库 HTML 拉进渲染进程。
+ *  force=true 用于「重抓全文」：忽略缓存与主进程的失败冷却期，重新抓一次原文。 */
+async function loadDetail(id: string, force = false): Promise<void> {
+  if (!force && detailCache.value[id]) return
   htmlLoading.value = true
   try {
-    const d = await call(() => feedBridge().detail(plain({ id })), null as FeedItem | null)
-    if (d) detailCache.value[id] = { contentHtml: d.contentHtml ?? null, content: d.content ?? null }
+    const d = await call(() => feedBridge().detail(plain({ id, force })), null as FeedItem | null)
+    if (d) {
+      detailCache.value[id] = {
+        contentHtml: d.contentHtml ?? null,
+        content: d.content ?? null,
+        fullText: !!d.fullText,
+        fullFetchAt: d.fullFetchAt ?? null
+      }
+    }
   } catch (e) {
     log.exception('feed.detail', e)
   } finally {
     htmlLoading.value = false
   }
 }
+
+/** 重抓全文：少数派这类只给摘要的源，手动触发一次抓原网页 */
+async function refetchFull(it: FeedItem): Promise<void> {
+  if (!it.link) {
+    message.warning('这篇文章没有原文链接')
+    return
+  }
+  await loadDetail(it.id, true)
+  const d = detailCache.value[it.id]
+  if (d?.fullText) message.success('已补全全文')
+  else message.warning('没能抓到全文，继续显示摘要')
+}
+
+/** 当前文章的正文来源状态：只在已取过详情、且没抓到全文时提示 */
+const detailState = computed(() => {
+  const it = selectedItem.value
+  if (!it) return { onlySummary: false, tried: false }
+  const d = detailCache.value[it.id]
+  if (!d) return { onlySummary: false, tried: false }
+  return { onlySummary: !d.fullText, tried: !!d.fullFetchAt }
+})
 
 /** 刷新后正文可能变了：清空详情缓存，并把正在读的那篇重新取一次 */
 function resetDetails(): void {
@@ -800,6 +837,7 @@ watch(unreadCount, (n) => store.setFeedUnread(n), { immediate: true })
             <n-button v-if="showHtml && selectedHtml" size="tiny" quaternary :type="showRemoteImages ? 'primary' : 'default'" title="远程图片默认拦截" @click="showRemoteImages = !showRemoteImages">
               {{ showRemoteImages ? '隐藏图片' : '显示图片' }}
             </n-button>
+            <n-button v-if="selectedItem && selectedItem.link" size="tiny" quaternary :loading="htmlLoading" title="重新抓取原文全文" @click="refetchFull(selectedItem)">补全全文</n-button>
             <n-button v-if="selectedItem" size="tiny" quaternary :type="selectedItem.starred ? 'warning' : 'default'" title="收藏" @click="toggleStar(selectedItem)">★</n-button>
             <n-button v-if="selectedItem" size="tiny" quaternary :type="selectedItem.readLater ? 'primary' : 'default'" title="稍后读" @click="toggleLater(selectedItem)">◷</n-button>
             <span class="fd-tools-spacer"></span>
@@ -809,6 +847,10 @@ watch(unreadCount, (n) => store.setFeedUnread(n), { immediate: true })
             <div class="fd-article-inner">
               <template v-if="selectedItem">
                 <div class="fd-byline"><n-text depth="3">{{ sourceName(selectedItem) }} · {{ selectedItem.author || '未知作者' }} · {{ fmtAgo(selectedItem.publishedAt) }}</n-text></div>
+                <!-- 源只给摘要时的说明：阅读器不能让人误以为整篇就这么长 -->
+                <n-alert v-if="detailState.onlySummary && !htmlLoading" type="info" :bordered="false" size="small" class="fd-fulltext-tip">
+                  {{ detailState.tried ? '该源只提供摘要，未能抓取到原文全文。可点右上「补全全文」重试。' : '该源只提供摘要，没有抓到原文全文。' }}
+                </n-alert>
                 <HtmlBodyFrame
                   v-if="showHtml && selectedHtml"
                   :html="selectedHtml"

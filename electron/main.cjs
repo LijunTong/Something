@@ -520,9 +520,10 @@ function registerIpc() {
       handler: function (dto) { return feedSvc.removeItems(dto.ids) }
     },
     // 单篇详情：registry 把 zod 解析后的对象交给 handler，必须在这里解包
+    // force=true 表示用户点了「重抓全文」，忽略失败冷却期再抓一次
     detail: {
-      schema: z.object({ id: z.string().min(1) }),
-      handler: function (dto) { return feedSvc.detail(dto.id) }
+      schema: z.object({ id: z.string().min(1), force: z.boolean().optional() }),
+      handler: function (dto) { return feedSvc.detail(dto.id, { force: !!dto.force }) }
     },
     toggleStar: feedSvc.toggleStar, toggleLater: feedSvc.toggleLater,
     refresh: feedSvc.refresh, importOPML: feedSvc.importOPML, exportOPML: feedSvc.exportOPML

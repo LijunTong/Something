@@ -56,6 +56,8 @@
 .fd-article-inner { padding: 20px 26px; font-size: var(--fd-reader-font, var(--fs-13)); line-height: 1.8; }
 .fd-article-title { margin: 0 0 8px; font-size: var(--fs-title); }
 .fd-byline { margin-bottom: 18px; }
+/* 全文补全提示条：只控制与正文的间距，外观由 n-alert 主题决定 */
+.fd-fulltext-tip { margin-bottom: 14px; }
 .fd-article p { margin: 0 0 14px; }
 .fd-origin { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-top: 8px; }
 /* 原文链接单行省略，按钮始终在右侧 */

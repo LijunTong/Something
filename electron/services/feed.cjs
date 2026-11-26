@@ -4,6 +4,7 @@ const crypto = require('node:crypto')
 const { get, withTx } = require('../db/conn.cjs')
 const { uid, now, camel, camelAll, bool } = require('../db/util.cjs')
 const logger = require('../log/logger.cjs')
+const { extractArticle } = require('./articleExtract.cjs')
 
 
 // 统一异常出口：按项目约定记录模块名、说明、错误对象与上下文。
@@ -175,14 +176,26 @@ function items(filter) {
   return camelAll(get().prepare(sql).all(...args))
 }
 
-// 单篇详情：只读 RSS 自带内容，不再抓原网页——整页抓取会把导航、相关阅读一起带进阅读器。
-// 阅读器要的是「正文 + 段落」，所以这里补段落，并丢弃不像正文的 HTML（回退纯文本）。
-async function detail(id) {
+// 单篇详情：RSS 正文往往只有一段摘要（源站故意截断，末尾挂「查看全文」），
+// 所以先看 RSS 内容够不够；不够就去原文页抽正文补全，抽不出来就回退 RSS 摘要。
+async function detail(id, opts) {
   const row = get().prepare('SELECT * FROM feed_item WHERE id = ?').get(id)
   if (!row) throw new Error('FEED_ITEM_NOT_FOUND')
   const out = camel(row)
-  out.content = plainToParagraphs(out.content)
-  if (out.contentHtml && !usableHtml(out.contentHtml)) out.contentHtml = null
+  const filled = await fillFullText(row, !!(opts && opts.force))
+  const gotFull = !!(filled && filled.ok)
+  // ok 但没有 content：原文不比 RSS 多，保留 RSS 正文（已视为全文）
+  if (gotFull && filled.content) {
+    out.content = filled.content
+    out.contentHtml = filled.contentHtml
+  } else {
+    out.content = plainToParagraphs(out.content)
+    if (out.contentHtml && !usableHtml(out.contentHtml)) out.contentHtml = null
+  }
+  // fullText 供阅读器区分「全文 / 仅摘要」；本次抓取失败时回退到库里的历史结果
+  out.fullText = gotFull ? true : !!row.full_fetch_ok
+  out.fullFetchAt = filled && filled.at ? filled.at : (row.full_fetch_at ? Number(row.full_fetch_at) : null)
+  out.fullFetchOk = gotFull ? true : !!row.full_fetch_ok
   return out
 }
 
@@ -315,6 +328,119 @@ function usableHtml(raw) {
   return cleanHtml(raw)
 }
 
+// —— 全文补全：RSS 只给摘要（末尾挂「查看全文」）时，点开文章去原文页抽正文 ——
+const FULLTEXT_TIMEOUT_MS = 10000
+// 正文少于这个字符数就当作摘要；正常文章很少低于 600 字
+const FULLTEXT_SHORT_CHARS = 600
+// 抓取失败后的冷却时间：期间再点开直接用 RSS 摘要，不重复打原文站
+const FULLTEXT_RETRY_MS = 6 * 60 * 60 * 1000
+// 抽出来的正文至少要比 RSS 内容长 20%，否则认为没抽到真正文
+const FULLTEXT_MIN_GAIN = 1.2
+const FULLTEXT_UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36'
+
+function contentChars(text) {
+  return String(text || '').replace(/\s+/g, '').length
+}
+
+function needsFullText(row) {
+  if (!row.link) return false
+  return contentChars(row.content) < FULLTEXT_SHORT_CHARS
+}
+
+/** 是否值得为这篇去打原文站：内容够长、已补全过、或失败冷却期内都不打 */
+function shouldFetchFullText(row, force) {
+  if (!needsFullText(row)) return false
+  if (force) return true
+  if (row.full_fetch_ok) return false
+  const at = Number(row.full_fetch_at || 0)
+  return !at || Date.now() - at > FULLTEXT_RETRY_MS
+}
+
+/** 按 charset 解码：GBK 等中文站很常见，Node 的 TextDecoder 走 ICU 支持 */
+function decodeBuffer(buf, charset) {
+  const cs = String(charset || '').toLowerCase()
+  if (!cs || cs === 'utf-8' || cs === 'utf8') return buf.toString('utf8')
+  try { return new TextDecoder(cs).decode(buf) } catch (e) { return buf.toString('utf8') }
+}
+
+async function fetchArticleHtml(url) {
+  const controller = new AbortController()
+  const timer = setTimeout(function () { controller.abort() }, FULLTEXT_TIMEOUT_MS)
+  try {
+    const res = await fetch(url, {
+      headers: {
+        'user-agent': FULLTEXT_UA,
+        accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+        'accept-language': 'zh-CN,zh;q=0.9,en;q=0.8'
+      },
+      signal: controller.signal,
+      redirect: 'follow'
+    })
+    if (!res.ok) throw new Error('HTTP_' + res.status)
+    const type = String(res.headers.get('content-type') || '')
+    if (type && !/html|xml|text\/plain/i.test(type)) throw new Error('NOT_HTML')
+    const buf = Buffer.from(await res.arrayBuffer())
+    // 编码：响应头 charset 优先，其次页面 <meta charset>
+    let charset = (type.match(/charset=["']?([\w-]+)/i) || [])[1]
+    if (!charset) {
+      const head = buf.slice(0, 4096).toString('latin1')
+      const m = /<meta[^>]+charset=["']?([\w-]+)/i.exec(head)
+      charset = m ? m[1] : ''
+    }
+    return decodeBuffer(buf, charset)
+  } finally {
+    clearTimeout(timer)
+  }
+}
+
+/** 记录一次抓取结果：成功写全文，失败只记时间，冷却期内不再重试 */
+function markFullText(id, at, ok) {
+  try {
+    withTx(function () {
+      get().prepare('UPDATE feed_item SET full_fetch_at = ?, full_fetch_ok = ? WHERE id = ?').run(at, ok ? 1 : 0, id)
+    })
+  } catch (e) {
+    logError('detail.markFullText', { itemId: id }, e)
+  }
+}
+
+/** 抓原文并抽正文；返回 { ok:true, content, contentHtml, at } 或 { ok:false, at }，
+ *  null 表示这次没尝试（内容已够长 / 在失败冷却期内）。
+ *  ok:true 且 content 为 null 表示「原文没有比 RSS 更多正文」，RSS 本身已是全文。 */
+async function fillFullText(row, force) {
+  if (!shouldFetchFullText(row, force)) return null
+  const startedAt = now()
+  try {
+    const html = await fetchArticleHtml(row.link)
+    const art = extractArticle(html, row.link)
+    const before = contentChars(row.content)
+    if (!art || art.chars < 300) {
+      markFullText(row.id, startedAt, false)
+      return { ok: false, at: startedAt }
+    }
+    if (art.chars < before * FULLTEXT_MIN_GAIN) {
+      // 原文与 RSS 长度接近：说明源站没在 RSS 里截断，RSS 内容已经是全文。
+      // 这种情况记成功（不再反复抓、也不提示「仅摘要」），但不覆盖已有正文。
+      if (art.chars >= before * 0.9) {
+        markFullText(row.id, startedAt, true)
+        return { ok: true, content: null, contentHtml: null, at: startedAt }
+      }
+      markFullText(row.id, startedAt, false)
+      return { ok: false, at: startedAt }
+    }
+    const content = plainToParagraphs(art.text)
+    withTx(function () {
+      get().prepare('UPDATE feed_item SET content = ?, content_html = ?, full_fetch_at = ?, full_fetch_ok = 1 WHERE id = ?')
+        .run(content, art.html, startedAt, row.id)
+    })
+    return { ok: true, content: content, contentHtml: art.html, at: startedAt }
+  } catch (e) {
+    logError('detail.fullText', { itemId: row.id, url: row.link }, e)
+    markFullText(row.id, startedAt, false)
+    return { ok: false, at: startedAt }
+  }
+}
+
 // 取片段里第一个命名字段的文本，兼容带属性的开放标签与 CDATA。
 function pickField(block, names) {
   for (let i = 0; i < names.length; i++) {
@@ -424,9 +550,11 @@ async function refresh(dto) {
 
   // 落库阶段：同步事务内完成，guid 幂等 + content_hash 判断是否需要更新
   return withTx(function () {
-    const find = get().prepare('SELECT id, content_hash FROM feed_item WHERE source_id = ? AND guid = ?')
+    const find = get().prepare('SELECT id, link, content_hash, full_fetch_ok, length(content) AS content_len FROM feed_item WHERE source_id = ? AND guid = ?')
     const ins = get().prepare('INSERT INTO feed_item (id,source_id,guid,title,link,author,summary,content,content_html,published_at,read,starred,read_later,content_hash) VALUES (?,?,?,?,?,?,?,?,?,?,0,0,0,?)')
-    const upd = get().prepare('UPDATE feed_item SET title = ?, link = ?, author = ?, summary = ?, content = ?, content_html = ?, published_at = ?, content_hash = ? WHERE id = ?')
+    const upd = get().prepare('UPDATE feed_item SET title = ?, link = ?, author = ?, summary = ?, content = ?, content_html = ?, published_at = ?, content_hash = ?, full_fetch_at = NULL, full_fetch_ok = 0 WHERE id = ?')
+    // 已补全全文的文章，RSS 再给摘要时只更新元数据，不动正文（否则全文会被摘要覆盖）
+    const updMeta = get().prepare('UPDATE feed_item SET title = ?, link = ?, author = ?, summary = ?, published_at = ?, content_hash = ? WHERE id = ?')
     const touch = get().prepare('UPDATE feed_source SET last_fetch_at = ?, etag = ? WHERE id = ?')
     const at = now()
     let added = 0, updated = 0, skipped = 0, failed = 0
@@ -450,7 +578,10 @@ async function refresh(dto) {
           ins.run(uid('item'), r.source.id, guid, a.title, a.link, a.author, a.summary, a.content, a.html, a.publishedAt, contentHash)
           added += 1
         } else if (hit.content_hash !== contentHash) {
-          upd.run(a.title, a.link, a.author, a.summary, a.content, a.html, a.publishedAt, contentHash, hit.id)
+          // 已补全全文、链接没变、RSS 又只给摘要时，保留全文，只刷新元数据
+          const keepFull = hit.full_fetch_ok && hit.link === a.link && contentChars(a.content) < (hit.content_len || 0)
+          if (keepFull) updMeta.run(a.title, a.link, a.author, a.summary, a.publishedAt, contentHash, hit.id)
+          else upd.run(a.title, a.link, a.author, a.summary, a.content, a.html, a.publishedAt, contentHash, hit.id)
           updated += 1
         }
       })

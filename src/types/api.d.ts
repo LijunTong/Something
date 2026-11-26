@@ -406,7 +406,7 @@ export interface WeatherApi {
   relocate(dto?: { id?: string }): Promise<IpcResult<{ cities: WeatherCity[]; failed: string[] }>>
 }
 
-export interface FeedItem { id: string; sourceId: string; title: string; link: string | null; author: string | null; summary: string | null; content: string | null; /** 正文 HTML：仅 detail() 返回，列表接口不带 */ contentHtml?: string | null; publishedAt: number | null; read: boolean; starred: boolean; readLater: boolean; sourceTitle?: string; group?: string | null }
+export interface FeedItem { id: string; sourceId: string; title: string; link: string | null; author: string | null; summary: string | null; content: string | null; /** 正文 HTML：仅 detail() 返回，列表接口不带 */ contentHtml?: string | null; publishedAt: number | null; read: boolean; starred: boolean; readLater: boolean; sourceTitle?: string; group?: string | null; /** 正文是否为抓取补全的全文（false = 仅 RSS 摘要） */ fullText?: boolean; /** 最近一次抓原文的时间戳；null = 还没抓过 */ fullFetchAt?: number | null; /** 是否已成功抓到全文 */ fullFetchOk?: boolean }
 export interface FeedSource { id: string; url: string; title: string | null; groupId: string | null; intervalMin: number; enabled: boolean; lastFetchAt: number | null }
 /** 订阅分类：color 用于侧栏色点；isDefault 的分类可改名、不可删除 */
 export interface FeedGroupRow { id: string; name: string; color: string; isDefault?: boolean }
@@ -421,7 +421,8 @@ export interface FeedApi {
   toggleSource(dto: { id: string; enabled: boolean }): Promise<IpcResult<FeedSource[]>>
   updateSource(dto: { id: string; url?: string; title?: string; groupId?: string | null; intervalMin?: number }): Promise<IpcResult<FeedSource>>
   items(filter?: { sourceId?: string; group?: string; kind?: 'unread' | 'starred' | 'later' | 'all' }): Promise<IpcResult<FeedItem[]>>
-  detail(dto: { id: string }): Promise<IpcResult<FeedItem>>
+  /** force=true 表示忽略失败冷却期，重新抓一次原文全文 */
+  detail(dto: { id: string; force?: boolean }): Promise<IpcResult<FeedItem>>
   markRead(id: string): Promise<IpcResult<boolean>>
   /** 批量标记已读：工具栏多选，返回实际更新条数 */
   markReadMany(dto: { ids: string[] }): Promise<IpcResult<number>>
