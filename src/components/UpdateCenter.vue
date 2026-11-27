@@ -33,6 +33,8 @@ const show = computed({
 })
 
 const busy = computed(() => s.phase === 'downloading' || s.phase === 'installing')
+// 卡片宽度跟着内容走：只有更新详情与下载进度需要宽一点，其余状态用窄卡片，别铺成整屏空白
+const cardWidth = computed(() => (s.phase === 'details' || s.phase === 'downloading' ? '480px' : '360px'))
 const hasUpdate = computed(() => !!s.info?.hasUpdate)
 const version = computed(() => s.info?.latest || '')
 const currentVersion = computed(() => s.info?.current || '')
@@ -146,6 +148,7 @@ onMounted(async () => {
     preset="card"
     title="软件更新"
     class="upd-modal"
+    :style="{ width: cardWidth }"
     :bordered="false"
     :mask-closable="!busy"
     :close-on-esc="!busy"
@@ -186,6 +189,7 @@ onMounted(async () => {
             {{ s.info?.asset ? '下载并安装' : '无可用安装包' }}
           </n-button>
           <n-button tertiary @click="close">以后再说</n-button>
+          <n-button text @click="onIgnore">忽略此版本</n-button>
           <n-button text type="primary" @click="openReleasePage()">在 GitHub 查看</n-button>
         </div>
       </template>
@@ -227,14 +231,13 @@ onMounted(async () => {
 
       <!-- 已是最新 -->
       <template v-else>
-        <n-empty description="当前已是最新版本">
+        <n-empty size="small" description="当前已是最新版本">
           <template #extra>
             <span class="upd-muted">{{ currentVersion ? '版本 ' + currentVersion : '' }}</span>
           </template>
         </n-empty>
         <div class="upd-actions">
           <n-button type="primary" @click="checkUpdate({ interactive: true })">重新检查</n-button>
-          <n-button tertiary @click="onIgnore">忽略此版本</n-button>
         </div>
       </template>
     </div>
@@ -243,7 +246,6 @@ onMounted(async () => {
 
 <style scoped>
 .upd-modal {
-  width: 560px;
   max-width: calc(100vw - 32px);
 }
 .upd-body {
