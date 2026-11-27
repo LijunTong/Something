@@ -2,9 +2,14 @@
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { NConfigProvider, NLoadingBarProvider, NDialogProvider, NNotificationProvider, NMessageProvider, darkTheme, zhCN, dateZhCN, NAlert } from 'naive-ui'
 import { useAppStore } from '@/stores/app'
+import UpdateCenter from '@/components/UpdateCenter.vue'
 import { blendColor, buildOverrides, mixColor } from '@/theme/naive'
 
 const store = useAppStore()
+
+// 挂件窗口与主窗口共用同一份 index.html：更新弹窗/新版本通知只属于主窗体，
+// 否则每个挂件窗口都会各查一次 GitHub 并各弹一条通知。widget.cjs 在 hash 里带 surface=widget。
+const isWidgetSurface = /[?&]surface=widget/.test(window.location.hash)
 
 // 调试用：把最近一次运行时错误的完整信息显示在页面顶部。
 // 定位完可删掉这段以及下方 template 里的 <n-alert>。
@@ -130,6 +135,8 @@ onBeforeUnmount(() => {
               </n-alert>
               <div v-if="store.error" class="boot-error">{{ store.error }}</div>
               <router-view />
+              <!-- 全局更新弹窗：设置页按钮与启动通知复用这一个实例，挂件窗口不挂 -->
+              <UpdateCenter v-if="!isWidgetSurface" />
             </template>
           </n-message-provider>
         </n-notification-provider>

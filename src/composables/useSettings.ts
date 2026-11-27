@@ -34,7 +34,9 @@ const FALLBACK: AllSettings = {
   widgets: {
     items: [],
     useTransparent: true
-  }
+  },
+  // 更新提醒：忽略某个版本 / 稍后提醒的截止时间 / 是否自动检查
+  update: { ignored: '', snoozeUntil: 0, autoCheck: true }
 }
 
 const current = ref<AllSettings>(JSON.parse(JSON.stringify(FALLBACK)) as AllSettings)

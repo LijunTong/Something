@@ -29,6 +29,9 @@ const DEFAULTS = {
   shortcuts: { search: 'Ctrl+K', newTodo: 'N', focus: 'F' },
   // 窗口行为：关闭/最小化到托盘、开机启动（开机启动同时写入系统登录项）
   window: { closeToTray: true, minimizeToTray: false, launchAtLogin: false },
+  // 更新提醒：ignored 是用户点过「忽略此版本」的版本号，snoozeUntil 是「稍后提醒」的截止时间戳。
+  // 两者都持久化，避免每次启动都弹同一条通知；autoCheck 关闭后只在手动检查时才请求 GitHub。
+  update: { ignored: '', snoozeUntil: 0, autoCheck: true },
   // 自动备份：path 为空时落在数据库同级的 backups 目录
   // keep：最多保留多少份本程序生成的备份（超出删最旧），1-100
   backup: { auto: true, path: '', freq: '每天', encrypted: false, passwordSet: false, keep: 10, lastAt: null, lastFile: null },

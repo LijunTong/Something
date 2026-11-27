@@ -386,7 +386,7 @@ function createWidgetService(deps) {
       writeItems(readItems().filter(function (i) { return i.id !== item.id }))
     })
 
-    const hash = '/widget/' + item.card + '?id=' + encodeURIComponent(item.id)
+    const hash = '/widget/' + item.card + '?id=' + encodeURIComponent(item.id) + '&surface=widget'
     if (devUrl) win.loadURL(devUrl + '#' + hash)
     else win.loadFile(distIndex, { hash: hash })
     return win

@@ -33,6 +33,16 @@ export interface UpdateProgressEvent {
   message?: string
 }
 
+/** 更新提醒偏好：忽略某个版本、稍后提醒的截止时间、是否自动检查 */
+export interface UpdateSetting {
+  /** 用户点过「忽略此版本」的版本号；空串表示没有忽略 */
+  ignored: string
+  /** 「稍后提醒」的截止时间戳（毫秒）；0 表示没有暂缓 */
+  snoozeUntil: number
+  /** 启动后自动检查一次并弹通知；关闭后只在手动点「检查更新」时请求 */
+  autoCheck: boolean
+}
+
 export interface TodoListRow { id: string; name: string; color: string | null; sort: number; isDefault?: boolean; deletedAt?: number | null }
 export interface TodoSubtask { id: string; todoId: string; title: string; done: boolean; sort: number }
 export interface TodoRow {
@@ -184,6 +194,7 @@ export interface AllSettings {
   parcel: ParcelSetting
   home: HomeSetting
   widgets: WidgetsSetting
+  update: UpdateSetting
 }
 export interface StorageSegment { key: string; label: string; color: string; bytes: number }
 export interface StorageUsage {

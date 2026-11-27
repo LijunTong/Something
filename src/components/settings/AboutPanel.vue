@@ -1,16 +1,19 @@
 <script setup lang="ts">
 import SectionTitle from '@/components/settings/SectionTitle.vue'
 import BrandMark from '@/components/BrandMark.vue'
-import { computed, onMounted, onUnmounted, ref } from 'vue'
-import { NCard, NButton, NTag, NModal, NDescriptions, NDescriptionsItem, NAlert, NList, NListItem, NProgress, useMessage } from 'naive-ui'
+import { computed, onMounted, ref } from 'vue'
+import { NCard, NButton, NTag, NModal, NDescriptions, NDescriptionsItem, NAlert, NList, NListItem, NProgress, NSwitch, useMessage } from 'naive-ui'
 import { call, bridge, hasBridge } from '@/lib/ipc'
 import { log } from '@/lib/logger'
-import type { UpdateCheckResult, UpdateProgressEvent } from '@/types/api'
+import { checkUpdate, formatBytes, ignoreUpdateVersion, initUpdate, restoreUpdateNotice, updatePrefsSnapshot, updateState } from '@/composables/useUpdate'
+import { useAppStore } from '@/stores/app'
 
 const message = useMessage()
+const store = useAppStore()
+const s = updateState()
+const prefs = updatePrefsSnapshot
 const info = ref<{ version: string; userData: string; db: string } | null>(null)
 const showLicense = ref(false)
-const checking = ref(false)
 
 // 版本号唯一来源：package.json 的 version，运行时由主进程 app.getVersion() 返回
 const versionText = computed(() => (info.value?.version ? 'v' + info.value.version : '未在 Electron 中运行'))
@@ -25,158 +28,55 @@ const LICENSES = [
   { name: 'Electron', license: 'MIT' }
 ]
 
-// 自动更新状态：下载进度由主进程 update:progress 推送，本组件只负责显示
-type Phase = 'idle' | 'downloading' | 'ready' | 'installing' | 'error'
-const phase = ref<Phase>('idle')
-const percent = ref(0)
-const updateVersion = ref('')
-const updateError = ref('')
-
-const busy = computed(() => phase.value === 'downloading' || phase.value === 'installing')
-const progressStatus = computed<'default' | 'success' | 'error'>(() => {
-  if (phase.value === 'error') return 'error'
-  if (phase.value === 'installing') return 'success'
-  return 'default'
-})
-const progressText = computed(() => {
-  if (phase.value === 'downloading') return '正在下载 v' + updateVersion.value + ' · ' + percent.value + '%'
-  if (phase.value === 'ready') return '下载完成，正在启动安装 v' + updateVersion.value
-  if (phase.value === 'installing') return '正在安装 v' + updateVersion.value + '，应用会自动重启'
-  if (phase.value === 'error') return '更新失败：' + updateError.value
-  return ''
+const lastCheckText = computed(() => {
+  const at = Number(s.info?.checkedAt) || 0
+  if (!at) return ''
+  const d = new Date(at)
+  const pad = (n: number) => String(n).padStart(2, '0')
+  return '上次检查 ' + d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate()) + ' ' + pad(d.getHours()) + ':' + pad(d.getMinutes())
 })
 
-let offProgress: (() => void) | null = null
+const downloading = computed(() => s.phase === 'downloading')
 
 onMounted(async () => {
   if (!hasBridge()) return
+  void initUpdate()
   try {
     info.value = await call(() => bridge().system.info(), null)
   } catch (e) {
     log.exception('settings.about', e)
   }
-  // 先订阅再读快照：下载完成的那一瞬间也不会漏掉 ready 事件。
-  // preload 只在窗口创建时加载，开发态热更新可能还是旧版；缺方法时跳过，不拖垮整个面板。
-  const api = bridge()
-  if (typeof api.onUpdateProgress === 'function') {
-    offProgress = api.onUpdateProgress(applyProgress)
-  }
-  if (typeof api.system.updateStatus === 'function') {
-    try {
-      const st: UpdateProgressEvent | null = await call(() => api.system.updateStatus(), null)
-      if (st && st.state !== 'idle') applyProgress(st)
-    } catch (e) {
-      log.exception('settings.about.updateStatus', e)
-    }
-  }
 })
 
-onUnmounted(() => {
-  if (offProgress) offProgress()
-})
-
-// 下载结束直接装机：安装程序由主进程分离启动，随后应用退出
-async function installNow() {
-  if (!hasBridge()) return
-  if (typeof bridge().system.installUpdate !== 'function') return
-  try {
-    await call(() => bridge().system.installUpdate(), false)
-  } catch (e) {
-    phase.value = 'error'
-    updateError.value = (e as Error).message || '安装程序启动失败'
-    log.exception('settings.about.install', e)
-  }
-}
-
-function applyProgress(p: UpdateProgressEvent) {
-  if (!p) return
-  if (p.version) updateVersion.value = p.version
-  if (p.state === 'downloading') {
-    phase.value = 'downloading'
-    percent.value = Math.max(0, Math.min(100, Number(p.percent) || 0))
-    return
-  }
-  if (p.state === 'ready') {
-    phase.value = 'ready'
-    percent.value = 100
-    void installNow()
-    return
-  }
-  if (p.state === 'installing') {
-    phase.value = 'installing'
-    percent.value = 100
-    return
-  }
-  if (p.state === 'error') {
-    phase.value = 'error'
-    updateError.value = p.message || '下载失败'
-    return
-  }
-  phase.value = 'idle'
-}
-
-// 检查更新：有新版本立即下载（进度显示在按钮下方），下载完自动安装；
-// 没有安装包或开发态无法自动安装时，回落到打开发布页手动下载。
-async function checkUpdate() {
+// 打开全局更新弹窗：里面显示版本信息与更新日志，确认后才开始下载
+async function onCheck() {
   if (!hasBridge()) {
     message.warning('检查更新需要在桌面应用内运行')
     return
   }
-  if (checking.value || busy.value) return
-  checking.value = true
-  try {
-    const res: UpdateCheckResult | null = await call(() => bridge().system.checkUpdate(), null)
-    if (!res) {
-      message.warning('未取到版本信息')
-      return
-    }
-    if (!res.hasUpdate) {
-      if (res.noRelease) {
-        message.info('当前版本 ' + versionText.value + '，仓库还没有发布版本')
-        await call(() => bridge().system.openExternal({ url: res.url }), false)
-      } else {
-        message.success('已是最新版本 ' + versionText.value)
-      }
-      return
-    }
-    if (typeof bridge().system.downloadUpdate !== 'function') {
-      phase.value = 'idle'
-      message.warning('当前窗口还是旧版预加载脚本，请重启应用后再自动更新')
-      return
-    }
-    updateVersion.value = res.latest || ''
-    updateError.value = ''
-    percent.value = 0
-    phase.value = 'downloading'
-    const started = await call(() => bridge().system.downloadUpdate(), { started: false, hasUpdate: false, version: null })
-    if (!started.started) {
-      phase.value = 'idle'
-      if (started.noAsset) {
-        message.warning('v' + res.latest + ' 没有附带安装包，正在打开发布页')
-        await call(() => bridge().system.openExternal({ url: res.url }), false)
-      } else {
-        message.success('已是最新版本')
-      }
-    }
-  } catch (e) {
-    log.exception('settings.about.update', e)
-    const code = (e as Error & { code?: string }).code
-    if (code === 'NOT_PACKAGED') {
-      phase.value = 'idle'
-      message.info('开发模式不自动安装，正在打开发布页')
-      try {
-        await call(() => bridge().system.openExternal({ url: 'https://github.com/LijunTong/Something/releases' }), false)
-      } catch (err) {
-        log.exception('settings.about.openRelease', err)
-      }
-    } else {
-      phase.value = 'error'
-      updateError.value = (e as Error).message || '网络不可达或 GitHub 接口异常'
-      message.error('自动更新失败：' + updateError.value)
-    }
-  } finally {
-    checking.value = false
-  }
+  s.visible = true
+  const res = await checkUpdate({ interactive: true })
+  if (!res) return
+  if (res.hasUpdate) message.info('发现新版本 ' + res.latest + '，确认后可下载安装')
+  else if (res.noRelease) message.info('仓库还没有发布版本')
+  else message.success('已是最新版本 ' + versionText.value)
+}
+
+/** 自动检查开关：偏好写进 settings.update，主进程按 section 合并，不会抹掉 ignored/snoozeUntil */
+async function setAutoCheck(value: boolean) {
+  const cur = store.settings?.update
+  await store.saveSettings({ update: { ignored: cur?.ignored || '', snoozeUntil: Number(cur?.snoozeUntil) || 0, autoCheck: value } })
+}
+
+/** 立刻提醒一次：清掉「稍后提醒」，不改变已忽略的版本 */
+async function remindNow() {
+  await restoreUpdateNotice()
+  message.info('已恢复更新提醒')
+}
+
+async function ignoreLatest() {
+  await ignoreUpdateVersion(s.info?.latest)
+  message.info('已忽略该版本的提示')
 }
 </script>
 
@@ -210,22 +110,32 @@ async function checkUpdate() {
     </n-descriptions>
 
     <div class="set-actions">
-      <n-button size="small" :loading="checking || phase === 'downloading'" :disabled="phase === 'installing'" @click="checkUpdate">
-        {{ phase === 'downloading' ? '正在下载…' : '检查更新' }}
-      </n-button>
+      <n-button size="small" :loading="s.phase === 'checking'" @click="onCheck">检查更新</n-button>
       <n-button size="small" @click="showLicense = true">查看开源许可</n-button>
     </div>
 
-    <div v-if="phase !== 'idle'" class="set-update">
-      <n-progress
-        type="line"
-        :percentage="percent"
-        :status="progressStatus"
-        :height="6"
-        :show-indicator="phase === 'downloading' || phase === 'error'"
-      />
-      <span class="set-muted">{{ progressText }}</span>
+    <SectionTitle title="更新提醒" />
+    <div class="set-inline set-inline-between">
+      <span>发现新版本时发送通知</span>
+      <n-switch :value="prefs.autoCheck" @update:value="setAutoCheck" />
     </div>
+    <div v-if="prefs.ignored || prefs.snoozeUntil > Date.now()" class="set-inline set-inline-between">
+      <span class="set-muted">
+        <template v-if="prefs.ignored">已忽略版本 {{ prefs.ignored }}</template>
+        <template v-else>已推迟提醒至 {{ new Date(prefs.snoozeUntil).toLocaleString() }}</template>
+      </span>
+      <n-button size="tiny" tertiary @click="remindNow">恢复提醒</n-button>
+    </div>
+
+    <div v-if="downloading" class="set-update">
+      <n-progress type="line" :percentage="s.percent" :height="6" :show-indicator="false" />
+      <span class="set-muted">
+        正在下载 v{{ s.info?.latest || '' }} · {{ formatBytes(s.received) }} / {{ formatBytes(s.total) }}
+        <template v-if="s.speed"> · {{ formatBytes(s.speed) }}/s</template>
+      </span>
+      <n-button size="tiny" tertiary @click="s.visible = true">查看进度</n-button>
+    </div>
+    <span v-else-if="lastCheckText" class="set-muted">{{ lastCheckText }}</span>
 
     <n-modal v-model:show="showLicense" preset="card" title="开源许可" class="set-modal" :bordered="false">
       <n-list>

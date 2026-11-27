@@ -108,7 +108,7 @@ async function check() {
     out.name = rel.name || tag
     out.publishedAt = rel.published_at || null
     out.url = rel.html_url || RELEASES_URL
-    out.notes = String(rel.body || '').slice(0, 800)
+    out.notes = String(rel.body || '').slice(0, 4000)
     out.hasUpdate = isNewer(out.latest, current)
     out.asset = out.hasUpdate ? pickAsset(rel, out.latest) : null
     logger.info('update', 'check_ok', { current: current, latest: out.latest, hasUpdate: out.hasUpdate, asset: out.asset && out.asset.name })

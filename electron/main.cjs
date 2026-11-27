@@ -1024,13 +1024,8 @@ function registerIpc() {
     checkUpdate: function () { return updateSvc.check() },
     // 自动更新：当前下载/安装状态，设置页重新挂载时恢复进度显示
     updateStatus: function () { return updateSvc.status() },
-    // 自动更新：只对 GitHub 上的正式安装包动手；开发态直接拒绝，避免装到源码目录
+    // 自动更新：只对 GitHub 上的正式安装包动手；开发态也允许下载（进度/重试可自测），只拦安装
     downloadUpdate: async function () {
-      if (!app.isPackaged) {
-        const e = new Error('开发模式不执行自动更新，请到发布页手动下载')
-        e.code = 'NOT_PACKAGED'
-        throw e
-      }
       const info = await updateSvc.check()
       if (!info.hasUpdate) return { started: false, hasUpdate: false, version: info.latest }
       if (!info.asset) return { started: false, hasUpdate: true, version: info.latest, noAsset: true }
