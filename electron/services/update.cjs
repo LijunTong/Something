@@ -266,7 +266,8 @@ function install(emit) {
   if (!job || job.state !== 'ready' || !job.file) throw new Error('没有已下载的安装包')
   job.state = 'installing'
   emitStatus(emit)
-  const child = spawn(job.file, ['/S'], { detached: true, stdio: 'ignore', windowsHide: true })
+  // --updated 让安装器按升级路径处理，--force-run 让它在静默安装结束后重新启动应用
+  const child = spawn(job.file, ['/S', '--updated', '--force-run'], { detached: true, stdio: 'ignore', windowsHide: true })
   child.unref()
   logger.info('update', 'install_start', { version: job.version })
   setTimeout(function () { app.quit() }, 700)

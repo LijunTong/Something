@@ -210,7 +210,7 @@ onMounted(async () => {
       <!-- 已下载：确认后安装 -->
       <template v-else-if="s.phase === 'ready'">
         <n-alert type="success" :bordered="false" title="安装包已下载完成">
-          安装程序会关闭当前应用并安装 {{ version }}，安装完成后请重新打开。
+          安装程序会关闭当前应用并安装 {{ version }}，安装完成后会自动重新打开。
         </n-alert>
         <div class="upd-actions">
           <n-button type="primary" @click="onInstall">立即安装并重启</n-button>
@@ -222,7 +222,7 @@ onMounted(async () => {
       <!-- 安装中 -->
       <div v-else-if="s.phase === 'installing'" class="upd-center">
         <n-spin size="small" />
-        <span class="upd-muted">正在启动安装程序，应用即将退出…</span>
+        <span class="upd-muted">正在启动安装程序，应用即将退出，安装完成后会自动重新打开…</span>
       </div>
 
       <!-- 已是最新 -->
