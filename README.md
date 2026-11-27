@@ -392,6 +392,7 @@ npm run dev          # 同时启动 Vite 与 Electron（推荐）
 | `npm run build` | 构建前端到 `dist/` |
 | `npm start` | 不启 Vite，用已构建的 `dist/` 启动 Electron |
 | `npm run rebuild` | 重新编译 better-sqlite3 原生模块 |
+| `npm run verify:update` | 无头验证更新功能（夹具 + 真实下载 + 渲染层弹窗/通知），见 [docs/更新功能开发验证.md](docs/更新功能开发验证.md) |
 | `npx vue-tsc --noEmit` | TypeScript 类型检查 |
 
 常见环境问题：

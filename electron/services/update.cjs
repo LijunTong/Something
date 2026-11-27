@@ -13,8 +13,33 @@ const logger = require('../log/logger.cjs')
 const OWNER_REPO = 'LijunTong/Something'
 const REPO_URL = 'https://github.com/' + OWNER_REPO
 const RELEASES_URL = REPO_URL + '/releases'
-const LATEST_API = 'https://api.github.com/repos/' + OWNER_REPO + '/releases/latest'
+const OFFICIAL_LATEST_API = 'https://api.github.com/repos/' + OWNER_REPO + '/releases/latest'
+const OFFICIAL_HOSTS = ['github.com', 'objects.githubusercontent.com', 'release-assets.githubusercontent.com']
 const TIMEOUT_MS = 8000
+
+// 端点解析：开发期验证可用环境变量指向本地假 release 服务；打包后（app.isPackaged）
+// 一律用官方地址，覆盖全部失效。只有显式给了宿主白名单，才允许 http + 回环地址。
+function resolveEndpoints(env, packaged) {
+  if (packaged) {
+    return { latestApi: OFFICIAL_LATEST_API, hosts: OFFICIAL_HOSTS.slice(), allowHttp: false, dev: false }
+  }
+  const latestApi = String((env && env.SOMETHING_UPDATE_LATEST_API) || '').trim() || OFFICIAL_LATEST_API
+  const hosts = String((env && env.SOMETHING_UPDATE_ALLOWED_HOSTS) || '')
+    .split(',').map(function (s) { return s.trim() }).filter(Boolean)
+  return {
+    latestApi: latestApi,
+    hosts: hosts.length ? hosts : OFFICIAL_HOSTS.slice(),
+    allowHttp: hosts.length > 0,
+    dev: true
+  }
+}
+
+// 首次使用时解析一次：check 与 download 共用同一份端点，避免中途环境变化导致不一致
+let cachedEndpoints = null
+function endpoints() {
+  if (!cachedEndpoints) cachedEndpoints = resolveEndpoints(process.env, app.isPackaged)
+  return cachedEndpoints
+}
 
 // 版本号归一：'v1.0.0' / '1.0.0-beta.1' -> { nums, pre }；无法解析返回 null
 function parseVersion(v) {
@@ -65,7 +90,7 @@ async function fetchLatestRelease(current) {
   const controller = new AbortController()
   const timer = setTimeout(function () { controller.abort() }, TIMEOUT_MS)
   try {
-    const res = await fetch(LATEST_API, {
+    const res = await fetch(endpoints().latestApi, {
       headers: {
         'user-agent': 'Something/' + current,
         accept: 'application/vnd.github+json'
@@ -121,9 +146,8 @@ async function check() {
 
 /* ---------- 自动更新：下载安装包并启动安装 ---------- */
 
-// 安装包只从 GitHub 域下载；302 后的 objects.githubusercontent.com /
+// 安装包只从白名单域下载；302 后的 objects.githubusercontent.com /
 // release-assets.githubusercontent.com 也要放行，但其他域一律拒绝。
-const ALLOWED_HOSTS = ['github.com', 'objects.githubusercontent.com', 'release-assets.githubusercontent.com']
 const MIN_ASSET_BYTES = 1024 * 1024
 
 // 同一时刻只允许一个下载任务；状态推给所有窗口，渲染层据此显示进度
@@ -157,14 +181,28 @@ function updateTarget(version) {
   return { dir: dir, file: path.join(dir, 'Something-Setup-' + safeVersion(version) + '.exe') }
 }
 
-function hostAllowed(raw) {
+function isLoopbackHost(name) {
+  return name === '127.0.0.1' || name === 'localhost' || name === '::1'
+}
+
+// 纯函数便于单测：https 走白名单；http 只有开发期显式放开且目标是回环地址时才允许
+function hostAllowedWith(hosts, raw, allowHttp) {
   try {
     const u = new URL(raw)
-    if (u.protocol !== 'https:') return false
-    return ALLOWED_HOSTS.some(function (h) { return u.hostname === h || u.hostname.endsWith('.' + h) })
+    if (u.protocol === 'http:') {
+      if (!allowHttp || !isLoopbackHost(u.hostname)) return false
+    } else if (u.protocol !== 'https:') {
+      return false
+    }
+    return hosts.some(function (h) { return u.hostname === h || u.hostname.endsWith('.' + h) })
   } catch (e) {
     return false
   }
+}
+
+function hostAllowed(raw) {
+  const ep = endpoints()
+  return hostAllowedWith(ep.hosts, raw, ep.allowHttp)
 }
 
 // 流式下载到临时目录：进度按 150ms 节流推送，完成后校验大小与 MZ 头再改名
@@ -256,6 +294,13 @@ function start(info, emit) {
   return status()
 }
 
+// 静默安装参数：assisted 安装器只有带 --force-run 才会在装完后重新启动应用，
+// --updated 让它按升级路径处理（保留数据、不重建快捷方式）。抽成纯函数便于无头测试断言。
+const INSTALL_ARGS = ['/S', '--updated', '--force-run']
+function installCommand(file) {
+  return { file: file, args: INSTALL_ARGS.slice(), options: { detached: true, stdio: 'ignore', windowsHide: true } }
+}
+
 // 静默安装并退出：安装程序分离启动，等它接管后再 close，避免占用安装目录
 function install(emit) {
   if (!app.isPackaged) {
@@ -267,7 +312,8 @@ function install(emit) {
   job.state = 'installing'
   emitStatus(emit)
   // --updated 让安装器按升级路径处理，--force-run 让它在静默安装结束后重新启动应用
-  const child = spawn(job.file, ['/S', '--updated', '--force-run'], { detached: true, stdio: 'ignore', windowsHide: true })
+  const cmd = installCommand(job.file)
+  const child = spawn(cmd.file, cmd.args, cmd.options)
   child.unref()
   logger.info('update', 'install_start', { version: job.version })
   setTimeout(function () { app.quit() }, 700)
@@ -275,6 +321,14 @@ function install(emit) {
 }
 
 module.exports = {
+  // 只给 scripts/headless-update-service.cjs 使用，不暴露到 IPC
+  __test: {
+    resolveEndpoints: resolveEndpoints,
+    hostAllowedWith: hostAllowedWith,
+    installCommand: installCommand,
+    // 测试用：清掉端点缓存与下载任务，便于在同一进程里依次跑多组场景
+    reset: function () { cachedEndpoints = null; job = null }
+  },
   check: check,
   current: function () { return app.getVersion() },
   status: status,
